@@ -23,14 +23,14 @@ export class Request {
     * ID name
     */
     'indexName': string;
-    'queryVector'?: Array<number>;
+    'queryVector'?: number[];
     'queryContents'?: string;
     'topK'?: number = 100;
     'nProbes'?: number = 1;
     'greedy'?: boolean = false;
     'filters'?: object;
-    'include'?: Array<string>;
-    'queryVectors': Array<Array<number>>;
+    'include'?: string[];
+    'queryVectors'?: number[][];
 
     static discriminator: string | undefined = undefined;
 

@@ -7,7 +7,9 @@ import {
   TrainRequest,
   DeleteRequest,
   GetRequest,
-  VectorItem
+  VectorItem,
+  BatchQueryRequest,
+  Request
 } from './model/models';
 
 /**
@@ -59,23 +61,23 @@ export class CyborgDB {
   //     throw new Error(`Failed to list indexes: ${(error as Error).message}`);
   //   }
   // }
-  // async listIndexes() {
-  //   try {
-  //     console.log('Attempting to list indexes...');
-  //     const response = await this.api.listIndexesV1IndexesListGet();
-  //     console.log('Response received:', response);
-  //     return response.body.indexes || [];
-  //   } catch (error: any) {
-  //     console.error('Error in listIndexes:', error);
-  //     if (error.statusCode) {
-  //       console.error(`Status code: ${error.statusCode}`);
-  //     }
-  //     if (error.response) {
-  //       console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-  //     }
-  //     throw new Error(`Failed to list indexes: ${error.message || 'Unknown error'}`);
-  //   }
-  // }
+  async listIndexes() {
+    try {
+      console.log('Attempting to list indexes...');
+      const response = await this.api.listIndexesV1IndexesListGet();
+      console.log('Response received:', response);
+      return response.body.indexes || [];
+    } catch (error: any) {
+      console.error('Error in listIndexes:', error);
+      if (error.statusCode) {
+        console.error(`Status code: ${error.statusCode}`);
+      }
+      if (error.response) {
+        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      }
+      throw new Error(`Failed to list indexes: ${error.message || 'Unknown error'}`);
+    }
+  }
 
   /**
    * Create a new encrypted index
@@ -206,7 +208,7 @@ export class CyborgDB {
    * Search for nearest neighbors in the index
    * @param indexName Name of the index
    * @param indexKey 32-byte encryption key
-   * @param queryVectors Query vectors to search for
+   * @param queryVector Either a single vector or an array of vectors to search for
    * @param topK Number of results to return
    * @param nProbes Number of probes for approximate search
    * @param filters Metadata filters
@@ -216,44 +218,60 @@ export class CyborgDB {
   async query(
     indexName: string, 
     indexKey: Uint8Array, 
-    queryVectors: number[][], 
+    queryVector: number[] | number[][],
     topK: number = 100,
     nProbes: number = 1,
     filters: any = {},
     include: string[] = ["distance", "metadata"]
   ) {
     try {
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      const keyHex = Buffer.from(indexKey).toString('hex');
       
-      const includeFields: string[] = [];
-      if (include.includes("distance")) includeFields.push("distance");
-      if (include.includes("metadata")) includeFields.push("metadata");
+      // Create a Request instance
+      const request = new Request();
+      request.indexName = indexName;
+      request.indexKey = keyHex;
       
-      const queryRequest: QueryRequest = {
-        indexName: indexName,
-        indexKey: keyBase64,
-        queryVectors: queryVectors,
-        topK: topK,
-        nProbes: nProbes,
-        filters: Object.keys(filters).length > 0 ? filters : undefined,
-        include: includeFields
-      };
+      // Always use queryVectors property, regardless of single or batch query
+      if (Array.isArray(queryVector) && Array.isArray(queryVector[0])) {
+        // It's already a batch of vectors
+        request.queryVectors = queryVector as number[][];
+        console.log('Sending batch query request...');
+      } else {
+        // It's a single vector, wrap it in an array
+        request.queryVectors = [queryVector as number[]];
+        console.log('Sending single query request...');
+      }
       
-      const response = await this.api.queryVectorsV1VectorsQueryPost(queryRequest);
+      // Make sure we never send queryVector (singular)
+      if ('queryVector' in request) {
+        delete (request as any).queryVector;
+      }
       
-      // Process the results to match Python SDK format
-      const results = response.body.results || [];
+      request.topK = topK;
+      request.nProbes = nProbes;
+      request.filters = Object.keys(filters).length > 0 ? filters : undefined;
+      request.include = include;
       
-      // Convert results to the expected format
-      return results.map(item => ({
-        id: item.id,
-        distance: item.distance,
-        metadata: item.metadata || {}
-      }));
-    } catch (error) {
-      throw new Error(`Failed to query vectors: ${(error as Error).message}`);
+      console.log('Request data:', {
+        indexName: request.indexName,
+        queryVectors: request.queryVectors ? 'present' : 'not present',
+        queryVector: (request as any).queryVector ? 'present' : 'not present',
+        topK: request.topK
+      });
+      
+      const response = await this.api.queryVectorsV1VectorsQueryPost(request);
+      
+      return response.body.results || [];
+    } catch (error: any) {
+      console.error('Error in query:', error.body || error);
+      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
+      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      throw new Error(`Failed to query vectors: ${error.message || 'Unknown error'}`);
     }
   }
+  
+
   
   /**
    * Train the index for efficient querying
@@ -272,47 +290,67 @@ export class CyborgDB {
     tolerance: number = 1e-6
   ) {
     try {
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      // Convert indexKey to hex string to match other methods
+      const keyHex = Buffer.from(indexKey).toString('hex');
       
       const trainRequest: TrainRequest = {
         indexName: indexName,
-        indexKey: keyBase64,
+        indexKey: keyHex,
         batchSize: batchSize,
         maxIters: maxIters,
         tolerance: tolerance
       };
       
+      console.log('Sending train index request...', { 
+        indexName, 
+        batchSize, 
+        maxIters 
+      });
+      
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
       return response.body;
-    } catch (error) {
-      throw new Error(`Failed to train index: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error('Error in train index:', error.body || error);
+      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
+      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      throw new Error(`Failed to train index: ${error.message || 'Unknown error'}`);
     }
   }
-  
+
   /**
-   * Delete vectors from the index
-   * @param indexName Name of the index
-   * @param indexKey 32-byte encryption key
-   * @param ids IDs of vectors to delete
-   * @returns Promise with the result of the operation
-   */
-  async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
-    try {
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
-      
-      const deleteRequest: DeleteRequest = {
-        indexName: indexName,
-        indexKey: keyBase64,
-        ids: ids
-      };
-      
-      const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
-      return response.body;
-    } catch (error) {
-      throw new Error(`Failed to delete vectors: ${(error as Error).message}`);
-    }
+ * Delete vectors from the index
+ * @param indexName Name of the index
+ * @param indexKey 32-byte encryption key
+ * @param ids IDs of vectors to delete
+ * @returns Promise with the result of the operation
+ */
+async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
+  try {
+    // Convert indexKey to hex string to match other methods
+    const keyHex = Buffer.from(indexKey).toString('hex');
+    
+    const deleteRequest: DeleteRequest = {
+      indexName: indexName,
+      indexKey: keyHex,
+      ids: ids
+    };
+    
+    console.log('Sending delete vectors request...', {
+      indexName,
+      idsCount: ids.length,
+      firstId: ids[0]
+    });
+    
+    const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
+    return response.body;
+  } catch (error: any) {
+    console.error('Error in delete vectors:', error.body || error);
+    if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
+    if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+    throw new Error(`Failed to delete vectors: ${error.message || 'Unknown error'}`);
   }
-  
+}
+
   /**
    * Retrieve vectors by their IDs
    * @param indexName Name of the index
@@ -328,7 +366,8 @@ export class CyborgDB {
     include: string[] = ["vector", "contents", "metadata"]
   ) {
     try {
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      // Convert indexKey to hex string for transmission - matching other methods
+      const keyHex = Buffer.from(indexKey).toString('hex');
       
       const includeFields: string[] = [];
       if (include.includes("vector")) includeFields.push("vector");
@@ -337,10 +376,17 @@ export class CyborgDB {
       
       const getRequest: GetRequest = {
         indexName: indexName,
-        indexKey: keyBase64,
+        indexKey: keyHex, // Changed from base64 to hex
         ids: ids,
         include: includeFields
       };
+      
+      console.log('Sending get vectors request...', { 
+        indexName, 
+        hasKey: !!keyHex, 
+        ids, 
+        include: includeFields 
+      });
       
       const response = await this.api.getVectorsV1VectorsGetPost(getRequest);
       
@@ -353,27 +399,54 @@ export class CyborgDB {
         
         if (item.vector) result.vector = item.vector;
         if (item.contents) {
-            // Check the type of contents and handle accordingly
-            if (typeof item.contents === 'string') {
+          // Check if it's a string that looks like base64
+          if (typeof item.contents === 'string') {
+            try {
+              // Try to decode as base64, but be prepared for it not to be base64
               result.contents = Buffer.from(item.contents, 'base64');
-            } else if (item.contents instanceof Buffer) {
-              // If it's already a Buffer, use it directly
-              result.contents = item.contents;
-            } else {
-              // For RequestFile or other object types, you might need custom handling
-              // or just store it as-is if that makes sense for your application
+            } catch (e) {
+              // If decoding fails, use it as is
               result.contents = item.contents;
             }
+          } else if (item.contents instanceof Buffer) {
+            result.contents = item.contents;
+          } else {
+            result.contents = item.contents;
           }
+        }
         if (item.metadata) result.metadata = item.metadata;
         
         return result;
       });
-    } catch (error) {
-      throw new Error(`Failed to get vectors: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error('Error in get vectors:', error.body || error);
+      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
+      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      throw new Error(`Failed to get vectors: ${error.message || 'Unknown error'}`);
     }
   }
   
+  // /**
+  //  * Delete an index
+  //  * @param indexName Name of the index
+  //  * @param indexKey 32-byte encryption key
+  //  * @returns Promise with the result of the operation
+  //  */
+  // async deleteIndex(indexName: string, indexKey: Uint8Array) {
+  //   try {
+  //     const keyBase64 = Buffer.from(indexKey).toString('base64');
+      
+  //     const request: IndexOperationRequest = {
+  //       indexName: indexName,
+  //       indexKey: keyBase64
+  //     };
+      
+  //     const response = await this.api.deleteIndexV1IndexesDeletePost(request);
+  //     return response.body;
+  //   } catch (error) {
+  //     throw new Error(`Failed to delete index: ${(error as Error).message}`);
+  //   }
+  // }
   /**
    * Delete an index
    * @param indexName Name of the index
@@ -382,17 +455,23 @@ export class CyborgDB {
    */
   async deleteIndex(indexName: string, indexKey: Uint8Array) {
     try {
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      // Convert indexKey to hex string to match other methods
+      const keyHex = Buffer.from(indexKey).toString('hex');
       
       const request: IndexOperationRequest = {
         indexName: indexName,
-        indexKey: keyBase64
+        indexKey: keyHex
       };
+      
+      console.log('Sending delete index request...', { indexName });
       
       const response = await this.api.deleteIndexV1IndexesDeletePost(request);
       return response.body;
-    } catch (error) {
-      throw new Error(`Failed to delete index: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error('Error in delete index:', error.body || error);
+      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
+      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      throw new Error(`Failed to delete index: ${error.message || 'Unknown error'}`);
     }
   }
 }

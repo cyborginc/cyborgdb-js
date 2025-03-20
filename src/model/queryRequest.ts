@@ -24,7 +24,7 @@ export class QueryRequest {
     * ID name
     */
     'indexName': string;
-    'queryVector'?: Array<number> | null;
+    'queryVector'?: number[] | null;
     'queryContents'?: string | null;
     'topK'?: number = 100;
     'nProbes'?: number = 1;
