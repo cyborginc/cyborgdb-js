@@ -22,11 +22,27 @@ export class CyborgDB {
    * @param baseUrl Base URL of the CyborgDB service
    * @param apiKey API key for authentication
    */
+  // constructor(baseUrl: string, apiKey?: string) {
+  //   this.api = new DefaultApi(baseUrl);
+    
+  //   // Set API key if provided
+  //   if (apiKey) {
+  //     this.api.setApiKey(DefaultApiApiKeys.APIKeyHeader, apiKey);
+  //   }
+  // }
   constructor(baseUrl: string, apiKey?: string) {
+    console.log('Initializing CyborgDB client with URL:', baseUrl);
     this.api = new DefaultApi(baseUrl);
+    
+    // Use the public setter method
+    this.api.defaultHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
     
     // Set API key if provided
     if (apiKey) {
+      console.log('Using API key authentication');
       this.api.setApiKey(DefaultApiApiKeys.APIKeyHeader, apiKey);
     }
   }
@@ -35,14 +51,31 @@ export class CyborgDB {
    * List all available indexes
    * @returns Promise with the list of index names
    */
-  async listIndexes() {
-    try {
-      const response = await this.api.listIndexesV1IndexesListGet();
-      return response.body.indexes || [];
-    } catch (error) {
-      throw new Error(`Failed to list indexes: ${(error as Error).message}`);
-    }
-  }
+  // async listIndexes() {
+  //   try {
+  //     const response = await this.api.listIndexesV1IndexesListGet();
+  //     return response.body.indexes || [];
+  //   } catch (error) {
+  //     throw new Error(`Failed to list indexes: ${(error as Error).message}`);
+  //   }
+  // }
+  // async listIndexes() {
+  //   try {
+  //     console.log('Attempting to list indexes...');
+  //     const response = await this.api.listIndexesV1IndexesListGet();
+  //     console.log('Response received:', response);
+  //     return response.body.indexes || [];
+  //   } catch (error: any) {
+  //     console.error('Error in listIndexes:', error);
+  //     if (error.statusCode) {
+  //       console.error(`Status code: ${error.statusCode}`);
+  //     }
+  //     if (error.response) {
+  //       console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+  //     }
+  //     throw new Error(`Failed to list indexes: ${error.message || 'Unknown error'}`);
+  //   }
+  // }
 
   /**
    * Create a new encrypted index
@@ -59,28 +92,37 @@ export class CyborgDB {
     embeddingModel?: string
   ) {
     try {
-      // Convert indexKey to base64 for transmission
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      // Convert indexKey to hex string for transmission
+      const keyHex = Buffer.from(indexKey).toString('hex');
       
+      // Create the request using the proper snake_case property names
       const createRequest: CreateIndexRequest = {
-        indexName: indexName,
-        indexKey: keyBase64,
-        embeddingModel: embeddingModel,
+        indexName: indexName,  // Use snake_case as expected by server
+        indexKey: keyHex,     // Hex string format
         indexConfig: {
+          // Convert from your camelCase properties to snake_case expected by server
           dimension: indexConfig.dimension,
           metric: indexConfig.metric,
-          indexType: indexConfig.index_type,
-          nLists: indexConfig.n_lists,
-          pqDim: indexConfig.pq_dim || 0,
-          pqBits: indexConfig.pq_bits || 0,
-          
-        }
+          indexType: indexConfig.index_type, // This is already snake_case
+          nLists: indexConfig.n_lists,       // This is already snake_case
+          pqDim: indexConfig.pq_dim || 0,    // This is already snake_case
+          pqBits: indexConfig.pq_bits || 0,  // This is already snake_case
+        },
+        embeddingModel: embeddingModel  // Use snake_case as expected by server
       };
       
+      console.log('Sending create index request...');
       const response = await this.api.createIndexV1IndexesCreatePost(createRequest);
       return response.body;
-    } catch (error) {
-      throw new Error(`Failed to create index: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error('Error details:', error.body || error);
+      if (error.statusCode) {
+        console.error(`Status code: ${error.statusCode}`);
+      }
+      if (error.response && error.response.body) {
+        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      }
+      throw new Error(`Failed to create index: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -115,26 +157,48 @@ export class CyborgDB {
    */
   async upsert(indexName: string, indexKey: Uint8Array, items: VectorItem[]) {
     try {
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      // Convert indexKey to hex string for transmission
+      const keyHex = Buffer.from(indexKey).toString('hex');
       
       // Convert items to the format expected by the API
-      const vectors: VectorItem[] = items.map(item => ({
-        id: item.id,
-        vector: item.vector,
-        contents: item.contents ? Buffer.from(item.contents).toString('base64') : undefined,
-        metadata: item.metadata ? item.metadata : undefined
-      }));
+      const vectors: VectorItem[] = items.map(item => {
+        let contentValue: string | undefined = undefined;
+        
+        if (item.contents) {
+          if (typeof item.contents === 'string') {
+            contentValue = item.contents;
+          } else {
+            contentValue = Buffer.from(item.contents).toString('base64');
+          }
+        }
+        
+        return {
+          id: item.id,
+          vector: item.vector,
+          contents: contentValue,
+          metadata: item.metadata || undefined
+        };
+      });
       
+      // Use snake_case property names for the request
       const upsertRequest: UpsertRequest = {
-        indexName: indexName,
-        indexKey: keyBase64,
+        indexName: indexName,  // snake_case
+        indexKey: keyHex,      // Hex format
         items: vectors
       };
       
+      console.log('Sending upsert request...');
       const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
       return response.body;
-    } catch (error) {
-      throw new Error(`Failed to upsert vectors: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error('Error details:', error.body || error);
+      if (error.statusCode) {
+        console.error(`Status code: ${error.statusCode}`);
+      }
+      if (error.response && error.response.body) {
+        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      }
+      throw new Error(`Failed to upsert vectors: ${error.message || 'Unknown error'}`);
     }
   }
 

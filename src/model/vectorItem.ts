@@ -17,7 +17,7 @@ import { RequestFile } from './models';
 */
 export class VectorItem {
     'id': string;
-    'vector'?: Array<number> | null;
+    'vector'?: number[] | null;
     'contents'?: string | null;
     'metadata'?: object | null;
 
