@@ -24,14 +24,12 @@ export class BatchQueryRequest {
     * ID name
     */
     'indexName': string;
-    'queryVectors': Array<Array<number>>;
+    'queryVectors': number[][];
     'topK'?: number = 100;
     'nProbes'?: number = 1;
     'greedy'?: boolean = false;
-    'filters'?: object | null;
-    'include'?: Array<string>;
-
-    static discriminator: string | undefined = undefined;
+    'filters'?: object;
+    'include'?: string[];
 
     static attributeTypeMap: Array<{name: string, baseName: string, type: string}> = [
         {
@@ -46,7 +44,7 @@ export class BatchQueryRequest {
         },
         {
             "name": "queryVectors",
-            "baseName": "query_vectors",
+            "baseName": "query_vectors", // This should match the server's expected field name
             "type": "Array<Array<number>>"
         },
         {
