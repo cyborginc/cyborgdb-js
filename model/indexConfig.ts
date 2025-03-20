@@ -19,7 +19,7 @@ export class IndexConfig {
     'dimension'?: number;
     'nLists': number;
     'metric'?: string;
-    'type'?: string = 'ivfflat';
+    'indexType'?: string = 'ivfflat';
     'pqDim': number;
     'pqBits': number;
 
