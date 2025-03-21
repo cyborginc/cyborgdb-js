@@ -9,9 +9,9 @@ import {
   GetRequest,
   VectorItem,
   BatchQueryRequest,
-  Request
 } from './model/models';
-
+import { ErrorResponseModel } from './model/errorResponseModel';
+import { HTTPValidationError } from './model/hTTPValidationError';
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service
@@ -41,6 +41,25 @@ export class CyborgDB {
     }
   }
 
+  private handleApiError(error: any): never {
+    if (error.response?.body) {
+      try {
+        const errBody = error.response.body;
+        if ('detail' in errBody && 'status_code' in errBody) {
+          const err = errBody as ErrorResponseModel;
+          throw new Error(`${err.statusCode} - ${err.detail}`);
+        }
+        if ('detail' in errBody && Array.isArray(errBody.detail)) {
+          const err = errBody as HTTPValidationError;
+          throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
+        }
+      } catch (e) {
+        throw new Error(`Unhandled error format: ${JSON.stringify(error.response.body)}`);
+      }
+    }
+    throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
+  }
+
   /**
    * List all available indexes
    * @returns Promise with the list of index names
@@ -52,14 +71,7 @@ export class CyborgDB {
       console.log('Response received:', response);
       return response.body.indexes || [];
     } catch (error: any) {
-      console.error('Error in listIndexes:', error);
-      if (error.statusCode) {
-        console.error(`Status code: ${error.statusCode}`);
-      }
-      if (error.response) {
-        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      }
-      throw new Error(`Failed to list indexes: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
 
@@ -103,14 +115,7 @@ export class CyborgDB {
       const response = await this.api.createIndexV1IndexesCreatePost(createRequest);
       return response.body;
     } catch (error: any) {
-      console.error('Error details:', error.body || error);
-      if (error.statusCode) {
-        console.error(`Status code: ${error.statusCode}`);
-      }
-      if (error.response && error.response.body) {
-        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      }
-      throw new Error(`Failed to create index: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
 
@@ -132,7 +137,7 @@ export class CyborgDB {
       const response = await this.api.getIndexInfoV1IndexesDescribePost(request);
       return response.body;
     } catch (error) {
-      throw new Error(`Failed to load index: ${(error as Error).message}`);
+      this.handleApiError(error);
     }
   }
 
@@ -179,14 +184,7 @@ export class CyborgDB {
       const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
       return response.body;
     } catch (error: any) {
-      console.error('Error details:', error.body || error);
-      if (error.statusCode) {
-        console.error(`Status code: ${error.statusCode}`);
-      }
-      if (error.response && error.response.body) {
-        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      }
-      throw new Error(`Failed to upsert vectors: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
 
@@ -247,10 +245,7 @@ export class CyborgDB {
         return response.body.results || [];
       }
     } catch (error: any) {
-      console.error('Error in query:', error.body || error);
-      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
-      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      throw new Error(`Failed to query vectors: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
   
@@ -291,10 +286,7 @@ export class CyborgDB {
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
       return response.body;
     } catch (error: any) {
-      console.error('Error in train index:', error.body || error);
-      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
-      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      throw new Error(`Failed to train index: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
 
@@ -325,10 +317,7 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
     const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
     return response.body;
   } catch (error: any) {
-    console.error('Error in delete vectors:', error.body || error);
-    if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
-    if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-    throw new Error(`Failed to delete vectors: ${error.message || 'Unknown error'}`);
+    this.handleApiError(error);
   }
 }
 
@@ -400,10 +389,7 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
         return result;
       });
     } catch (error: any) {
-      console.error('Error in get vectors:', error.body || error);
-      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
-      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      throw new Error(`Failed to get vectors: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
   
@@ -428,10 +414,7 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       const response = await this.api.deleteIndexV1IndexesDeletePost(request);
       return response.body;
     } catch (error: any) {
-      console.error('Error in delete index:', error.body || error);
-      if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
-      if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      throw new Error(`Failed to delete index: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
 
@@ -441,14 +424,7 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       const response = await this.api.healthCheckV1HealthGet();
       return response.body;
     } catch (error: any) {
-      console.error('Error in getHealth:', error);
-      if (error.statusCode) {
-        console.error(`Status code: ${error.statusCode}`);
-      }
-      if (error.response) {
-        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
-      }
-      throw new Error(`Failed to get server health: ${error.message || 'Unknown error'}`);
+      this.handleApiError(error);
     }
   }
 }

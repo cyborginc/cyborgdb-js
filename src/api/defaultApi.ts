@@ -19,10 +19,8 @@ import { CreateIndexRequest } from '../model/createIndexRequest';
 import { CyborgdbServiceApiSchemasIndexSuccessResponseModel } from '../model/cyborgdbServiceApiSchemasIndexSuccessResponseModel';
 import { CyborgdbServiceApiSchemasVectorsSuccessResponseModel } from '../model/cyborgdbServiceApiSchemasVectorsSuccessResponseModel';
 import { DeleteRequest } from '../model/deleteRequest';
-import { ErrorResponseModel } from '../model/errorResponseModel';
 import { GetRequest } from '../model/getRequest';
 import { GetResponseModel } from '../model/getResponseModel';
-import { HTTPValidationError } from '../model/hTTPValidationError';
 import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexListResponseModel } from '../model/indexListResponseModel';
 import { IndexOperationRequest } from '../model/indexOperationRequest';
@@ -31,10 +29,10 @@ import { Request } from '../model/request';
 import { TrainRequest } from '../model/trainRequest';
 import { UpsertRequest } from '../model/upsertRequest';
 
-import { ObjectSerializer, Authentication, VoidAuth, Interceptor, BatchQueryRequest } from '../model/models';
-import { HttpBasicAuth, HttpBearerAuth, ApiKeyAuth, OAuth } from '../model/models';
+import { ObjectSerializer, Authentication, VoidAuth, Interceptor } from '../model/models';
+import { ApiKeyAuth } from '../model/models';
 
-import { HttpError, RequestFile } from './apis';
+import { HttpError } from './apis';
 
 let defaultBasePath = 'http://localhost';
 
