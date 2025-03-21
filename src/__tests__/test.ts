@@ -1,4 +1,4 @@
-import { CyborgDB } from './index';
+import { CyborgDB } from '../index';
 import { randomBytes } from 'crypto';
 
 // Your local server
