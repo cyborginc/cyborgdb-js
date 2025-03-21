@@ -45,7 +45,7 @@ export class CyborgDB {
     if (error.response?.body) {
       try {
         const errBody = error.response.body;
-        if ('detail' in errBody && 'status_code' in errBody) {
+        if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
           const err = errBody as ErrorResponseModel;
           throw new Error(`${err.statusCode} - ${err.detail}`);
         }
