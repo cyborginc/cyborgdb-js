@@ -29,6 +29,7 @@
   "homepage": "https://github.com/cyborginc/cyborgdb-js#readme",
   "dependencies": {
     "@types/request": "^2.48.12",
+    "h5wasm": "^0.7.9",
     "request": "^2.88.2"
   }
 }

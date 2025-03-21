@@ -42,6 +42,13 @@ export class CyborgDB {
   }
 
   private handleApiError(error: any): never {
+    if (error.response) {
+      console.error("HTTP Status Code:", error.response.status);
+      console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
+      console.error("Response Body:", JSON.stringify(error.response.body, null, 2));
+    } else {
+      console.error("No response from server");
+    }
     if (error.response?.body) {
       try {
         const errBody = error.response.body;
@@ -225,7 +232,7 @@ export class CyborgDB {
           include: includeFields
         };
   
-        console.log('Sending batch query request:', JSON.stringify(batchRequest, null, 2));
+        // console.log('Sending batch query request:', JSON.stringify(batchRequest, null, 2));
         const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
         return response.body.results || [];
       } else {
@@ -240,11 +247,17 @@ export class CyborgDB {
           include: includeFields
         };
   
-        console.log('Sending single query request:', JSON.stringify(singleRequest, null, 2));
+        // console.log('Sending single query request:', JSON.stringify(singleRequest, null, 2));
         const response = await this.api.queryVectorsV1VectorsQueryPost(singleRequest);
         return response.body.results || [];
       }
     } catch (error: any) {
+      console.error('Query failed with error:', error);
+      console.error('Request details:', {
+        indexName, 
+        // Include other relevant request info but not the full vectors
+        hasFilters: Object.keys(filters || {}).length > 0
+      });
       this.handleApiError(error);
     }
   }
@@ -401,22 +414,33 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
    */
   async deleteIndex(indexName: string, indexKey: Uint8Array) {
     try {
-      // Convert indexKey to hex string to match other methods
       const keyHex = Buffer.from(indexKey).toString('hex');
-      
       const request: IndexOperationRequest = {
         indexName: indexName,
         indexKey: keyHex
       };
+  
+      console.log('Checking if index exists before deletion...', { indexName });
       
+      // Call the getIndexInfo API first
+      try {
+        await this.api.getIndexInfoV1IndexesDescribePost(request);
+        console.log(`Confirmed index ${indexName} exists.`);
+      } catch (infoError) {
+        console.warn(`Index ${indexName} does not exist, skipping deletion.`);
+        return;
+      }
+  
       console.log('Sending delete index request...', { indexName });
-      
       const response = await this.api.deleteIndexV1IndexesDeletePost(request);
+      console.log(`Delete response:`, response.body);
+  
       return response.body;
     } catch (error: any) {
       this.handleApiError(error);
     }
   }
+  
 
   async getHealth() {
     try {
