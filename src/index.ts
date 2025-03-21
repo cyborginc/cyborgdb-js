@@ -24,14 +24,6 @@ export class CyborgDB {
    * @param baseUrl Base URL of the CyborgDB service
    * @param apiKey API key for authentication
    */
-  // constructor(baseUrl: string, apiKey?: string) {
-  //   this.api = new DefaultApi(baseUrl);
-    
-  //   // Set API key if provided
-  //   if (apiKey) {
-  //     this.api.setApiKey(DefaultApiApiKeys.APIKeyHeader, apiKey);
-  //   }
-  // }
   constructor(baseUrl: string, apiKey?: string) {
     console.log('Initializing CyborgDB client with URL:', baseUrl);
     this.api = new DefaultApi(baseUrl);
@@ -53,14 +45,6 @@ export class CyborgDB {
    * List all available indexes
    * @returns Promise with the list of index names
    */
-  // async listIndexes() {
-  //   try {
-  //     const response = await this.api.listIndexesV1IndexesListGet();
-  //     return response.body.indexes || [];
-  //   } catch (error) {
-  //     throw new Error(`Failed to list indexes: ${(error as Error).message}`);
-  //   }
-  // }
   async listIndexes() {
     try {
       console.log('Attempting to list indexes...');
@@ -78,6 +62,8 @@ export class CyborgDB {
       throw new Error(`Failed to list indexes: ${error.message || 'Unknown error'}`);
     }
   }
+
+  
 
   /**
    * Create a new encrypted index
@@ -216,8 +202,8 @@ export class CyborgDB {
    * @returns Promise with search results
    */
   async query(
-    indexName: string, 
-    indexKey: Uint8Array, 
+    indexName: string,
+    indexKey: Uint8Array,
     queryVector: number[] | number[][],
     topK: number = 100,
     nProbes: number = 1,
@@ -226,43 +212,40 @@ export class CyborgDB {
   ) {
     try {
       const keyHex = Buffer.from(indexKey).toString('hex');
-      
-      // Create a Request instance
-      const request = new Request();
-      request.indexName = indexName;
-      request.indexKey = keyHex;
-      
-      // Always use queryVectors property, regardless of single or batch query
-      if (Array.isArray(queryVector) && Array.isArray(queryVector[0])) {
-        // It's already a batch of vectors
-        request.queryVectors = queryVector as number[][];
-        console.log('Sending batch query request...');
+      const includeFields = include.length > 0 ? include : ["distance", "metadata"];
+      const hasFilters = Object.keys(filters).length > 0;
+  
+      if (Array.isArray(queryVector[0])) {
+        // Batch query
+        const batchRequest: BatchQueryRequest = {
+          indexName,
+          indexKey: keyHex,
+          queryVectors: queryVector as number[][],
+          topK,
+          nProbes,
+          filters: hasFilters ? filters : undefined,
+          include: includeFields
+        };
+  
+        console.log('Sending batch query request:', JSON.stringify(batchRequest, null, 2));
+        const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
+        return response.body.results || [];
       } else {
-        // It's a single vector, wrap it in an array
-        request.queryVectors = [queryVector as number[]];
-        console.log('Sending single query request...');
+        // Single query
+        const singleRequest: QueryRequest = {
+          indexName,
+          indexKey: keyHex,
+          queryVector: queryVector as number[],
+          topK,
+          nProbes,
+          filters: hasFilters ? filters : undefined,
+          include: includeFields
+        };
+  
+        console.log('Sending single query request:', JSON.stringify(singleRequest, null, 2));
+        const response = await this.api.queryVectorsV1VectorsQueryPost(singleRequest);
+        return response.body.results || [];
       }
-      
-      // Make sure we never send queryVector (singular)
-      if ('queryVector' in request) {
-        delete (request as any).queryVector;
-      }
-      
-      request.topK = topK;
-      request.nProbes = nProbes;
-      request.filters = Object.keys(filters).length > 0 ? filters : undefined;
-      request.include = include;
-      
-      console.log('Request data:', {
-        indexName: request.indexName,
-        queryVectors: request.queryVectors ? 'present' : 'not present',
-        queryVector: (request as any).queryVector ? 'present' : 'not present',
-        topK: request.topK
-      });
-      
-      const response = await this.api.queryVectorsV1VectorsQueryPost(request);
-      
-      return response.body.results || [];
     } catch (error: any) {
       console.error('Error in query:', error.body || error);
       if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
@@ -270,8 +253,6 @@ export class CyborgDB {
       throw new Error(`Failed to query vectors: ${error.message || 'Unknown error'}`);
     }
   }
-  
-
   
   /**
    * Train the index for efficient querying
@@ -426,27 +407,6 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
     }
   }
   
-  // /**
-  //  * Delete an index
-  //  * @param indexName Name of the index
-  //  * @param indexKey 32-byte encryption key
-  //  * @returns Promise with the result of the operation
-  //  */
-  // async deleteIndex(indexName: string, indexKey: Uint8Array) {
-  //   try {
-  //     const keyBase64 = Buffer.from(indexKey).toString('base64');
-      
-  //     const request: IndexOperationRequest = {
-  //       indexName: indexName,
-  //       indexKey: keyBase64
-  //     };
-      
-  //     const response = await this.api.deleteIndexV1IndexesDeletePost(request);
-  //     return response.body;
-  //   } catch (error) {
-  //     throw new Error(`Failed to delete index: ${(error as Error).message}`);
-  //   }
-  // }
   /**
    * Delete an index
    * @param indexName Name of the index
@@ -472,6 +432,23 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       if (error.statusCode) console.error(`Status code: ${error.statusCode}`);
       if (error.response?.body) console.error(`Response data: ${JSON.stringify(error.response.body)}`);
       throw new Error(`Failed to delete index: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  async getHealth() {
+    try {
+      console.log('Checking server health...');
+      const response = await this.api.healthCheckV1HealthGet();
+      return response.body;
+    } catch (error: any) {
+      console.error('Error in getHealth:', error);
+      if (error.statusCode) {
+        console.error(`Status code: ${error.statusCode}`);
+      }
+      if (error.response) {
+        console.error(`Response data: ${JSON.stringify(error.response.body)}`);
+      }
+      throw new Error(`Failed to get server health: ${error.message || 'Unknown error'}`);
     }
   }
 }
