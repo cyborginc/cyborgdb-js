@@ -1,4 +1,4 @@
-import { DefaultApi, DefaultApiApiKeys } from './api/defaultApi';
+import { DefaultApi, DefaultApiApiKeys } from '../src/api/defaultApi';
 import { 
   UpsertRequest, 
   CreateIndexRequest, 
@@ -9,9 +9,9 @@ import {
   GetRequest,
   VectorItem,
   BatchQueryRequest,
-} from './model/models';
-import { ErrorResponseModel } from './model/errorResponseModel';
-import { HTTPValidationError } from './model/hTTPValidationError';
+} from '../src/model/models';
+import { ErrorResponseModel } from '../src/model/errorResponseModel';
+import { HTTPValidationError } from '../src/model/hTTPValidationError';
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service
