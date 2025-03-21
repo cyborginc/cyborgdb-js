@@ -3,7 +3,9 @@ import { randomBytes } from 'crypto';
 
 // Your local server
 const API_URL = 'http://localhost:8000';
-const ADMIN_API_KEY = "fPI7FiEb49-OeDOdUULC88rhflovpEdyPlv_nnBQlxE";
+
+//copy and paste API key that's generated from Cyborgdb-service
+const ADMIN_API_KEY = "u6O7zh2Qbosad_7_XReisyElimVm29w6rmPJ1rvx1kA";
 
 // Generate a 32-byte key for index encryption
 function generateRandomKey(): Uint8Array {
@@ -17,6 +19,11 @@ async function testCyborgDB() {
   const client = new CyborgDB(API_URL, ADMIN_API_KEY);
   
   try {
+    // Check server health
+    console.log('Checking CyborgDB server health...');
+    const health = await client.getHealth();
+    console.log('Server health response:', health);
+
     // List existing indexes
     console.log('Listing indexes...');
     const indexes = await client.listIndexes();
@@ -28,39 +35,33 @@ async function testCyborgDB() {
     
     // Create a new index
     console.log(`Creating index '${indexName}'...`);
+
     const indexConfig = {
       dimension: 128,
       metric: 'euclidean',
-      index_type: 'ivfflat',
-      n_lists: 100
+      index_type: 'ivfpq',
+      n_lists: 100,
+      pq_dim: 16,
+      pq_bits: 8
     };
     
     await client.createIndex(indexName, indexKey, indexConfig);
     console.log('Index created successfully!');
     // Insert some vectors
     console.log('Upserting vectors...');
-    const items = [
-        {
-          id: '1',
-          vector: Array(128).fill(0).map(() => Math.random()),
-          contents: 'item 1 content', // String instead of Buffer
-          metadata: { category: 'test', tag: 'example' }
-        },
-        {
-          id: '2',
-          vector: Array(128).fill(0).map(() => Math.random()),
-          contents: 'item 2 content', // String instead of Buffer
-          metadata: { category: 'test', tag: 'demo' }
-        }
-      ];
-      
-      
-    
+
+    const items = Array.from({ length: 5000 }, (_, i) => ({
+      id: (i + 1).toString(),
+      vector: Array(128).fill(0).map(() => Math.random()),
+      contents: `item ${i + 1} content`,
+      metadata: { category: 'test', tag: i % 2 === 0 ? 'even' : 'odd' }
+    }));
+     
     await client.upsert(indexName, indexKey, items);
     console.log('Vectors upserted successfully!');
 
     // Using smaller batch size and fewer iterations for quick testing
-    const trainResult = await client.train(indexName, indexKey, 10, 5, 1e-5);
+    const trainResult = await client.train(indexName, indexKey, 1024, 50, 1e-6);
     console.log('Training completed successfully!');
     console.log('Training result:', trainResult);
     
