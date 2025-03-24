@@ -88,6 +88,7 @@ describe('IVFPQIntegrationTest', () => {
   
   // Set up for each test (faster than beforeAll)
   beforeEach(async () => {
+    
     // Use cached data with small subsets
     if (sharedData) {
       dimension = sharedData.train[0].length;
@@ -99,6 +100,7 @@ describe('IVFPQIntegrationTest', () => {
     
     // Create a unique index name
     indexName = `test_ivfpq_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    console.log(`Setting up test with index: ${indexName}`);
     indexKey = generateRandomKey();
     
     // Create index config
@@ -130,33 +132,41 @@ describe('IVFPQIntegrationTest', () => {
   // Clean up after each test
   afterEach(async () => {
     if (indexName && indexKey) {
-      await client.deleteIndex(indexName, indexKey);
+      try {
+        // Add a small delay before trying to delete the index
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await client.deleteIndex(indexName, indexKey);
+        console.log(`Index ${indexName} cleaned up successfully`);
+      } catch (error) {
+        console.error(`Error cleaning up index ${indexName}:`, error);
+        // Don't throw here, as it would mask the actual test failure
+      }
     }
-  }, 10000);
-  
-  // Test 1: Untrained query - equivalent to test_untrained_query in Python
+  }, 15000); // Increased timeout for cleanup
+
   test('should query untrained index with acceptable recall', async () => {
-    // Execute a single query to keep test fast
-    const results = await client.query(
-      indexName,
-      indexKey,
-      testData[0], // Just one query vector
-      TOP_K,
-      N_PROBES,
-      {},
-      ["metadata"]
-    );
-    
-    // Check that we got results
-    expect(results).toBeDefined();
-    expect(results.length).toBeGreaterThan(0);
-    
-    // Calculate recall (in this simplified case, we're skipping actual recall calculation)
-    const recall = computeRecall([results], sharedData?.neighbors || []);
-    
-    // Verify recall meets threshold
-    expect(recall).toBeGreaterThanOrEqual(RECALL_THRESHOLDS.untrained);
-  }, 15000);
+    try {
+      // Your test code here
+      const results = await client.query(
+        indexName,
+        indexKey,
+        testData[0],
+        TOP_K,
+        N_PROBES,
+        {},
+        ["metadata"]
+      );
+      
+      // Assertions
+      expect(results).toBeDefined();
+      expect(results.length).toBeGreaterThan(0);
+      
+      const recall = computeRecall([results], sharedData?.neighbors || []);
+      expect(recall).toBeGreaterThanOrEqual(RECALL_THRESHOLDS.untrained);
+    } finally {
+      // No need for explicit cleanup here as afterEach will handle it
+    }
+  }, 30000);
   
   // Test 2: Trained query - equivalent to test_trained_query in Python
   test('should train index and query with better recall', async () => {

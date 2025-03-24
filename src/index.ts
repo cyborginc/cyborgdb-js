@@ -426,9 +426,14 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       try {
         await this.api.getIndexInfoV1IndexesDescribePost(request);
         console.log(`Confirmed index ${indexName} exists.`);
-      } catch (infoError) {
-        console.warn(`Index ${indexName} does not exist, skipping deletion.`);
-        return;
+      } catch (infoError: any) {
+        // Check if the error is specifically about the index not existing
+        if (infoError.response?.body?.detail?.includes('not exist')) {
+          console.log(`Index ${indexName} does not exist, skipping deletion.`);
+          return { status: 'success', message: `Index '${indexName}' was already deleted` };
+        }
+        // If it's another type of error, rethrow it
+        throw infoError;
       }
   
       console.log('Sending delete index request...', { indexName });
