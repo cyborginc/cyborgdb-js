@@ -17,11 +17,11 @@ import { IndexIVFPQModel } from './indexIVFPQModel';
 
 export class IndexConfig {
     'dimension'?: number;
-    'nLists': number;
+    'nLists'?: number;
     'metric'?: string;
     'indexType'?: string = 'ivfflat';
-    'pqDim': number;
-    'pqBits': number;
+    'pqDim'?: number;
+    'pqBits'?: number;
 
     static discriminator: string | undefined = undefined;
 

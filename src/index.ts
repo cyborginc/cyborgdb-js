@@ -9,6 +9,7 @@ import {
   GetRequest,
   VectorItem,
   BatchQueryRequest,
+  GetResponseModel,
 } from '../src/model/models';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
@@ -135,10 +136,10 @@ export class CyborgDB {
   async loadIndex(indexName: string, indexKey: Uint8Array) {
     try {
       // First describe the index to get its configuration
-      const keyBase64 = Buffer.from(indexKey).toString('base64');
+      const keyHex = Buffer.from(indexKey).toString('hex');
       const request: IndexOperationRequest = {
         indexName: indexName,
-        indexKey: keyBase64
+        indexKey: keyHex
       };
       
       const response = await this.api.getIndexInfoV1IndexesDescribePost(request);
@@ -374,7 +375,8 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       const response = await this.api.getVectorsV1VectorsGetPost(getRequest);
       
       // Process the results to match Python SDK format
-      const items = response.body.results || [];
+      const responseBody: GetResponseModel = response.body;
+      const items = responseBody.results || [];
       
       // Convert results to the expected format
       return items.map(item => {
@@ -405,7 +407,6 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       this.handleApiError(error);
     }
   }
-  
   /**
    * Delete an index
    * @param indexName Name of the index
