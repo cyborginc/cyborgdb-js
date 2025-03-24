@@ -6,6 +6,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 
+/**
+ * To run the integration tests:
+ * 1. Start the CyborgDB service locally or on a server
+ * 2. Copy the API key from the service terminal and set it in a .env file
+ * 3. Run `npm test` to execute the tests
+ */
+
 // Load environment variables from .env file
 dotenv.config();
 
