@@ -4,13 +4,17 @@ import { CyborgDB } from '../index';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 // Constants - VERY minimal for faster testing
 const API_URL = 'http://localhost:8000';
 
 //copy and paste API key that's generated from Cyborgdb-service
-const ADMIN_API_KEY = "N_uSHiTJrzq3hydWvvsoQrcq6Lv7m2WpS8-p5KewBIg";
-
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
+console.log("API_KEY: ", ADMIN_API_KEY);
 const JSON_DATASET_PATH = path.join(__dirname, 'wiki_data_sample.json');
 const N_LISTS = 100; // Much smaller for testing
 const PQ_DIM = 32;
@@ -73,16 +77,28 @@ test('should create index, upsert vectors, and query', async () => {
     
     console.log(`Query returned ${results.length} results`);
     
-    // Delete the index to clean up
-    await client.deleteIndex(indexName, indexKey);
-    console.log(`Index ${indexName} deleted`);
-    
-    // Basic assertions
+    // Basic assertions BEFORE deleting the index
     expect(results).toBeDefined();
     expect(Array.isArray(results)).toBe(true);
     expect(results.length).toBeGreaterThan(0);
     
+    // Delete the index to clean up - AFTER assertions
+    await client.deleteIndex(indexName, indexKey);
+    console.log(`Index ${indexName} deleted`);
+    
   } catch (error) {
+    // Clean up even if test fails
+    try {
+      await client.deleteIndex(indexName, indexKey);
+      console.log(`Index ${indexName} deleted during error cleanup`);
+    } catch (cleanupError) {
+      if (cleanupError instanceof Error) {
+        console.warn(`Failed to delete index during cleanup: ${cleanupError.message}`);
+      } else {
+        console.warn('Failed to delete index during cleanup: Unknown error');
+      }
+    }
+    
     console.error('Test failed:', error);
     throw error;
   }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1742589873840" clover="3.2.0">
-  <project timestamp="1742589873840" name="All files">
+<coverage generated="1742830746585" clover="3.2.0">
+  <project timestamp="1742830746585" name="All files">
     <metrics statements="188" coveredstatements="53" conditionals="68" coveredconditionals="9" methods="24" coveredmethods="9" elements="280" coveredelements="71" complexity="0" loc="188" ncloc="188" packages="1" files="2" classes="2"/>
     <file name="index.ts" path="/Users/jamesarmbruster/Documents/repos/cyborgdb-js/src/index.ts">
       <metrics statements="131" coveredstatements="53" conditionals="62" coveredconditionals="9" methods="17" coveredmethods="9"/>
