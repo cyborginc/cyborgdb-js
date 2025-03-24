@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1742830746585" clover="3.2.0">
-  <project timestamp="1742830746585" name="All files">
-    <metrics statements="188" coveredstatements="53" conditionals="68" coveredconditionals="9" methods="24" coveredmethods="9" elements="280" coveredelements="71" complexity="0" loc="188" ncloc="188" packages="1" files="2" classes="2"/>
+<coverage generated="1742837216139" clover="3.2.0">
+  <project timestamp="1742837216139" name="All files">
+    <metrics statements="190" coveredstatements="54" conditionals="81" coveredconditionals="19" methods="24" coveredmethods="9" elements="295" coveredelements="82" complexity="0" loc="190" ncloc="190" packages="1" files="2" classes="2"/>
     <file name="index.ts" path="/Users/jamesarmbruster/Documents/repos/cyborgdb-js/src/index.ts">
-      <metrics statements="131" coveredstatements="53" conditionals="62" coveredconditionals="9" methods="17" coveredmethods="9"/>
+      <metrics statements="133" coveredstatements="54" conditionals="75" coveredconditionals="19" methods="17" coveredmethods="9"/>
       <line num="1" count="2" type="stmt"/>
       <line num="19" count="2" type="stmt"/>
       <line num="28" count="3" type="stmt"/>
@@ -116,25 +116,27 @@
       <line num="400" count="0" type="cond" truecount="0" falsecount="1"/>
       <line num="402" count="0" type="stmt"/>
       <line num="405" count="0" type="stmt"/>
-      <line num="416" count="5" type="stmt"/>
-      <line num="417" count="5" type="stmt"/>
-      <line num="418" count="5" type="stmt"/>
-      <line num="423" count="5" type="stmt"/>
-      <line num="426" count="5" type="stmt"/>
-      <line num="427" count="5" type="stmt"/>
-      <line num="428" count="4" type="stmt"/>
-      <line num="430" count="1" type="stmt"/>
-      <line num="431" count="1" type="stmt"/>
-      <line num="434" count="4" type="stmt"/>
-      <line num="435" count="4" type="stmt"/>
-      <line num="436" count="4" type="stmt"/>
-      <line num="438" count="4" type="stmt"/>
-      <line num="440" count="0" type="stmt"/>
-      <line num="446" count="0" type="stmt"/>
-      <line num="447" count="0" type="stmt"/>
-      <line num="448" count="0" type="stmt"/>
-      <line num="449" count="0" type="stmt"/>
-      <line num="451" count="0" type="stmt"/>
+      <line num="444" count="5" type="stmt"/>
+      <line num="445" count="5" type="stmt"/>
+      <line num="446" count="5" type="stmt"/>
+      <line num="451" count="5" type="stmt"/>
+      <line num="454" count="5" type="stmt"/>
+      <line num="455" count="5" type="stmt"/>
+      <line num="456" count="4" type="stmt"/>
+      <line num="459" count="1" type="cond" truecount="10" falsecount="3"/>
+      <line num="460" count="1" type="stmt"/>
+      <line num="461" count="1" type="stmt"/>
+      <line num="464" count="0" type="stmt"/>
+      <line num="467" count="4" type="stmt"/>
+      <line num="468" count="4" type="stmt"/>
+      <line num="469" count="4" type="stmt"/>
+      <line num="471" count="4" type="stmt"/>
+      <line num="473" count="0" type="stmt"/>
+      <line num="479" count="0" type="stmt"/>
+      <line num="480" count="0" type="stmt"/>
+      <line num="481" count="0" type="stmt"/>
+      <line num="482" count="0" type="stmt"/>
+      <line num="484" count="0" type="stmt"/>
     </file>
     <file name="test.ts" path="/Users/jamesarmbruster/Documents/repos/cyborgdb-js/src/test.ts">
       <metrics statements="57" coveredstatements="0" conditionals="6" coveredconditionals="0" methods="7" coveredmethods="0"/>
