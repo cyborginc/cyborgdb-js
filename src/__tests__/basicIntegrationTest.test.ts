@@ -2,11 +2,15 @@ import { CyborgDB } from '../index';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 // Constants
 const API_URL = 'http://localhost:8000';
-const ADMIN_API_KEY = "N_uSHiTJrzq3hydWvvsoQrcq6Lv7m2WpS8-p5KewBIg"; // Replace with your API key
-
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || ""; // Replace with your API key
+console.log("API_KEY in integration: ", ADMIN_API_KEY);
 // Dataset path
 const JSON_DATASET_PATH = path.join(__dirname, 'wiki_data_sample.json');
 
