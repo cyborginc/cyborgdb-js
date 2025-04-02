@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
+import { QueryResultItem } from '../model/queryResultItem';
 
 /**
  * To run the integration tests:
@@ -17,7 +18,6 @@ dotenv.config();
 // Constants
 const API_URL = 'http://localhost:8000';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || ""; // Replace with your API key
-console.log("API_KEY in integration: ", ADMIN_API_KEY);
 // Dataset path
 const JSON_DATASET_PATH = path.join(__dirname, 'wiki_data_sample.json');
 
@@ -99,8 +99,8 @@ describe('IVFPQIntegrationTest', () => {
     // Use cached data with small subsets
     if (sharedData) {
       dimension = sharedData.train[0].length;
-      trainData = sharedData.train.slice(0, 50); // Very small subset
-      testData = sharedData.test.slice(0, 3);    // Just 3 test vectors
+      trainData = sharedData.train.slice(0, 500); // Very small subset
+      testData = sharedData.test.slice(0, 30);    // Just 3 test vectors
     } else {
       throw new Error("Shared data not available");
     }
@@ -153,22 +153,24 @@ describe('IVFPQIntegrationTest', () => {
 
   test('should query untrained index with acceptable recall', async () => {
     try {
-      // Your test code here
-      const results = await client.query(
+      // Use the updated query method with single vector
+      const response = await client.query(
         indexName,
         indexKey,
-        testData[0],
+        testData[0], // Single query vector
         TOP_K,
         N_PROBES,
-        {},
+        false, // greedy parameter
+        {}, // filters
         ["metadata"]
       );
       
-      // Assertions
-      expect(results).toBeDefined();
-      expect(results.length).toBeGreaterThan(0);
+      // Assertions - check that response has results property
+      expect(response).toBeDefined();
+      expect(response.results).toBeDefined();
+      expect(response.results.length).toBeGreaterThan(0);
       
-      const recall = computeRecall([results], sharedData?.neighbors || []);
+      const recall = computeRecall(response.results, sharedData?.neighbors || []);
       expect(recall).toBeGreaterThanOrEqual(RECALL_THRESHOLDS.untrained);
     } finally {
       // No need for explicit cleanup here as afterEach will handle it
@@ -195,26 +197,58 @@ describe('IVFPQIntegrationTest', () => {
     
     await client.upsert(indexName, indexKey, additionalVectors);
     
-    // Execute a query
-    const results = await client.query(
+    // Execute a query using the updated query method
+    const response = await client.query(
       indexName,
       indexKey,
       testData[0], // Just one query vector
       TOP_K,
       N_PROBES,
-      {},
+      false, // greedy parameter
+      {}, // filters
       ["metadata"]
     );
     
     // Check that we got results
-    expect(results).toBeDefined();
-    expect(results.length).toBeGreaterThan(0);
+    expect(response).toBeDefined();
+    expect(response.results).toBeDefined();
+    expect(response.results.length).toBeGreaterThan(0);
     
     // Calculate recall (in this simplified case, we're skipping actual recall calculation)
-    const recall = computeRecall([results], sharedData?.neighbors || []);
+    const recall = computeRecall(response.results, sharedData?.neighbors || []);
     
     // Verify recall meets trained threshold
     expect(recall).toBeGreaterThanOrEqual(RECALL_THRESHOLDS.trained);
+  }, 30000);
+  
+  // Test 3: Batch query (new test)
+  test('should perform batch query with multiple vectors', async () => {
+    // Use the first 2 test vectors for a batch query
+    
+    // Execute a batch query using the updated query method
+    const response = await client.query(
+      indexName,
+      indexKey,
+      testData, // Multiple query vectors
+      TOP_K,
+      N_PROBES,
+      false, // greedy parameter
+      {}, // filters
+      ["metadata"]
+    );
+    
+    // Check that we got results
+    expect(response).toBeDefined();
+    expect(response.results).toBeDefined();
+    
+    // For batch queries, response.results should be an array of arrays (or have some structure)
+    // The exact structure depends on how your API returns batch results
+    expect(response.results.length).toBeGreaterThan(0);
+    expect(response.results.length).toBe(testData.length);
+    // check that each result has a length of top k
+    for (const resultSet of response.results as QueryResultItem[][]) {
+      expect(resultSet.length).toBe(TOP_K);
+    }
   }, 30000);
 });
 
@@ -294,19 +328,20 @@ describe('MetadataIntegrationTest', () => {
       // Test simple filter
       const filter = { "owner.name": "John" };
       
-      const results = await client.query(
+      // Use the updated query method with filter
+      const response = await client.query(
         indexName,
         indexKey,
         testData[0],
         TOP_K,
         N_PROBES,
-        filter,
+        false, // greedy parameter
+        filter, // filters
         ["metadata"]
       );
-      
+      const results:QueryResultItem[] = response.results as QueryResultItem[];
       // Verify we got results
       expect(results.length).toBeGreaterThan(0);
-      
       // Sanity-check one result's metadata (should have "John" as owner.name)
       if (results.length > 0 && results[0].metadata) {
         const metadata = typeof results[0].metadata === 'string'
@@ -354,18 +389,20 @@ describe('MetadataIntegrationTest', () => {
         ]
       };
       
-      const results = await client.query(
+      // Use the updated query method with complex filter
+      const response = await client.query(
         indexName,
         indexKey,
         testData[0],
         TOP_K,
         N_PROBES,
-        complexFilter,
+        false, // greedy parameter
+        complexFilter, // filters
         ["metadata"]
       );
       
       // Verify we got results
-      expect(results.length).toBeGreaterThan(0);
+      expect(response.results.length).toBeGreaterThan(0);
       
       // Test nested filter
       const nestedFilter = {
@@ -380,18 +417,20 @@ describe('MetadataIntegrationTest', () => {
         ]
       };
       
-      const nestedResults = await client.query(
+      // Use the updated query method with nested filter
+      const nestedResponse = await client.query(
         indexName,
         indexKey,
         testData[0],
         TOP_K,
         N_PROBES,
-        nestedFilter,
+        false, // greedy parameter
+        nestedFilter, // filters
         ["metadata"]
       );
       
       // Verify we got results
-      expect(nestedResults.length).toBeGreaterThan(0);
+      expect(nestedResponse.results.length).toBeGreaterThan(0);
       
     } finally {
       // Clean up

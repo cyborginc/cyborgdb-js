@@ -19,7 +19,7 @@ export class QueryResultItem {
     'id': string;
     'distance'?: number | null;
     'metadata'?: object | null;
-    'vector'?: Array<number> | null;
+    'vector'?: number[] | null;
 
     static discriminator: string | undefined = undefined;
 
