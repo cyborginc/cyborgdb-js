@@ -591,13 +591,17 @@ export class DefaultApi {
     /**
      * Search for nearest neighbors in the index.
      * @summary Query Encrypted Index
-     * @param request 
+     * @param request Single query or batch query request
      */
-    public async queryVectorsV1VectorsQueryPost (request: Request, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: QueryResponse;  }> {
+    public async queryVectorsV1VectorsQueryPost(
+        request: Request, 
+        options: {headers: {[name: string]: string}} = {headers: {}}
+    ): Promise<{ response: http.IncomingMessage; body: QueryResponse; }> {
         const localVarPath = this.basePath + '/v1/vectors/query';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
         const produces = ['application/json'];
+        
         // give precedence to 'application/json'
         if (produces.indexOf('application/json') >= 0) {
             localVarHeaderParams.Accept = 'application/json';
@@ -610,6 +614,9 @@ export class DefaultApi {
         if (request === null || request === undefined) {
             throw new Error('Required parameter request was null or undefined when calling queryVectorsV1VectorsQueryPost.');
         }
+
+        // Determine if this is a batch query (has query_vectors) or single query (has query_vector)
+        const isBatchQuery = 'queryVectors' in request && Array.isArray(request.queryVectors);
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
@@ -626,9 +633,11 @@ export class DefaultApi {
 
         let authenticationPromise = Promise.resolve();
         if (this.authentications.APIKeyHeader.apiKey) {
-            authenticationPromise = authenticationPromise.then(() => this.authentications.APIKeyHeader.applyToRequest(localVarRequestOptions));
+            authenticationPromise = authenticationPromise.then(() => 
+                this.authentications.APIKeyHeader.applyToRequest(localVarRequestOptions));
         }
-        authenticationPromise = authenticationPromise.then(() => this.authentications.default.applyToRequest(localVarRequestOptions));
+        authenticationPromise = authenticationPromise.then(() => 
+            this.authentications.default.applyToRequest(localVarRequestOptions));
 
         let interceptorPromise = authenticationPromise;
         for (const interceptor of this.interceptors) {
@@ -643,15 +652,64 @@ export class DefaultApi {
                     localVarRequestOptions.form = localVarFormParams;
                 }
             }
-            return new Promise<{ response: http.IncomingMessage; body: QueryResponse;  }>((resolve, reject) => {
+            
+            return new Promise<{ response: http.IncomingMessage; body: QueryResponse; }>((resolve, reject) => {
                 localVarRequest(localVarRequestOptions, (error, response, body) => {
                     if (error) {
                         reject(error);
                     } else {
                         if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "QueryResponse");
-                            resolve({ response: response, body: body });
+                            try {
+                                // Parse the response body
+                                const queryResponse = ObjectSerializer.deserialize(body, "QueryResponse");
+                                
+                                // Ensure results are always in the correct format based on query type
+                                if (queryResponse.results) {
+                                    // If single item response but batch query was sent, wrap in an array
+                                    if (isBatchQuery && 
+                                        !Array.isArray(queryResponse.results[0]) && 
+                                        Array.isArray(queryResponse.results)) {
+                                        queryResponse.results = [queryResponse.results];
+                                    }
+                                    
+                                    // If batch response but single query was sent, unwrap it
+                                    if (!isBatchQuery && 
+                                        Array.isArray(queryResponse.results) && 
+                                        queryResponse.results.length === 1 && 
+                                        Array.isArray(queryResponse.results[0])) {
+                                        queryResponse.results = queryResponse.results[0];
+                                    }
+                                }
+                                
+                                resolve({ response: response, body: queryResponse });
+                            } catch (error: unknown) {
+                                let errorMessage = "Unknown error";
+                                
+                                // Type guard to safely access error properties
+                                if (error instanceof Error) {
+                                    errorMessage = error.message;
+                                } else if (typeof error === 'string') {
+                                    errorMessage = error;
+                                } else if (error && typeof error === 'object' && 'message' in error) {
+                                    errorMessage = String(error.message);
+                                }
+                                
+                                reject(new Error(`Failed to deserialize response: ${errorMessage}`));
+                            }
                         } else {
+                            // For better error diagnosis, try to parse error response
+                            let errorMessage = "HTTP request failed";
+                            try {
+                                if (typeof body === 'string') {
+                                    errorMessage = body;
+                                } else if (body && typeof body === 'object') {
+                                    errorMessage = JSON.stringify(body);
+                                }
+                            } catch (e) {
+                                // Ignore parsing errors
+                            }
+                            
+                            console.error(`Query failed with status ${response.statusCode}: ${errorMessage}`);
                             reject(new HttpError(response, body, response.statusCode));
                         }
                     }

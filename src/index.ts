@@ -10,6 +10,7 @@ import {
   VectorItem,
   BatchQueryRequest,
   GetResponseModel,
+  QueryResponse,
 } from '../src/model/models';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
@@ -203,63 +204,70 @@ export class CyborgDB {
    * @param queryVector Either a single vector or an array of vectors to search for
    * @param topK Number of results to return
    * @param nProbes Number of probes for approximate search
+   * @param greedy Use greedy search or not
    * @param filters Metadata filters
    * @param include Fields to include in results
    * @returns Promise with search results
    */
+    // async query(
+  //   indexName: string,
+  //   indexKey: Uint8Array,
+  //   queryVector: number[] | number[][],
+  //   topK: number = 100,
+  //   nProbes: number = 1,
+  //   filters: any = {},
+  //   include: string[] = ["distance", "metadata"]
+  // ) {
   async query(
     indexName: string,
     indexKey: Uint8Array,
     queryVector: number[] | number[][],
     topK: number = 100,
     nProbes: number = 1,
+    greedy: boolean = false,
     filters: any = {},
     include: string[] = ["distance", "metadata"]
-  ) {
-    try {
-      const keyHex = Buffer.from(indexKey).toString('hex');
-      const includeFields = include.length > 0 ? include : ["distance", "metadata"];
-      const hasFilters = Object.keys(filters).length > 0;
-  
-      if (Array.isArray(queryVector[0])) {
-        // Batch query
-        const batchRequest: BatchQueryRequest = {
-          indexName,
-          indexKey: keyHex,
-          queryVectors: queryVector as number[][],
-          topK,
-          nProbes,
-          filters: hasFilters ? filters : undefined,
-          include: includeFields
-        };
-  
-        // console.log('Sending batch query request:', JSON.stringify(batchRequest, null, 2));
-        const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
-        return response.body.results || [];
-      } else {
-        // Single query
-        const singleRequest: QueryRequest = {
-          indexName,
-          indexKey: keyHex,
-          queryVector: queryVector as number[],
-          topK,
-          nProbes,
-          filters: hasFilters ? filters : undefined,
-          include: includeFields
-        };
-  
-        // console.log('Sending single query request:', JSON.stringify(singleRequest, null, 2));
-        const response = await this.api.queryVectorsV1VectorsQueryPost(singleRequest);
-        return response.body.results || [];
-      }
-    } catch (error: any) {
-      console.error('Query failed with error:', error);
-      console.error('Request details:', {
-        indexName, 
-        // Include other relevant request info but not the full vectors
-        hasFilters: Object.keys(filters || {}).length > 0
-      });
-      this.handleApiError(error);
+
+  ): Promise<QueryResponse> {
+    // Validate that only one query type is provided
+    const keyHex = Buffer.from(indexKey).toString('hex');
+    if (!queryVector) {
+      throw new Error('You must provide at least one queryVector');
+    }
+    // For batch queries
+    if (Array.isArray(queryVector[0])) {
+      const batchRequest:BatchQueryRequest = new BatchQueryRequest();
+      batchRequest.indexName = indexName;
+      batchRequest.indexKey = keyHex;
+      batchRequest.queryVectors = queryVector as number[][];
+      
+      // Optional parameters with defaults
+      if (topK !== undefined) batchRequest.topK = topK;
+      if (nProbes !== undefined) batchRequest.nProbes = nProbes;
+      if (greedy !== undefined) batchRequest.greedy = greedy;
+      if (filters) batchRequest.filters = filters;
+      if (include) batchRequest.include = include;
+      
+      const response =  await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
+      return response.body;
+    } 
+    // For single vector or content-based queries
+    else {
+      const request = new QueryRequest();
+      request.indexName = indexName;
+      request.indexKey = keyHex;
+      request.queryVector = queryVector as number[];
+
+      
+      // Optional parameters with defaults
+      if (topK !== undefined) request.topK = topK;
+      if (nProbes !== undefined) request.nProbes = nProbes;
+      if (greedy !== undefined) request.greedy = greedy;
+      if (filters) request.filters = filters;
+      if (include) request.include = include;
+      
+      const response =  await this.api.queryVectorsV1VectorsQueryPost(request);
+      return response.body;
     }
   }
   
@@ -373,7 +381,6 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
       });
       
       const response = await this.api.getVectorsV1VectorsGetPost(getRequest);
-      
       // Process the results to match Python SDK format
       const responseBody: GetResponseModel = response.body;
       const items = responseBody.results || [];
@@ -400,7 +407,7 @@ async delete(indexName: string, indexKey: Uint8Array, ids: string[]) {
           }
         }
         if (item.metadata) result.metadata = item.metadata;
-        
+        console.log("Get result item:", result);
         return result;
       });
     } catch (error: any) {

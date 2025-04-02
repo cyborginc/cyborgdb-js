@@ -1,5 +1,6 @@
 import { CyborgDB } from './index';
 import { randomBytes } from 'crypto';
+import { QueryResponse } from './model/queryResponse';
 
 // Your local server
 const API_URL = 'http://localhost:8000';
@@ -69,9 +70,9 @@ async function testCyborgDB() {
     console.log('\n--- Testing single vector query ---');
     const singleQueryVector = Array(128).fill(0).map(() => Math.random());
     console.log('Sending single vector query...');
-    const singleResults = await client.query(indexName, indexKey, singleQueryVector);
-    console.log('Single query results count:', singleResults.length);
-    console.log('First result:', singleResults[0]);
+    const singleResults:QueryResponse = await client.query(indexName, indexKey, singleQueryVector);
+    console.log('Single query results count:', singleResults.results.length);
+    console.log('First result:', singleResults.results[0]);
     
     // Test batch query with multiple vectors
     console.log('\n--- Testing batch vector query ---');
@@ -89,8 +90,8 @@ async function testCyborgDB() {
       console.log('First result from first query vector:', batchResults[0][0]);
     } else {
       // If we just get a flat array of results, it's treating the first vector only
-      console.log('Batch query returned', batchResults.length, 'results (using only first query vector)');
-      console.log('First result:', batchResults[0]);
+      console.log('Batch query returned', batchResults.results.length, 'results (using only first query vector)');
+      console.log('First result:', batchResults.results[0]);
     }
     
     // Get vectors by ID

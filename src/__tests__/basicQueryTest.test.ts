@@ -7,6 +7,8 @@ import * as path from 'path';
 import dotenv from 'dotenv';
 import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexConfig } from '../model/indexConfig';
+import { QueryResponse } from '../model/queryResponse';
+import { QueryResultItem } from '../model/queryResultItem';
 
 /**
  * To run the integration tests:
@@ -21,7 +23,6 @@ dotenv.config();
 // Constants - VERY minimal for faster testing
 const API_URL = 'http://localhost:8000';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
-console.log("API_KEY: ", ADMIN_API_KEY);
 
 if (!ADMIN_API_KEY) {
   throw new Error("ADMIN_API_KEY environment variable is not set");
@@ -116,16 +117,17 @@ describe('CyborgDB Integration Tests', () => {
     console.log('Vectors upserted successfully');
     
     // Execute a simple query
-    const results = await client.query(
+    const response:QueryResponse = await client.query(
       indexName,
       indexKey,
       testVector,
       TOP_K,
       N_PROBES,
+      false,
       {},
       ["metadata"]
     );
-    
+    const results = response.results as QueryResultItem[];
     console.log(`Query returned ${results.length} results`);
     
     // Basic assertions
@@ -238,21 +240,22 @@ describe('CyborgDB Integration Tests', () => {
     // Upsert vectors
     const upsertResult = await client.upsert(indexName, indexKey, vectors);
     expect(upsertResult.status).toBe('success');
-    
+
     // Add a significant delay to ensure server processing is complete
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Query to verify vectors are searchable
-    const queryResults = await client.query(
+    const response = await client.query(
       indexName,
       indexKey,
       testVector,
       5,
       N_PROBES,
+      false,
       {},
       ["metadata"]
     );
-    
+    const queryResults = response.results as QueryResultItem[];
     // This confirms vectors are in the index
     expect(queryResults.length).toBeGreaterThan(0);
     
@@ -301,14 +304,14 @@ describe('CyborgDB Integration Tests', () => {
     expect(result.status).toBe('success');
     
     // Query trained index to verify it works
-    const results = await client.query(
+    const response = await client.query(
       indexName,
       indexKey,
       testVector,
       TOP_K,
       N_PROBES
     );
-    
+    const results = response.results as QueryResultItem[];
     expect(results.length).toBeGreaterThan(0);
   });
   
@@ -340,12 +343,13 @@ describe('CyborgDB Integration Tests', () => {
     
     // Query with metadata filter for even categories
     const evenFilter = { category: 'even' };
-    const evenResults = await client.query(
+    const response = await client.query(
       indexName,
       indexKey,
       testVector,
       TOP_K,
       N_PROBES,
+      false,
       evenFilter,
       ["metadata"]
     );
@@ -354,7 +358,7 @@ describe('CyborgDB Integration Tests', () => {
       category: string;
       // Add other properties as needed
     }
-    
+    const evenResults = response.results as QueryResultItem[];
     // All results should have even category
     evenResults.forEach(result => {
       const metadata = result.metadata as { category: string };
