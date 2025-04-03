@@ -61,25 +61,8 @@ body:
   - type: input
     attributes:
       label: API Version
-      description: Specify the version of `cyborgdb_core`.
+      description: Specify the version of `cyborgdb_js`.
       placeholder: "e.g., v0.9.0"
-
-  - type: dropdown
-    attributes:
-      label: API Language
-      description: "Select the `cyborgdb_core` API you're using."
-      options:
-        - C++
-        - Python 3.6
-        - Python 3.7
-        - Python 3.8
-        - Python 3.9
-        - Python 3.10
-        - Python 3.11
-        - Python 3.12
-        - Python 3.13
-    validations:
-      required: true
     
   - type: dropdown
     attributes:
