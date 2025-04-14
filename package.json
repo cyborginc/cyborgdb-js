@@ -21,8 +21,8 @@
     "url": "git+https://github.com/cyborginc/cyborgdb-js.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Cyborg Inc.",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/cyborginc/cyborgdb-js/issues"
   },
