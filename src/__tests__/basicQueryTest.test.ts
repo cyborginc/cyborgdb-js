@@ -1,5 +1,3 @@
-// src/__tests__/comprehensive-test.test.ts
-
 import { CyborgDB } from '../index';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
@@ -9,6 +7,7 @@ import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexConfig } from '../model/indexConfig';
 import { QueryResponse } from '../model/queryResponse';
 import { QueryResultItem } from '../model/queryResultItem';
+import { EncryptedIndex } from '../EncryptedIndex';
 
 /**
  * To run the integration tests:
@@ -50,31 +49,37 @@ describe('CyborgDB Integration Tests', () => {
   let dimension: number;
   let trainData: number[][];
   let testVector: number[];
+  let index: EncryptedIndex;
   
   beforeAll(() => {
-    // Initialize client
     client = new CyborgDB(API_URL, ADMIN_API_KEY);
-    
-    // Load test data
     const jsonData = JSON.parse(fs.readFileSync(JSON_DATASET_PATH, 'utf8'));
-    trainData = jsonData.train.slice(0, 100); // Just 100 vectors
-    testVector = jsonData.test[0]; // Just 1 test vector
+    trainData = jsonData.train.slice(0, 100);
+    testVector = jsonData.test[0];
     dimension = trainData[0].length;
   });
   
-  beforeEach(() => {
-    // Generate a new key and index name for each test
+  beforeEach(async () => {
     indexKey = new Uint8Array(randomBytes(32));
     indexName = generateIndexName();
+
+    const indexConfig: IndexConfig = {
+      dimension,
+      metric: "euclidean",
+      indexType: "ivfpq",
+      nLists: N_LISTS,
+      pqDim: PQ_DIM,
+      pqBits: PQ_BITS
+    };
+
+    index = await client.createIndex(indexName, indexKey, indexConfig);
   });
-  
+
   afterEach(async () => {
-    // Clean up after each test
     try {
-      // Add a small delay to avoid race conditions
       await new Promise(resolve => setTimeout(resolve, 100));
-      await client.deleteIndex(indexName, indexKey);
-      console.log(`Cleaned up index ${indexName}`);
+      await index.deleteIndex();
+      console.log(`Deleted index: ${indexName}`);
     } catch (error) {
       console.warn(`Warning: Failed to clean up index ${indexName}:`, error);
     }
@@ -90,18 +95,17 @@ describe('CyborgDB Integration Tests', () => {
   
   test('should create index, upsert vectors, and query', async () => {
     // Create index configuration
-    const indexConfig = {
+    const indexConfig:IndexConfig = {
       dimension: dimension,
       metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
+      indexType: "ivfpq",
+      nLists: N_LISTS,
+      pqDim: PQ_DIM,
+      pqBits: PQ_BITS
     };
     
-    // Create index
-    const createResult = await client.createIndex(indexName, indexKey, indexConfig);
-    expect(createResult.status).toBe('success');
+    expect(index.getIndexName()).toBe(indexName);
+    expect(index.getIndexType()).toBe(indexConfig.indexType);
     console.log(`Index ${indexName} created successfully`);
     
     // Prepare vectors for upserting
@@ -112,14 +116,12 @@ describe('CyborgDB Integration Tests', () => {
     }));
     
     // Upsert vectors
-    const upsertResult = await client.upsert(indexName, indexKey, vectors);
+    const upsertResult = await index.upsert(vectors);
     expect(upsertResult.status).toBe('success');
     console.log('Vectors upserted successfully');
     
     // Execute a simple query
-    const response:QueryResponse = await client.query(
-      indexName,
-      indexKey,
+    const response:QueryResponse = await index.query(
       testVector,
       TOP_K,
       N_PROBES,
@@ -137,58 +139,33 @@ describe('CyborgDB Integration Tests', () => {
   });
   
   test('should list indexes', async () => {
-    // First create an index to ensure there's at least one
-    const indexConfig = {
-      dimension: dimension,
-      metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
-    };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
     
     // Now list indexes
     const indexes = await client.listIndexes();
     expect(Array.isArray(indexes)).toBe(true);
     // The index we just created should be in the list
     expect(indexes.some(index => index === indexName)).toBe(true);
+    await index.deleteIndex();
   });
   
   test('should load an existing index', async () => {
     // First create an index to load
-    const indexConfig = {
+    const indexConfig:IndexConfig = {
       dimension: dimension,
       metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
+      indexType: "ivfpq",
+      nLists: N_LISTS,
+      pqDim: PQ_DIM,
+      pqBits: PQ_BITS
     };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
-    
+        
     // Then try to load it
-    const indexInfo: IndexInfoResponseModel = await client.loadIndex(indexName, indexKey);
-    const loadedIndexConfig: IndexConfig = indexInfo.indexConfig;
-    expect(indexInfo).toBeDefined();
-    expect(loadedIndexConfig.dimension).toBe(dimension);
-    expect(indexInfo.indexName).toBe(indexName);
+    const loadedIndex: EncryptedIndex = await client.loadIndex(indexName, indexKey);
+    expect(loadedIndex.getIndexName()).toBe(indexName);
+    expect(loadedIndex.getIndexType()).toBe(indexConfig.indexType);
   });
   
   test('should delete vectors from index', async () => {
-    // Create index
-    const indexConfig = {
-      dimension: dimension,
-      metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
-    };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
     
     // Prepare and upsert vectors
     const vectors = trainData.slice(0, 10).map((vector, i) => ({
@@ -197,18 +174,18 @@ describe('CyborgDB Integration Tests', () => {
       metadata: { test: true, index: i }
     }));
     
-    await client.upsert(indexName, indexKey, vectors);
+    await index.upsert(vectors);
     
     // Delete some vectors
     const idsToDelete = ['0', '1', '2'];
-    const deleteResult = await client.delete(indexName, indexKey, idsToDelete);
-    expect(deleteResult.status).toBe('success');
+    await index.delete(idsToDelete);
+    // expect(deleteResult.status).toBe('success');
     
     // Try to get the deleted vectors - they should not exist
     // Note: Since get() might throw an error for non-existent vectors,
     // we need to check if it throws or returns empty results
     try {
-      const remaining = await client.get(indexName, indexKey, idsToDelete);
+      const remaining = await index.get(idsToDelete);
       // If no error, expect empty or smaller list
       expect(remaining.length).toBeLessThan(idsToDelete.length);
     } catch (error) {
@@ -218,18 +195,7 @@ describe('CyborgDB Integration Tests', () => {
   });
   
   test('should retrieve vectors by ID', async () => {
-    // Create index
-    const indexConfig = {
-      dimension: dimension,
-      metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
-    };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
-    
+
     // Use a smaller set of vectors with distinct IDs for easier tracking
     const vectors = trainData.slice(0, 10).map((vector, i) => ({
       id: `test-id-${i}`, // More distinctive IDs
@@ -238,16 +204,13 @@ describe('CyborgDB Integration Tests', () => {
     }));
     
     // Upsert vectors
-    const upsertResult = await client.upsert(indexName, indexKey, vectors);
-    expect(upsertResult.status).toBe('success');
+    await index.upsert(vectors);
 
     // Add a significant delay to ensure server processing is complete
     // await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Query to verify vectors are searchable
-    const response = await client.query(
-      indexName,
-      indexKey,
+    const response = await index.query(
       testVector,
       5,
       N_PROBES,
@@ -261,7 +224,7 @@ describe('CyborgDB Integration Tests', () => {
     
     // Now get specific vectors
     const ids = [`test-id-0`, `test-id-1`, `test-id-2`];
-    const retrieved = await client.get(indexName, indexKey, ids);
+    const retrieved = await index.get(ids);
     
     // Log details for debugging
     console.log('IDs requested:', ids);
@@ -278,17 +241,6 @@ describe('CyborgDB Integration Tests', () => {
   });
   
   test('should train the index', async () => {
-    // Create index
-    const indexConfig = {
-      dimension: dimension,
-      metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
-    };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
     
     // Upsert enough vectors for training
     const vectors = trainData.map((vector, i) => ({
@@ -297,16 +249,14 @@ describe('CyborgDB Integration Tests', () => {
       metadata: { test: true, index: i }
     }));
     
-    await client.upsert(indexName, indexKey, vectors);
+    await index.upsert(vectors);
     
     // Train the index
-    const result = await client.train(indexName, indexKey, 100, 5, 1e-5);
+    const result = await index.train( 100, 5, 1e-5);
     expect(result.status).toBe('success');
     
     // Query trained index to verify it works
-    const response = await client.query(
-      indexName,
-      indexKey,
+    const response = await index.query(
       testVector,
       TOP_K,
       N_PROBES
@@ -316,17 +266,6 @@ describe('CyborgDB Integration Tests', () => {
   });
   
   test('should handle metadata filtering in queries', async () => {
-    // Create index
-    const indexConfig = {
-      dimension: dimension,
-      metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
-    };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
     
     // Prepare vectors with varied metadata
     const vectors = trainData.slice(0, 20).map((vector, i) => ({
@@ -339,13 +278,11 @@ describe('CyborgDB Integration Tests', () => {
       }
     }));
     
-    await client.upsert(indexName, indexKey, vectors);
+    await index.upsert(vectors);
     
     // Query with metadata filter for even categories
     const evenFilter = { category: 'even' };
-    const response = await client.query(
-      indexName,
-      indexKey,
+    const response = await index.query(
       testVector,
       TOP_K,
       N_PROBES,
@@ -367,24 +304,21 @@ describe('CyborgDB Integration Tests', () => {
   });
   
   test('should handle deleting and recreating an index', async () => {
-    // Create initial index
-    const indexConfig = {
+    const indexConfig:IndexConfig = {
       dimension: dimension,
       metric: "euclidean",
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
+      indexType: "ivfpq",
+      nLists: N_LISTS,
+      pqDim: PQ_DIM,
+      pqBits: PQ_BITS
     };
-    
-    await client.createIndex(indexName, indexKey, indexConfig);
-    
     // Delete the index
-    await client.deleteIndex(indexName, indexKey);
+    await index.deleteIndex();
     
     // Recreate with the same name
     const recreateResult = await client.createIndex(indexName, indexKey, indexConfig);
-    expect(recreateResult.status).toBe('success');
+    expect(recreateResult.getIndexName()).toBe(indexName);
+    expect(recreateResult.getIndexType()).toBe('ivfpq');
     
     // Verify the index works
     const vectors = trainData.slice(0, 5).map((vector, i) => ({
@@ -393,7 +327,7 @@ describe('CyborgDB Integration Tests', () => {
       metadata: { test: true, index: i }
     }));
     
-    const upsertResult = await client.upsert(indexName, indexKey, vectors);
+    const upsertResult = await recreateResult.upsert(vectors);
     expect(upsertResult.status).toBe('success');
   });
 });
