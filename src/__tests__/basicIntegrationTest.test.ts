@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
+import { EncryptedIndex } from '../EncryptedIndex';
+import { IndexConfig } from '../model/indexConfig';
 
 /**
  * To run the integration tests:
@@ -92,6 +94,7 @@ describe('IVFPQIntegrationTest', () => {
   let dimension: number;
   let trainData: number[][];
   let testData: number[][];
+  let index: EncryptedIndex;
   
   // Set up for each test (faster than beforeAll)
   beforeEach(async () => {
@@ -111,17 +114,17 @@ describe('IVFPQIntegrationTest', () => {
     indexKey = generateRandomKey();
     
     // Create index config
-    const indexConfig = {
+    const indexConfig:IndexConfig = {
       dimension: dimension,
       metric: METRIC,
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
+      indexType: "ivfpq",
+      nLists: N_LISTS,
+      pqDim: PQ_DIM,
+      pqBits: PQ_BITS
     };
     
     // Create the index
-    await client.createIndex(indexName, indexKey, indexConfig);
+    index = await client.createIndex(indexName, indexKey, indexConfig);
     
     // Upsert minimal training data (just 20 vectors)
     const trainingSize = 20;
@@ -132,7 +135,7 @@ describe('IVFPQIntegrationTest', () => {
     }));
     
     // Upsert in a single batch
-    await client.upsert(indexName, indexKey, vectors);
+    await index.upsert(vectors);
     
   }, 30000);
   
@@ -142,7 +145,7 @@ describe('IVFPQIntegrationTest', () => {
       try {
         // Add a small delay before trying to delete the index
         await new Promise(resolve => setTimeout(resolve, 100));
-        await client.deleteIndex(indexName, indexKey);
+        await index.deleteIndex();
         console.log(`Index ${indexName} cleaned up successfully`);
       } catch (error) {
         console.error(`Error cleaning up index ${indexName}:`, error);
@@ -154,9 +157,7 @@ describe('IVFPQIntegrationTest', () => {
   test('should query untrained index with acceptable recall', async () => {
     try {
       // Use the updated query method with single vector
-      const response = await client.query(
-        indexName,
-        indexKey,
+      const response = await index.query(
         testData[0], // Single query vector
         TOP_K,
         N_PROBES,
@@ -180,9 +181,7 @@ describe('IVFPQIntegrationTest', () => {
   // Test 2: Trained query - equivalent to test_trained_query in Python
   test('should train index and query with better recall', async () => {
     // Train the index
-    await client.train(
-      indexName,
-      indexKey,
+    await index.train(
       BATCH_SIZE,
       MAX_ITERS,
       TOLERANCE
@@ -195,12 +194,10 @@ describe('IVFPQIntegrationTest', () => {
       metadata: { category: "additional", index: i + 20 }
     }));
     
-    await client.upsert(indexName, indexKey, additionalVectors);
+    await index.upsert(additionalVectors);
     
     // Execute a query using the updated query method
-    const response = await client.query(
-      indexName,
-      indexKey,
+    const response = await index.query(
       testData[0], // Just one query vector
       TOP_K,
       N_PROBES,
@@ -226,9 +223,7 @@ describe('IVFPQIntegrationTest', () => {
     // Use the first 2 test vectors for a batch query
     
     // Execute a batch query using the updated query method
-    const response = await client.query(
-      indexName,
-      indexKey,
+    const response = await index.query(
       testData, // Multiple query vectors
       TOP_K,
       N_PROBES,
@@ -258,7 +253,7 @@ describe('MetadataIntegrationTest', () => {
   let dimension: number;
   let trainData: number[][];
   let testData: number[][];
-  
+  let index: EncryptedIndex;
   beforeAll(() => {
     if (sharedData) {
       dimension = sharedData.train[0].length;
@@ -274,17 +269,17 @@ describe('MetadataIntegrationTest', () => {
     const indexKey = generateRandomKey();
     
     // Create index config
-    const indexConfig = {
+    const indexConfig:IndexConfig = {
       dimension: dimension,
       metric: METRIC,
-      index_type: "ivfpq",
-      n_lists: N_LISTS,
-      pq_dim: PQ_DIM,
-      pq_bits: PQ_BITS
+      indexType: "ivfpq",
+      nLists: N_LISTS,
+      pqDim: PQ_DIM,
+      pqBits: PQ_BITS
     };
     
     // Create the index
-    await client.createIndex(indexName, indexKey, indexConfig);
+    index = await client.createIndex(indexName, indexKey, indexConfig);
     
     // Prepare vectors with metadata
     const vectors = trainData.slice(0, sampleSize).map((vector, i) => {
@@ -310,7 +305,7 @@ describe('MetadataIntegrationTest', () => {
     });
     
     // Upsert vectors in one batch (small enough for a single batch)
-    await client.upsert(indexName, indexKey, vectors);
+    await index.upsert(vectors);
     
     return { indexName, indexKey };
   }
@@ -329,9 +324,7 @@ describe('MetadataIntegrationTest', () => {
       const filter = { "owner.name": "John" };
       
       // Use the updated query method with filter
-      const response = await client.query(
-        indexName,
-        indexKey,
+      const response = await index.query(
         testData[0],
         TOP_K,
         N_PROBES,
@@ -356,7 +349,7 @@ describe('MetadataIntegrationTest', () => {
     } finally {
       // Clean up
       if (indexName && indexKey) {
-        await client.deleteIndex(indexName, indexKey);
+        await index.deleteIndex();
       }
     }
   }, 20000);
@@ -372,9 +365,7 @@ describe('MetadataIntegrationTest', () => {
       indexKey = indexInfo.indexKey;
       
       // Train the index
-      await client.train(
-        indexName,
-        indexKey,
+      await index.train(
         BATCH_SIZE,
         MAX_ITERS,
         TOLERANCE
@@ -390,9 +381,7 @@ describe('MetadataIntegrationTest', () => {
       };
       
       // Use the updated query method with complex filter
-      const response = await client.query(
-        indexName,
-        indexKey,
+      const response = await index.query(
         testData[0],
         TOP_K,
         N_PROBES,
@@ -418,9 +407,7 @@ describe('MetadataIntegrationTest', () => {
       };
       
       // Use the updated query method with nested filter
-      const nestedResponse = await client.query(
-        indexName,
-        indexKey,
+      const nestedResponse = await index.query(
         testData[0],
         TOP_K,
         N_PROBES,
@@ -435,7 +422,7 @@ describe('MetadataIntegrationTest', () => {
     } finally {
       // Clean up
       if (indexName && indexKey) {
-        await client.deleteIndex(indexName, indexKey);
+        await index.deleteIndex();
       }
     }
   }, 30000);
