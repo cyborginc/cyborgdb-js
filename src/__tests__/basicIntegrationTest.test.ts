@@ -1,10 +1,10 @@
-import { CyborgDB } from '../index';
+import { CyborgDB } from '../client';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
-import { EncryptedIndex } from '../encryyyyyptedIndex';
+import { EncryptedIndex } from '../encryptedIndex';
 import { IndexConfig } from '../model/indexConfig';
 
 /**

@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for EncryptedIndex.ts</title>
+    <title>Code coverage report for encryptedIndex.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="prettify.css" />
     <link rel="stylesheet" href="base.css" />
@@ -19,7 +19,7 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="index.html">All files</a> EncryptedIndex.ts</h1>
+        <h1><a href="index.html">All files</a> encryptedIndex.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
@@ -411,19 +411,7 @@
 <a name='L346'></a><a href='#L346'>346</a>
 <a name='L347'></a><a href='#L347'>347</a>
 <a name='L348'></a><a href='#L348'>348</a>
-<a name='L349'></a><a href='#L349'>349</a>
-<a name='L350'></a><a href='#L350'>350</a>
-<a name='L351'></a><a href='#L351'>351</a>
-<a name='L352'></a><a href='#L352'>352</a>
-<a name='L353'></a><a href='#L353'>353</a>
-<a name='L354'></a><a href='#L354'>354</a>
-<a name='L355'></a><a href='#L355'>355</a>
-<a name='L356'></a><a href='#L356'>356</a>
-<a name='L357'></a><a href='#L357'>357</a>
-<a name='L358'></a><a href='#L358'>358</a>
-<a name='L359'></a><a href='#L359'>359</a>
-<a name='L360'></a><a href='#L360'>360</a>
-<a name='L361'></a><a href='#L361'>361</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L349'></a><a href='#L349'>349</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -499,8 +487,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-yes">16x</span>
 <span class="cline-any cline-yes">16x</span>
@@ -541,8 +527,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -612,8 +596,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -640,8 +622,6 @@
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -701,8 +681,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -750,8 +728,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -856,8 +832,6 @@ export class EncryptedIndex {
     }
     /**
      * Delete an index
-     * @param indexName Name of the index
-     * @param indexKey 32-byte encryption key
      * @returns Promise with the result of the operation
      */
     async deleteIndex() {
@@ -896,8 +870,6 @@ export class EncryptedIndex {
 &nbsp;
     /**
        * Retrieve vectors by their IDs
-       * @param indexName Name of the index
-       * @param indexKey 32-byte encryption key
        * @param ids IDs of vectors to retrieve
        * @param include Fields to include in results
        * @returns Promise with the retrieved vectors
@@ -966,8 +938,6 @@ export class EncryptedIndex {
 &nbsp;
       /**
    * Train the index for efficient querying
-   * @param indexName Name of the index
-   * @param indexKey 32-byte encryption key
    * @param batchSize Size of batches for training
    * @param maxIters Maximum number of iterations
    * @param tolerance Convergence tolerance
@@ -1005,8 +975,6 @@ export class EncryptedIndex {
 &nbsp;
   /**
      * Add or update vectors in the index
-     * @param indexName Name of the index
-     * @param indexKey 32-byte encryption key
      * @param items Items to upsert (with id, vector, contents, metadata)
      * @returns Promise with the result of the operation
      */
@@ -1052,8 +1020,6 @@ export class EncryptedIndex {
 &nbsp;
     /**
    * Search for nearest neighbors in the index
-   * @param indexName Name of the index
-   * @param indexKey 32-byte encryption key
    * @param queryVector Either a single vector or an array of vectors to search for
    * @param topK Number of results to return
    * @param nProbes Number of probes for approximate search
@@ -1115,8 +1081,6 @@ export class EncryptedIndex {
 &nbsp;
     /**
      * Delete vectors from the index
-     * @param indexName Name of the index
-     * @param indexKey 32-byte encryption key
      * @param ids IDs of vectors to delete
      * @returns Promise with the result of the operation
      */
@@ -1150,7 +1114,7 @@ export class EncryptedIndex {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-04-16T20:55:22.273Z
+                at 2025-04-17T14:14:14.677Z
             </div>
         <script src="prettify.js"></script>
         <script>
