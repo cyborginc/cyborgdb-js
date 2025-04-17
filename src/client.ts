@@ -6,7 +6,7 @@ import {
 } from '../src/model/models';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
-import { EncryptedIndex } from './encryyyyyptedIndex';
+import { EncryptedIndex } from './encryptedIndex';
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service

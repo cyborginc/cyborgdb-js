@@ -1,4 +1,4 @@
-import { CyborgDB } from '../index';
+import { CyborgDB } from '../client';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,7 +7,7 @@ import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexConfig } from '../model/indexConfig';
 import { QueryResponse } from '../model/queryResponse';
 import { QueryResultItem } from '../model/queryResultItem';
-import { EncryptedIndex } from '../encryyyyyptedIndex';
+import { EncryptedIndex } from '../encryptedIndex';
 
 /**
  * To run the integration tests:
