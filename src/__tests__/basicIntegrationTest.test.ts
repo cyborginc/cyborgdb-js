@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
 import { EncryptedIndex } from '../encryptedIndex';
 import { IndexConfig } from '../model/indexConfig';
+import { QueryResponse } from '../model/queryResponse';
 
 /**
  * To run the integration tests:
@@ -223,27 +224,33 @@ describe('IVFPQIntegrationTest', () => {
     // Use the first 2 test vectors for a batch query
     
     // Execute a batch query using the updated query method
-    const response = await index.query(
-      testData, // Multiple query vectors
-      TOP_K,
-      N_PROBES,
-      false, // greedy parameter
-      {}, // filters
-      ["metadata"]
-    );
-    
-    // Check that we got results
-    expect(response).toBeDefined();
-    expect(response.results).toBeDefined();
-    
-    // For batch queries, response.results should be an array of arrays (or have some structure)
-    // The exact structure depends on how your API returns batch results
-    expect(response.results.length).toBeGreaterThan(0);
-    expect(response.results.length).toBe(testData.length);
-    // check that each result has a length of top k
-    for (const resultSet of response.results as QueryResultItem[][]) {
-      expect(resultSet.length).toBe(TOP_K);
+    try {
+      const response:QueryResponse = await index.query(
+        testData, // Multiple query vectors
+        TOP_K,
+        N_PROBES,
+        false, // greedy parameter
+        {}, // filters
+        ["metadata"]
+      );
+      
+      // Check that we got results
+      expect(response).toBeDefined();
+      expect(response.results).toBeDefined();
+      
+      // For batch queries, response.results should be an array of arrays (or have some structure)
+      // The exact structure depends on how your API returns batch results
+      expect(response.results.length).toBeGreaterThan(0);
+      expect(response.results.length).toBe(testData.length);
+      // check that each result has a length of top k
+      for (const resultSet of response.results as QueryResultItem[][]) {
+        expect(resultSet.length).toBe(TOP_K);
+      }
+    } catch(error) {
+      console.error('Error during batch query:', error);
+      throw error; // Rethrow to fail the test
     }
+    
   }, 30000);
 });
 
