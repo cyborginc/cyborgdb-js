@@ -7,7 +7,7 @@ import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexConfig } from '../model/indexConfig';
 import { QueryResponse } from '../model/queryResponse';
 import { QueryResultItem } from '../model/queryResultItem';
-import { EncryptedIndex } from '../EncryptedIndex';
+import { EncryptedIndex } from '../encryyyyyptedIndex';
 
 /**
  * To run the integration tests:
