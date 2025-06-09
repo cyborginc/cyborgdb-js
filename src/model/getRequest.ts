@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Request model for retrieving specific vectors from the index.  Inherits:     IndexOperationRequest: Includes `index_name` and `index_key`.  Attributes:     ids (List[str]): List of vector item IDs to retrieve.     include (List[str]): List of fields to include in the response.          Defaults to `[\"vector\", \"contents\", \"metadata\"]`.
 */

@@ -10,11 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-import { IndexIVFFlatModel } from './indexIVFFlatModel';
-import { IndexIVFModel } from './indexIVFModel';
-import { IndexIVFPQModel } from './indexIVFPQModel';
-
 export class IndexConfig {
     'dimension'?: number;
     'nLists'?: number;

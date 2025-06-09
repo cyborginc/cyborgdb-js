@@ -1,0 +1,45 @@
+# Source files
+src/
+*.ts
+!dist/*.d.ts
+
+# Development files
+.eslintrc.js
+tsconfig.json
+jest.config.js
+
+# Testing
+__tests__/
+*.test.ts
+*.spec.ts
+coverage/
+
+# Development dependencies
+node_modules/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.test
+
+# Build artifacts (keep only dist)
+build/
+lib/
+
+# Git
+.git/
+.gitignore

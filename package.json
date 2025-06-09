@@ -1,17 +1,25 @@
 {
-  "devDependencies": {
-    "@types/jest": "^29.5.14",
-    "@types/node": "^22.13.10",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.1.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.2"
-  },
   "name": "cyborgdb",
   "version": "1.0.0",
-  "description": "JavaScript &amp; TypeScript Client SDK for CyborgDB: The Confidential Vector Database",
-  "main": "index.js",
+  "description": "JavaScript & TypeScript Client SDK for CyborgDB: The Confidential Vector Database",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types",
+    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:h5wasm --external:request --external:dotenv --external:fs --external:path",
+    "build:esm": "esbuild src/index.ts --bundle --platform=neutral --format=esm --outfile=dist/index.esm.js --external:h5wasm --external:request --external:dotenv --external:fs --external:path",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "clean": "rm -rf dist",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "package": "npm run lint && npm run test && npm run build && npm pack",
+    "prepublishOnly": "npm run lint && npm run test && npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -20,7 +28,14 @@
     "type": "git",
     "url": "git+https://github.com/cyborginc/cyborgdb-js.git"
   },
-  "keywords": [],
+  "keywords": [
+    "cyborgdb",
+    "vector-database",
+    "confidential",
+    "typescript",
+    "javascript",
+    "sdk"
+  ],
   "author": "Cyborg Inc.",
   "license": "MIT",
   "bugs": {
@@ -32,5 +47,20 @@
     "dotenv": "^16.4.7",
     "h5wasm": "^0.7.9",
     "request": "^2.88.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.10",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "esbuild": "^0.19.12",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }

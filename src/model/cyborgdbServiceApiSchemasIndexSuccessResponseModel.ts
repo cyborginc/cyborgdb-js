@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Standard success response model.  Attributes:     status (str): The status of the response. Defaults to \"success\".     message (str): A success message.
 */
