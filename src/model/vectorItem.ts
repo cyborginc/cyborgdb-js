@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Represents a vectorized item for storage in the encrypted index.  Attributes:     id (str): Unique identifier for the vector item.     vector (Optional[List[float]]): The vector representation of the item.     contents (Optional[str]): The original text or associated content.     metadata (Optional[Dict[str, Any]]): Additional metadata associated with the item.
 */

@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Model for configuring an IVFPQ (Inverted File with Product Quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfpq\".     pq_dim (int): Dimensionality of PQ codes.     pq_bits (int): Number of bits per quantizer.
 */

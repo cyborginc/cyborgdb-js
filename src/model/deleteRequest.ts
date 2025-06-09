@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Request model for deleting vectors from the encrypted index.  Inherits:     IndexOperationRequest: Includes `index_name` and `index_key`.  Attributes:     ids (List[str]): List of vector item IDs to be deleted.
 */

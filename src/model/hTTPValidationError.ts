@@ -10,7 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
 import { ValidationError } from './validationError';
 
 export class HTTPValidationError {
