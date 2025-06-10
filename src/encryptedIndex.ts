@@ -1,7 +1,6 @@
 import { DefaultApi } from "./api/apis";
 import { 
     UpsertRequest, 
-    CreateIndexRequest, 
     IndexOperationRequest,
     Request as QueryRequest,
     TrainRequest,
@@ -61,7 +60,7 @@ export class EncryptedIndex {
         return this.indexName;
     }
     public getIndexType(): string|undefined {
-        return this.indexConfig.indexType; ;
+        return this.indexConfig.indexType;
     }
     public isTrained(): boolean {
         return this.trained;
