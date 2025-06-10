@@ -528,4 +528,189 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     expect(results.length).toBeGreaterThan(0);
   });
+
+  // Fix the test to handle the fact that IVFPQ returns compressed vectors
+    test('should retrieve vectors by ID from trained index', async () => {
+        // Setup: upsert initial vectors
+        const initialVectors = trainData.slice(0, 50).map((vector, i) => ({
+            id: `trained-id-${i}`,
+            vector,
+            metadata: { 
+            category: "initial", 
+            index: i,
+            test: true,
+            owner: {
+                name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
+                pets_owned: i % 3 + 1
+            }
+            }
+        }));
+        await index.upsert(initialVectors);
+        
+        // Train the index
+        await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+        
+        // Add more vectors after training
+        const additionalVectors = trainData.slice(50, 80).map((vector, i) => ({
+            id: `trained-id-${i + 50}`,
+            vector,
+            metadata: { 
+            category: "additional", 
+            index: i + 50,
+            test: true,
+            owner: {
+                name: (i + 50) % 3 === 0 ? "John" : ((i + 50) % 3 === 1 ? "Joseph" : "Mike"),
+                pets_owned: (i + 50) % 3 + 1
+            }
+            }
+        }));
+        await index.upsert(additionalVectors);
+        
+        // Test getting vectors from both initial and additional sets
+        const idsToGet = [
+            'trained-id-0', 'trained-id-1', 'trained-id-10',  // from initial set
+            'trained-id-50', 'trained-id-55', 'trained-id-70' // from additional set
+        ];
+        
+        const retrieved = await index.get(idsToGet);
+        
+        // Verify we got the expected number of results
+        expect(retrieved.length).toBe(idsToGet.length);
+        
+        // Get the expected vector dimension from the index config
+        const indexConfig = index.getIndexConfig();
+        const expectedVectorDim = indexConfig.indexType === "ivfpq" ? indexConfig.pqDim : dimension;
+        
+        console.log(`Index type: ${indexConfig.indexType}, expected vector dimension: ${expectedVectorDim}`);
+        
+        // Verify each retrieved item matches expectations
+        retrieved.forEach((item, idx) => {
+            const expectedId = idsToGet[idx];
+            const expectedIndex = parseInt(expectedId.replace('trained-id-', ''));
+            
+            expect(item.id).toBe(expectedId);
+            expect(item.vector).toBeDefined();
+            
+            // For IVFPQ, expect compressed dimension; for others, expect full dimension
+            expect(item.vector.length).toBe(expectedVectorDim);
+            
+            // Verify metadata structure
+            if (item.metadata) {
+            const metadata = typeof item.metadata === 'string'
+                ? JSON.parse(item.metadata)
+                : item.metadata;
+            
+            expect(metadata.index).toBe(expectedIndex);
+            expect(metadata.test).toBe(true);
+            expect(metadata.owner).toBeDefined();
+            expect(metadata.owner.name).toMatch(/^(John|Joseph|Mike)$/);
+            expect(typeof metadata.owner.pets_owned).toBe('number');
+            
+            if (expectedIndex < 50) {
+                expect(metadata.category).toBe('initial');
+            } else {
+                expect(metadata.category).toBe('additional');
+            }
+            }
+        });
+        
+        console.log(`Successfully retrieved ${retrieved.length} vectors from trained index with expected dimension ${expectedVectorDim}`);
+    });
+
+    // Test 17: Get deleted items verification (equivalent to Python test_11_get_deleted)
+    test('should verify deleted vectors cannot be retrieved', async () => {
+    // Setup: upsert vectors with specific IDs for deletion testing
+    const vectorsToDelete = trainData.slice(0, 30).map((vector, i) => ({
+        id: `delete-test-${i}`,
+        vector,
+        metadata: { 
+        test: true, 
+        index: i,
+        category: "to-be-deleted",
+        owner: {
+            name: "TestUser",
+            pets_owned: i % 5 + 1
+        }
+        }
+    }));
+    
+    const vectorsToKeep = trainData.slice(30, 50).map((vector, i) => ({
+        id: `keep-test-${i}`,
+        vector,
+        metadata: { 
+        test: true, 
+        index: i + 30,
+        category: "to-be-kept",
+        owner: {
+            name: "TestUser",
+            pets_owned: (i + 30) % 5 + 1
+        }
+        }
+    }));
+    
+    // Upsert all vectors
+    await index.upsert([...vectorsToDelete, ...vectorsToKeep]);
+    
+    // Verify all vectors exist before deletion
+    const allIds = [
+        ...vectorsToDelete.map(v => v.id),
+        ...vectorsToKeep.map(v => v.id)
+    ];
+    const beforeDeletion = await index.get(allIds);
+    expect(beforeDeletion.length).toBe(allIds.length);
+    
+    // Delete specific vectors
+    const idsToDelete = vectorsToDelete.map(v => v.id);
+    const deleteResult = await index.delete(idsToDelete);
+    expect(deleteResult.status).toBe('success');
+    
+    // Attempt to get the deleted vectors - should return empty or no results
+    const deletedResults = await index.get(idsToDelete);
+    
+    // The behavior might vary by implementation:
+    // - Some implementations return empty array
+    // - Others might return partial results excluding deleted items
+    // We'll check that we don't get all the deleted items back
+    expect(deletedResults.length).toBeLessThan(idsToDelete.length);
+    
+    // If any results are returned, they should not be the deleted items
+    deletedResults.forEach(result => {
+        // This shouldn't happen - no deleted IDs should be returned
+        expect(idsToDelete).not.toContain(result.id);
+    });
+    
+    // Verify that non-deleted vectors are still accessible
+    const keptIds = vectorsToKeep.map(v => v.id);
+    const keptResults = await index.get(keptIds);
+    expect(keptResults.length).toBe(keptIds.length);
+    
+    // Verify the kept vectors have correct data
+    keptResults.forEach(result => {
+        expect(keptIds).toContain(result.id);
+        expect(result.vector).toBeDefined();
+        
+        if (result.metadata) {
+        const metadata = typeof result.metadata === 'string'
+            ? JSON.parse(result.metadata)
+            : result.metadata;
+        expect(metadata.category).toBe('to-be-kept');
+        }
+    });
+    
+    console.log(`Deletion verification completed. Deleted ${idsToDelete.length} vectors, kept ${keptResults.length} vectors`);
+    
+    // Additional verification: try to get a mix of deleted and existing IDs
+    const mixedIds = [
+        idsToDelete[0], idsToDelete[1],  // deleted
+        keptIds[0], keptIds[1]           // existing
+    ];
+    const mixedResults = await index.get(mixedIds);
+    
+    // Should only get back the existing ones
+    expect(mixedResults.length).toBe(2);
+    mixedResults.forEach(result => {
+        expect(keptIds).toContain(result.id);
+        expect(idsToDelete).not.toContain(result.id);
+    });
+    });
 });
