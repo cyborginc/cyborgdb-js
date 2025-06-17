@@ -24,19 +24,13 @@ Vector Search powers critical AI applications like RAG systems, recommendation e
 
 ```bash
 # Install the CyborgDB TypeScript SDK
-npm install cyborgdb-sdk
-
-# Or using yarn
-yarn add cyborgdb-sdk
-
-# Or using pnpm
-pnpm add cyborgdb-sdk
+npm install cyborgdb
 ```
 
 **Quickstart**
 
 ```typescript
-import { CyborgDB, IndexConfig } from 'cyborgdb-sdk';
+import { CyborgDB, IndexConfig } from 'cyborgdb';
 
 // Initialize the client
 const client = new CyborgDB('https://api.cyborgdb.com', 'your-api-key');
@@ -195,7 +189,7 @@ import type {
   QueryResponse, 
   IndexConfig,
   GetResponseModel 
-} from 'cyborgdb-sdk';
+} from 'cyborgdb';
 
 // Fully typed vector items
 const typedItem: VectorItem = {
@@ -220,9 +214,7 @@ const response: QueryResponse = await index.query(queryVector);
 **Documentation**
 
 For more detailed documentation, visit:
-* [CyborgDB Documentation](https://docs.cyborgdb.com)
-* [TypeScript API Reference](https://docs.cyborgdb.com/typescript)
-* [Examples Repository](https://github.com/cyborgdb/examples)
+* [CyborgDB Documentation](https://docs.cyborg.co/)
 
 **License**
 
@@ -232,4 +224,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 CyborgDB is dedicated to making AI safe and secure through confidential computing. We develop solutions that enable organizations to leverage AI while maintaining the confidentiality and privacy of their data.
 
-[Visit our website](https://cyborgdb.com) | [Contact Us](mailto:support@cyborgdb.com)
+[Visit our website](https://www.cyborg.co/) | [Contact Us](mailto:hello@cyborg.co)
