@@ -1,6 +1,8 @@
 # CyborgDB JavaScript/TypeScript SDK
 
-The **CyborgDB JavaScript/TypeScript SDK** provides a comprehensive client library for interacting with CyborgDB, the first Confidential Vector Database. This SDK enables you to perform encrypted vector operations including ingestion, search, and retrieval while maintaining end-to-end encryption of your vector embeddings. Built with TypeScript, it offers full type safety and seamless integration into modern JavaScript and TypeScript applications.
+The **CyborgDB JavaScript/TypeScript SDK** provides a comprehensive client library for interacting with [CyborgDB](https://www.cyborg.co), the first Confidential Vector Database. This SDK enables you to perform encrypted vector operations including ingestion, search, and retrieval while maintaining end-to-end encryption of your vector embeddings. Built with TypeScript, it offers full type safety and seamless integration into modern JavaScript and TypeScript applications.
+
+This SDK provides an interface to `cyborgdb-service` which you will need to separately install and run in order to use the SDK. For more info, please see our [docs](https://docs.cyborg.co)
 
 **Why CyborgDB?**
 
@@ -15,12 +17,16 @@ Vector Search powers critical AI applications like RAG systems, recommendation e
 
 **Installation**
 
+1. Install `cyborgdb-service`
+
+2. Install `cyborgdb` SDK:
+
 ```bash
 # Install the CyborgDB TypeScript SDK
 npm install cyborgdb
 ```
 
-**Quickstart**
+**Usage**
 
 ```typescript
 import { Client, IndexIVFFlat } from 'cyborgdb';
