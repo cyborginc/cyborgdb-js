@@ -257,65 +257,71 @@ export class EncryptedIndex {
     }
 
     /**
-   * Search for nearest neighbors in the index
-   * @param queryVector Either a single vector or an array of vectors to search for
-   * @param topK Number of results to return
-   * @param nProbes Number of probes for approximate search
-   * @param greedy Use greedy search or not
-   * @param filters Metadata filters
-   * @param include Fields to include in results
-   * @returns Promise with search results
-   */
-  async query(
-    queryVector: number[] | number[][],
-    topK: number = 100,
-    nProbes: number = 1,
-    greedy: boolean = false,
-    filters: any = {},
-    include: string[] = ["distance", "metadata"]
+     * Search for nearest neighbors in the index
+     * @param queryVector Either a single vector or an array of vectors to search for
+     * @param topK Number of results to return
+     * @param nProbes Number of probes for approximate search
+     * @param greedy Use greedy search or not
+     * @param filters Metadata filters
+     * @param include Fields to include in results
+     * @returns Promise with search results
+     */
+    async query(...args: [number[] | number[][], number?, number?, boolean?, object?, string[]?] | [QueryRequest]): Promise<QueryResponse> {
+      const keyHex = Buffer.from(this.indexKey).toString('hex');
+      let queryVector: number[] | number[][] = [];
+      let topK: number = 100;
+      let nProbes: number = 1;
+      let greedy: boolean = false;
+      let filters: object = {};
+      let include: string[] = ["distance", "metadata"];
 
-  ): Promise<QueryResponse> {
-    // Validate that only one query type is provided
-    const keyHex = Buffer.from(this.indexKey).toString('hex');
-    if (!queryVector) {
-      throw new Error('You must provide at least one queryVector');
-    }
-    // For batch queries
-    if (Array.isArray(queryVector[0])) {
-      const batchRequest:BatchQueryRequest = new BatchQueryRequest();
-      batchRequest.indexName = this.indexName;
-      batchRequest.indexKey = keyHex;
-      batchRequest.queryVectors = queryVector as number[][];
-      
-      // Optional parameters with defaults
-      if (topK !== undefined) batchRequest.topK = topK;
-      if (nProbes !== undefined) batchRequest.nProbes = nProbes;
-      if (greedy !== undefined) batchRequest.greedy = greedy;
-      if (filters) batchRequest.filters = filters;
-      if (include) batchRequest.include = include;
-      
-      const response =  await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
-      return response.body;
-    } 
-    // For single vector or content-based queries
-    else {
+      if (args.length === 1 && typeof args[0] === 'object' && 'queryVector' in args[0]) {
+        const options = args[0] as QueryRequest;
+        if (!options.queryVector) throw new Error("queryVector is required in QueryOptions");
+        queryVector = options.queryVector;
+        topK = options.topK ?? topK;
+        nProbes = options.nProbes ?? nProbes;
+        greedy = options.greedy ?? greedy;
+        filters = options.filters ?? filters;
+        include = options.include ?? include;
+      } else {
+        [queryVector, topK = 100, nProbes = 1, greedy = false, filters = {}, include = ["distance", "metadata"]] = args as [number[] | number[][], number?, number?, boolean?, object?, string[]?];
+
+        if (!queryVector) {
+          throw new Error("Invalid query input: queryVector is required.");
+        }
+      }
+
+      if (Array.isArray(queryVector[0])) {
+        const batchRequest: BatchQueryRequest = new BatchQueryRequest();
+        batchRequest.indexName = this.indexName;
+        batchRequest.indexKey = keyHex;
+        batchRequest.queryVectors = queryVector as number[][];
+
+        batchRequest.topK = topK;
+        batchRequest.nProbes = nProbes;
+        batchRequest.greedy = greedy;
+        batchRequest.filters = filters;
+        batchRequest.include = include;
+
+        const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
+        return response.body;
+      }
+
       const request = new QueryRequest();
       request.indexName = this.indexName;
       request.indexKey = keyHex;
       request.queryVector = queryVector as number[];
 
-      
-      // Optional parameters with defaults
-      if (topK !== undefined) request.topK = topK;
-      if (nProbes !== undefined) request.nProbes = nProbes;
-      if (greedy !== undefined) request.greedy = greedy;
-      if (filters) request.filters = filters;
-      if (include) request.include = include;
-      
-      const response =  await this.api.queryVectorsV1VectorsQueryPost(request);
+      request.topK = topK;
+      request.nProbes = nProbes;
+      request.greedy = greedy;
+      request.filters = filters;
+      request.include = include;
+
+      const response = await this.api.queryVectorsV1VectorsQueryPost(request);
       return response.body;
     }
-  }
 
     /**
      * Delete vectors from the index

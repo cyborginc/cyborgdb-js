@@ -3,6 +3,9 @@ import {
   CreateIndexRequest, 
   IndexOperationRequest,
   IndexConfig,
+  IndexIVFPQModel,
+  IndexIVFFlatModel,
+  IndexIVFModel,
 } from '../src/model/models';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
@@ -90,35 +93,36 @@ export class CyborgDB {
   async createIndex(
     indexName: string, 
     indexKey: Uint8Array, 
-    indexConfig: IndexConfig,
+    indexConfig: IndexIVFPQModel | IndexIVFFlatModel | IndexIVFModel,
     embeddingModel?: string
   ) {
     try {
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(indexKey).toString('hex');
 
-      
-      
       // Create the request using the proper snake_case property names
       const createRequest: CreateIndexRequest = {
         indexName: indexName,  // Use snake_case as expected by server
         indexKey: keyHex,     // Hex string format
         indexConfig: {
           // Convert from your camelCase properties to snake_case expected by server
-          dimension: indexConfig.dimension,
-          metric: indexConfig.metric,
-          indexType: indexConfig.indexType, // This is already snake_case
-          nLists: indexConfig.nLists,       // This is already snake_case
-          pqDim: indexConfig.pqDim || 0,    // This is already snake_case
-          pqBits: indexConfig.pqBits || 0,  // This is already snake_case
+          dimension: indexConfig.dimension || undefined,
+          metric: indexConfig.metric || undefined,
+          indexType: indexConfig.type || undefined, // This is already snake_case
+          nLists: indexConfig.nLists || undefined,       // This is already snake_case
         },
         embeddingModel: embeddingModel  // Use snake_case as expected by server
       };
+
+      if (indexConfig.type === 'ivfpq') {
+        (createRequest.indexConfig as any).pq_dim = (indexConfig as IndexIVFPQModel).pqDim;
+        (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQModel).pqBits;
+      }
       
       console.log('Sending create index request...');
       await this.api.createIndexV1IndexesCreatePost(createRequest);
       return new EncryptedIndex(
-        indexName, indexKey, indexConfig, this.api, embeddingModel)
+        indexName, indexKey, createRequest.indexConfig, this.api, embeddingModel)
     } catch (error: any) {
       this.handleApiError(error);
     }

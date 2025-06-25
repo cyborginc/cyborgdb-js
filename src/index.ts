@@ -18,6 +18,9 @@ export type {
   QueryResponse,
   ErrorResponseModel,
   HTTPValidationError,
+  IndexIVFFlatModel,
+  IndexIVFModel,
+  IndexIVFPQModel,
 } from './model/models';
 
 // Export API classes if users need direct access

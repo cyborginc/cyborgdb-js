@@ -8,6 +8,7 @@ import { EncryptedIndex } from '../encryptedIndex';
 import { IndexConfig } from '../model/indexConfig';
 import { QueryResponse } from '../model/queryResponse';
 import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
+import { IndexIVFPQModel } from '../model/indexIVFPQModel';
 
 /**
  * Combined CyborgDB Integration Tests
@@ -129,10 +130,9 @@ describe('CyborgDB Combined Integration Tests', () => {
     indexName = generateIndexName();
     indexKey = generateRandomKey();
     
-    const indexConfig: IndexConfig = {
+    const indexConfig: IndexIVFPQModel = {
       dimension: dimension,
       metric: METRIC,
-      indexType: "ivfpq",
       nLists: N_LISTS,
       pqDim: PQ_DIM,
       pqBits: PQ_BITS
@@ -266,7 +266,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     // Get specific vectors
     const ids = [`test-id-0`, `test-id-1`, `test-id-2`];
     const retrieved = await index.get(ids);
-    
+    console.log("RETRIEVED VECTORS:", retrieved);
     expect(retrieved.length).toBeGreaterThan(0);
     retrieved.forEach(item => {
       expect(ids).toContain(item.id);
@@ -464,10 +464,9 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 14: Delete and recreate index
   test('should handle deleting and recreating an index', async () => {
-    const indexConfig: IndexConfig = {
+    const indexConfig: IndexIVFPQModel = {
       dimension: dimension,
       metric: METRIC,
-      indexType: "ivfpq",
       nLists: N_LISTS,
       pqDim: PQ_DIM,
       pqBits: PQ_BITS
