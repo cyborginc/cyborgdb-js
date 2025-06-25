@@ -250,20 +250,60 @@ describe('CyborgDB Combined Integration Tests', () => {
   });
 
   // Test 6: Get vectors by ID (equivalent to Python test_04_untrained_get)
-  test('should retrieve vectors by ID from untrained index', async () => {
+ test('should retrieve vectors by ID from untrained index (with vector, metadata, contents)', async () => {
     const vectors = trainData.slice(0, 20).map((vector, i) => ({
       id: `test-id-${i}`,
       vector,
-      metadata: { test: true, index: i }
+      metadata: { test: true, index: i },
+      contents: Buffer.from(`test-content-${i}`).toString('base64'),  // <-- convert to base64 string
     }));
+
     await index.upsert(vectors);
-    
-    // Get specific vectors
-    const ids = [`test-id-0`, `test-id-1`, `test-id-2`];
-    const retrieved = await index.get(ids);
-    expect(retrieved.length).toBeGreaterThan(0);
-    retrieved.forEach(item => {
-      expect(ids).toContain(item.id);
+
+    const ids = ['test-id-0', 'test-id-1', 'test-id-2'];
+    const retrieved = await index.get(ids, ['vector', 'metadata', 'contents']);
+    expect(retrieved.length).toBe(ids.length);
+
+    retrieved.forEach((item, idx) => {
+      const expectedId = ids[idx];
+      const expectedIndex = parseInt(expectedId.replace('test-id-', ''));
+
+      // ID check
+      expect(item.id).toBe(expectedId);
+
+      // Vector check
+      expect(item.vector).toBeDefined();
+      expect(Array.isArray(item.vector)).toBe(true);
+      expect(item.vector.length).toBe(dimension);
+
+      // Metadata check
+      expect(item.metadata).toBeDefined();
+      const metadata = typeof item.metadata === 'string'
+        ? JSON.parse(item.metadata)
+        : item.metadata;
+      expect(metadata.test).toBe(true);
+      expect(metadata.index).toBe(expectedIndex);
+
+      // Contents check
+      expect(item.contents).toBeDefined();
+      let decoded: string;
+
+      if (typeof item.contents === 'string') {
+        // Contents returned as base64 string
+        decoded = Buffer.from(item.contents, 'base64').toString();
+      } else if (item.contents instanceof Buffer || item.contents?.type === 'Buffer') {
+        // Contents returned as Buffer object or plain object with .type === 'Buffer'
+        const buffer = Buffer.isBuffer(item.contents)
+          ? item.contents
+          : Buffer.from(item.contents.data);  // Handles plain object from JSON
+
+        decoded = buffer.toString();
+      } else {
+        throw new Error(`Unexpected contents type: ${typeof item.contents}`);
+      }
+
+      expect(decoded).toBe(`test-content-${expectedIndex}`);
+
     });
   });
 
