@@ -113,7 +113,6 @@ export class CyborgDB {
         },
         embeddingModel: embeddingModel  // Use snake_case as expected by server
       };
-
       if (indexConfig.type === 'ivfpq') {
         (createRequest.indexConfig as any).pq_dim = (indexConfig as IndexIVFPQModel).pqDim;
         (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQModel).pqBits;
@@ -127,38 +126,6 @@ export class CyborgDB {
       this.handleApiError(error);
     }
   }
-
-  /**
-   * Load an existing encrypted index
-   * @param indexName Name of the index to load
-   * @param indexKey 32-byte encryption key
-   * @returns Promise with the loaded index
-   */
-  // async loadIndex(indexName: string, indexKey: Uint8Array) {
-  //   try {
-  //     // First describe the index to get its configuration
-  //     const keyHex = Buffer.from(indexKey).toString('hex');
-  //     const request: IndexOperationRequest = {
-  //       indexName: indexName,
-  //       indexKey: keyHex
-  //     };
-      
-  //     const response = await this.api.getIndexInfoV1IndexesDescribePost(request);
-  //     const config = response.body.indexConfig as any;
-  //     const loadedIndexConfig: IndexConfig = {
-  //       dimension: config.dimension,
-  //       nLists: config.n_lists,
-  //       metric: config.metric,
-  //       indexType: config.index_type,
-  //       pqDim: config.pq_dim,
-  //       pqBits: config.pq_bits
-  //     }
-  //     return new EncryptedIndex(
-  //       indexName, indexKey, loadedIndexConfig, this.api)
-  //   } catch (error) {
-  //     this.handleApiError(error);
-  //   }
-  // }
 
   /**
    * Check the health of the server
