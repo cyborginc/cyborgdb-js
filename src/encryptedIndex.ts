@@ -49,13 +49,22 @@ export class EncryptedIndex {
         throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
     }
 
-    constructor(indexName:string, indexKey: Uint8Array, indexConfig: IndexConfig, api:DefaultApi, embeddingModel?: string){
-        this.indexName = indexName;
-        this.indexKey = indexKey;
-        this.indexConfig = indexConfig;
-        this.embeddingModel = embeddingModel;
-        this.api = api;
-    }
+    constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, embeddingModel?: string) {
+    this.indexName = indexName;
+    this.indexKey = indexKey;
+    this.embeddingModel = embeddingModel;
+    this.api = api;
+
+    // Normalize camelCase keys from potential snake_case input
+    this.indexConfig = {
+      ...indexConfig,
+      pqDim: indexConfig.pqDim ?? (indexConfig as any).pq_dim,
+      pqBits: indexConfig.pqBits ?? (indexConfig as any).pq_bits
+    };
+
+    delete (this.indexConfig as any).pq_dim;
+    delete (this.indexConfig as any).pq_bits;
+  }
     public getIndexName(): string {
         return this.indexName;
     }
@@ -166,7 +175,6 @@ export class EncryptedIndex {
               }
             }
             if (item.metadata) result.metadata = item.metadata;
-            console.log("Get result item:", result);
             return result;
           });
         } catch (error: any) {
@@ -267,61 +275,57 @@ export class EncryptedIndex {
      * @returns Promise with search results
      */
     async query(...args: [number[] | number[][], number?, number?, boolean?, object?, string[]?] | [QueryRequest]): Promise<QueryResponse> {
-      const keyHex = Buffer.from(this.indexKey).toString('hex');
-      let queryVector: number[] | number[][] = [];
-      let topK: number = 100;
-      let nProbes: number = 1;
-      let greedy: boolean = false;
-      let filters: object = {};
-      let include: string[] = ["distance", "metadata"];
+    const keyHex = Buffer.from(this.indexKey).toString('hex');
 
-      if (args.length === 1 && typeof args[0] === 'object' && 'queryVector' in args[0]) {
-        const options = args[0] as QueryRequest;
-        if (!options.queryVector) throw new Error("queryVector is required in QueryOptions");
-        queryVector = options.queryVector;
-        topK = options.topK ?? topK;
-        nProbes = options.nProbes ?? nProbes;
-        greedy = options.greedy ?? greedy;
-        filters = options.filters ?? filters;
-        include = options.include ?? include;
-      } else {
-        [queryVector, topK = 100, nProbes = 1, greedy = false, filters = {}, include = ["distance", "metadata"]] = args as [number[] | number[][], number?, number?, boolean?, object?, string[]?];
+    let inputVectors: number[] | number[][] = [];
+    let topK: number = 100;
+    let nProbes: number = 1;
+    let greedy: boolean = false;
+    let filters: object = {};
+    let include: string[] = ["distance", "metadata"];
 
-        if (!queryVector) {
-          throw new Error("Invalid query input: queryVector is required.");
-        }
+    // Handle overloaded arguments
+    if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
+      const options = args[0] as QueryRequest;
+
+      // Normalize to queryVectors always
+      if (!options.queryVector && !options.queryVectors) {
+        throw new Error("At least one of queryVector or queryVectors must be provided.");
       }
 
-      if (Array.isArray(queryVector[0])) {
-        const batchRequest: BatchQueryRequest = new BatchQueryRequest();
-        batchRequest.indexName = this.indexName;
-        batchRequest.indexKey = keyHex;
-        batchRequest.queryVectors = queryVector as number[][];
-
-        batchRequest.topK = topK;
-        batchRequest.nProbes = nProbes;
-        batchRequest.greedy = greedy;
-        batchRequest.filters = filters;
-        batchRequest.include = include;
-
-        const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
-        return response.body;
+      inputVectors = options.queryVectors ?? [options.queryVector as number[]];
+      topK = options.topK ?? topK;
+      nProbes = options.nProbes ?? nProbes;
+      greedy = options.greedy ?? greedy;
+      filters = options.filters ?? filters;
+      include = options.include ?? include;
+    } else {
+      [inputVectors, topK = 100, nProbes = 1, greedy = false, filters = {}, include = ["distance", "metadata"]] = args as [number[] | number[][], number?, number?, boolean?, object?, string[]?];
+      if (!inputVectors) {
+        throw new Error("Invalid query input: queryVector(s) is required.");
       }
 
-      const request = new QueryRequest();
-      request.indexName = this.indexName;
-      request.indexKey = keyHex;
-      request.queryVector = queryVector as number[];
-
-      request.topK = topK;
-      request.nProbes = nProbes;
-      request.greedy = greedy;
-      request.filters = filters;
-      request.include = include;
-
-      const response = await this.api.queryVectorsV1VectorsQueryPost(request);
-      return response.body;
+      // Wrap single vector in array
+      inputVectors = Array.isArray(inputVectors[0])
+        ? inputVectors as number[][]
+        : [inputVectors as number[]];
     }
+
+    // Always send as BatchQueryRequest using queryVectors
+    const batchRequest: BatchQueryRequest = new BatchQueryRequest();
+    batchRequest.indexName = this.indexName;
+    batchRequest.indexKey = keyHex;
+    batchRequest.queryVectors = inputVectors as number[][];
+    batchRequest.topK = topK;
+    batchRequest.nProbes = nProbes;
+    batchRequest.greedy = greedy;
+    batchRequest.filters = filters;
+    batchRequest.include = include;
+
+    const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
+    return response.body;
+  }
+
 
     /**
      * Delete vectors from the index
