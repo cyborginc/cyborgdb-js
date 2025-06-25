@@ -1,8 +1,8 @@
 import { DefaultApi, DefaultApiApiKeys } from '../src/api/defaultApi';
 import { 
   CreateIndexRequest, 
-  IndexOperationRequest,
-  IndexConfig,
+  // IndexOperationRequest,
+  // IndexConfig,
   IndexIVFPQModel,
   IndexIVFFlatModel,
   IndexIVFModel,
@@ -134,31 +134,31 @@ export class CyborgDB {
    * @param indexKey 32-byte encryption key
    * @returns Promise with the loaded index
    */
-  async loadIndex(indexName: string, indexKey: Uint8Array) {
-    try {
-      // First describe the index to get its configuration
-      const keyHex = Buffer.from(indexKey).toString('hex');
-      const request: IndexOperationRequest = {
-        indexName: indexName,
-        indexKey: keyHex
-      };
+  // async loadIndex(indexName: string, indexKey: Uint8Array) {
+  //   try {
+  //     // First describe the index to get its configuration
+  //     const keyHex = Buffer.from(indexKey).toString('hex');
+  //     const request: IndexOperationRequest = {
+  //       indexName: indexName,
+  //       indexKey: keyHex
+  //     };
       
-      const response = await this.api.getIndexInfoV1IndexesDescribePost(request);
-      const config = response.body.indexConfig as any;
-      const loadedIndexConfig: IndexConfig = {
-        dimension: config.dimension,
-        nLists: config.n_lists,
-        metric: config.metric,
-        indexType: config.index_type,
-        pqDim: config.pq_dim,
-        pqBits: config.pq_bits
-      }
-      return new EncryptedIndex(
-        indexName, indexKey, loadedIndexConfig, this.api)
-    } catch (error) {
-      this.handleApiError(error);
-    }
-  }
+  //     const response = await this.api.getIndexInfoV1IndexesDescribePost(request);
+  //     const config = response.body.indexConfig as any;
+  //     const loadedIndexConfig: IndexConfig = {
+  //       dimension: config.dimension,
+  //       nLists: config.n_lists,
+  //       metric: config.metric,
+  //       indexType: config.index_type,
+  //       pqDim: config.pq_dim,
+  //       pqBits: config.pq_bits
+  //     }
+  //     return new EncryptedIndex(
+  //       indexName, indexKey, loadedIndexConfig, this.api)
+  //   } catch (error) {
+  //     this.handleApiError(error);
+  //   }
+  // }
 
   /**
    * Check the health of the server
