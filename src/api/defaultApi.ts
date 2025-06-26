@@ -137,7 +137,6 @@ export class DefaultApi {
             json: true,
             body: ObjectSerializer.serialize(createIndexRequest, "CreateIndexRequest")
         };
-
         let authenticationPromise = Promise.resolve();
         if (this.authentications.APIKeyHeader.apiKey) {
             authenticationPromise = authenticationPromise.then(() => this.authentications.APIKeyHeader.applyToRequest(localVarRequestOptions));

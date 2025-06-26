@@ -37,7 +37,7 @@ export class IndexConfig {
             "type": "string"
         },
         {
-            "name": "type",
+            "name": "indexType",
             "baseName": "type",
             "type": "string"
         },
