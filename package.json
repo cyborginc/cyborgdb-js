@@ -44,6 +44,7 @@
   "homepage": "https://github.com/cyborginc/cyborgdb-js#readme",
   "dependencies": {
     "@types/request": "^2.48.12",
+    "axios": "^1.10.0",
     "dotenv": "^16.4.7",
     "h5wasm": "^0.7.9",
     "request": "^2.88.2"
