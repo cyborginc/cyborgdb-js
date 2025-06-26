@@ -88,26 +88,20 @@ export class EncryptedIndex {
             indexName: this.indexName,
             indexKey: keyHex
             };
-        
-            console.log('Checking if index exists before deletion...', { indexName: this.indexName });
-            
+                    
             // Call the getIndexInfo API first
             try {
             await this.api.getIndexInfoV1IndexesDescribePost(request);
-            console.log(`Confirmed index ${this.indexName} exists.`);
             } catch (infoError: any) {
             // Check if the error is specifically about the index not existing
             if (infoError.response?.body?.detail?.includes('not exist')) {
-                console.log(`Index ${this.indexName} does not exist, skipping deletion.`);
                 return { status: 'success', message: `Index '${this.indexName}' was already deleted` };
             }
             // If it's another type of error, rethrow it
             throw infoError;
             }
         
-            console.log('Sending delete index request...', {indexName: this.indexName });
             const response = await this.api.deleteIndexV1IndexesDeletePost(request);
-            console.log(`Delete response:`, response.body);
         
             return response.body;
         } catch (error: any) {
@@ -140,13 +134,6 @@ export class EncryptedIndex {
             ids: ids,
             include: includeFields
           };
-          
-          console.log('Sending get vectors request...', { 
-            indexName: this.indexName, 
-            hasKey: !!keyHex, 
-            ids, 
-            include: includeFields 
-          });
           
           const response = await this.api.getVectorsV1VectorsGetPost(getRequest);
           // Process the results to match Python SDK format
@@ -206,12 +193,6 @@ export class EncryptedIndex {
         tolerance: tolerance
       };
       
-      console.log('Sending train index request...', { 
-        indexName: this.indexName, 
-        batchSize, 
-        maxIters 
-      });
-      
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
       return response.body;
     } catch (error: any) {
@@ -256,7 +237,6 @@ export class EncryptedIndex {
           items: vectors
         };
         
-        console.log('Sending upsert request...');
         const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
         return response.body;
       } catch (error: any) {
@@ -342,12 +322,6 @@ export class EncryptedIndex {
             indexKey: keyHex,
             ids: ids
         };
-        
-        console.log('Sending delete vectors request...', {
-            indexName: this.indexName,
-            idsCount: ids.length,
-            firstId: ids[0]
-        });
         
         const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
         return response.body;
