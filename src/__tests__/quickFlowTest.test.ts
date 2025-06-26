@@ -136,7 +136,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     indexConfig.nLists = N_LISTS;
     // indexConfig.pqDim = PQ_DIM;
     // indexConfig.pqBits = PQ_BITS;
-    
+    console.log("Index config about to send:", JSON.stringify(indexConfig, null, 2));
     index = await client.createIndex(indexName, indexKey, indexConfig);
   }, 30000);
   
