@@ -10,7 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
 
 /**
 * Request model for performing a similarity search in the encrypted index.  Inherits:     IndexOperationRequest: Includes `index_name` and `index_key`.  Attributes:     query_vector (Optional[List[float]]): The vector used for the similarity search.     query_contents (Optional[str]): Text-based content used for semantic search.     top_k (int): Number of nearest neighbors to return for each query. Defaults to 100.     n_probes (int): Number of lists to probe during the query. Defaults to 1.     greedy (bool): Whether to use greedy search. Defaults to False.     filters (Optional[Dict[str, Any]]): JSON-like dictionary specifying metadata filters. Defaults to {}.     include (List[str]): List of additional fields to include in the response. Defaults to `[\"distances\"]`.
@@ -24,7 +23,7 @@ export class QueryRequest {
     * ID name
     */
     'indexName': string;
-    'queryVector'?: number[] | null;
+    'queryVector'?: number[] | number[][] | null;
     'queryContents'?: string | null;
     'topK'?: number = 100;
     'nProbes'?: number = 1;

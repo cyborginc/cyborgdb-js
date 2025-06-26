@@ -1,7 +1,6 @@
 import { DefaultApi } from "./api/apis";
 import { 
     UpsertRequest, 
-    CreateIndexRequest, 
     IndexOperationRequest,
     Request as QueryRequest,
     TrainRequest,
@@ -50,18 +49,27 @@ export class EncryptedIndex {
         throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
     }
 
-    constructor(indexName:string, indexKey: Uint8Array, indexConfig: IndexConfig, api:DefaultApi, embeddingModel?: string){
-        this.indexName = indexName;
-        this.indexKey = indexKey;
-        this.indexConfig = indexConfig;
-        this.embeddingModel = embeddingModel;
-        this.api = api;
-    }
+    constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, embeddingModel?: string) {
+    this.indexName = indexName;
+    this.indexKey = indexKey;
+    this.embeddingModel = embeddingModel;
+    this.api = api;
+
+    // Normalize camelCase keys from potential snake_case input
+    this.indexConfig = {
+      ...indexConfig,
+      pqDim: indexConfig.pqDim ?? (indexConfig as any).pq_dim,
+      pqBits: indexConfig.pqBits ?? (indexConfig as any).pq_bits
+    };
+
+    delete (this.indexConfig as any).pq_dim;
+    delete (this.indexConfig as any).pq_bits;
+  }
     public getIndexName(): string {
         return this.indexName;
     }
     public getIndexType(): string|undefined {
-        return this.indexConfig.indexType; ;
+        return this.indexConfig.indexType;
     }
     public isTrained(): boolean {
         return this.trained;
@@ -80,26 +88,20 @@ export class EncryptedIndex {
             indexName: this.indexName,
             indexKey: keyHex
             };
-        
-            console.log('Checking if index exists before deletion...', { indexName: this.indexName });
-            
+                    
             // Call the getIndexInfo API first
             try {
             await this.api.getIndexInfoV1IndexesDescribePost(request);
-            console.log(`Confirmed index ${this.indexName} exists.`);
             } catch (infoError: any) {
             // Check if the error is specifically about the index not existing
             if (infoError.response?.body?.detail?.includes('not exist')) {
-                console.log(`Index ${this.indexName} does not exist, skipping deletion.`);
                 return { status: 'success', message: `Index '${this.indexName}' was already deleted` };
             }
             // If it's another type of error, rethrow it
             throw infoError;
             }
         
-            console.log('Sending delete index request...', {indexName: this.indexName });
             const response = await this.api.deleteIndexV1IndexesDeletePost(request);
-            console.log(`Delete response:`, response.body);
         
             return response.body;
         } catch (error: any) {
@@ -133,13 +135,6 @@ export class EncryptedIndex {
             include: includeFields
           };
           
-          console.log('Sending get vectors request...', { 
-            indexName: this.indexName, 
-            hasKey: !!keyHex, 
-            ids, 
-            include: includeFields 
-          });
-          
           const response = await this.api.getVectorsV1VectorsGetPost(getRequest);
           // Process the results to match Python SDK format
           const responseBody: GetResponseModel = response.body;
@@ -167,7 +162,6 @@ export class EncryptedIndex {
               }
             }
             if (item.metadata) result.metadata = item.metadata;
-            console.log("Get result item:", result);
             return result;
           });
         } catch (error: any) {
@@ -198,12 +192,6 @@ export class EncryptedIndex {
         maxIters: maxIters,
         tolerance: tolerance
       };
-      
-      console.log('Sending train index request...', { 
-        indexName: this.indexName, 
-        batchSize, 
-        maxIters 
-      });
       
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
       return response.body;
@@ -249,7 +237,6 @@ export class EncryptedIndex {
           items: vectors
         };
         
-        console.log('Sending upsert request...');
         const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
         return response.body;
       } catch (error: any) {
@@ -258,65 +245,67 @@ export class EncryptedIndex {
     }
 
     /**
-   * Search for nearest neighbors in the index
-   * @param queryVector Either a single vector or an array of vectors to search for
-   * @param topK Number of results to return
-   * @param nProbes Number of probes for approximate search
-   * @param greedy Use greedy search or not
-   * @param filters Metadata filters
-   * @param include Fields to include in results
-   * @returns Promise with search results
-   */
-  async query(
-    queryVector: number[] | number[][],
-    topK: number = 100,
-    nProbes: number = 1,
-    greedy: boolean = false,
-    filters: any = {},
-    include: string[] = ["distance", "metadata"]
-
-  ): Promise<QueryResponse> {
-    // Validate that only one query type is provided
+     * Search for nearest neighbors in the index
+     * @param queryVector Either a single vector or an array of vectors to search for
+     * @param topK Number of results to return
+     * @param nProbes Number of probes for approximate search
+     * @param greedy Use greedy search or not
+     * @param filters Metadata filters
+     * @param include Fields to include in results
+     * @returns Promise with search results
+     */
+    async query(...args: [number[] | number[][], number?, number?, boolean?, object?, string[]?] | [QueryRequest]): Promise<QueryResponse> {
     const keyHex = Buffer.from(this.indexKey).toString('hex');
-    if (!queryVector) {
-      throw new Error('You must provide at least one queryVector');
-    }
-    // For batch queries
-    if (Array.isArray(queryVector[0])) {
-      const batchRequest:BatchQueryRequest = new BatchQueryRequest();
-      batchRequest.indexName = this.indexName;
-      batchRequest.indexKey = keyHex;
-      batchRequest.queryVectors = queryVector as number[][];
-      
-      // Optional parameters with defaults
-      if (topK !== undefined) batchRequest.topK = topK;
-      if (nProbes !== undefined) batchRequest.nProbes = nProbes;
-      if (greedy !== undefined) batchRequest.greedy = greedy;
-      if (filters) batchRequest.filters = filters;
-      if (include) batchRequest.include = include;
-      
-      const response =  await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
-      return response.body;
-    } 
-    // For single vector or content-based queries
-    else {
-      const request = new QueryRequest();
-      request.indexName = this.indexName;
-      request.indexKey = keyHex;
-      request.queryVector = queryVector as number[];
 
-      
-      // Optional parameters with defaults
-      if (topK !== undefined) request.topK = topK;
-      if (nProbes !== undefined) request.nProbes = nProbes;
-      if (greedy !== undefined) request.greedy = greedy;
-      if (filters) request.filters = filters;
-      if (include) request.include = include;
-      
-      const response =  await this.api.queryVectorsV1VectorsQueryPost(request);
-      return response.body;
+    let inputVectors: number[] | number[][] = [];
+    let topK: number = 100;
+    let nProbes: number = 1;
+    let greedy: boolean = false;
+    let filters: object = {};
+    let include: string[] = ["distance", "metadata"];
+
+    // Handle overloaded arguments
+    if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
+      const options = args[0] as QueryRequest;
+
+      // Normalize to queryVectors always
+      if (!options.queryVector && !options.queryVectors) {
+        throw new Error("At least one of queryVector or queryVectors must be provided.");
+      }
+
+      inputVectors = options.queryVectors ?? [options.queryVector as number[]];
+      topK = options.topK ?? topK;
+      nProbes = options.nProbes ?? nProbes;
+      greedy = options.greedy ?? greedy;
+      filters = options.filters ?? filters;
+      include = options.include ?? include;
+    } else {
+      [inputVectors, topK = 100, nProbes = 1, greedy = false, filters = {}, include = ["distance", "metadata"]] = args as [number[] | number[][], number?, number?, boolean?, object?, string[]?];
+      if (!inputVectors) {
+        throw new Error("Invalid query input: queryVector(s) is required.");
+      }
+
+      // Wrap single vector in array
+      inputVectors = Array.isArray(inputVectors[0])
+        ? inputVectors as number[][]
+        : [inputVectors as number[]];
     }
+
+    // Always send as BatchQueryRequest using queryVectors
+    const batchRequest: BatchQueryRequest = new BatchQueryRequest();
+    batchRequest.indexName = this.indexName;
+    batchRequest.indexKey = keyHex;
+    batchRequest.queryVectors = inputVectors as number[][];
+    batchRequest.topK = topK;
+    batchRequest.nProbes = nProbes;
+    batchRequest.greedy = greedy;
+    batchRequest.filters = filters;
+    batchRequest.include = include;
+
+    const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
+    return response.body;
   }
+
 
     /**
      * Delete vectors from the index
@@ -333,12 +322,6 @@ export class EncryptedIndex {
             indexKey: keyHex,
             ids: ids
         };
-        
-        console.log('Sending delete vectors request...', {
-            indexName: this.indexName,
-            idsCount: ids.length,
-            firstId: ids[0]
-        });
         
         const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
         return response.body;

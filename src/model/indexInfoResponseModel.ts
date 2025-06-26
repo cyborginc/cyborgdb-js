@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Response model for retrieving information about an index.  Attributes:     index_name (str): The name of the index.     index_type (str): The type of index (e.g., IVF, IVFFlat, IVFPQ).     is_trained (bool): Indicates whether the index has been trained.     index_config (Dict[str, Any]): The full configuration details of the index.
 */

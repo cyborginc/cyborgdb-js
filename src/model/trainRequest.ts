@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Request model for training an index.  Attributes:     batch_size (int): Size of each batch for training. Default is 2048.     max_iters (int): Maximum iterations for training. Default is 100.     tolerance (float): Convergence tolerance for training. Default is 1e-6.     max_memory (int): Maximum memory (MB) usage during training. Default is 0 (no limit).
 */

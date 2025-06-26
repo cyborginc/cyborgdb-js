@@ -137,7 +137,6 @@ export class DefaultApi {
             json: true,
             body: ObjectSerializer.serialize(createIndexRequest, "CreateIndexRequest")
         };
-
         let authenticationPromise = Promise.resolve();
         if (this.authentications.APIKeyHeader.apiKey) {
             authenticationPromise = authenticationPromise.then(() => this.authentications.APIKeyHeader.applyToRequest(localVarRequestOptions));
@@ -709,7 +708,6 @@ export class DefaultApi {
                                 // Ignore parsing errors
                             }
                             
-                            console.error(`Query failed with status ${response.statusCode}: ${errorMessage}`);
                             reject(new HttpError(response, body, response.statusCode));
                         }
                     }

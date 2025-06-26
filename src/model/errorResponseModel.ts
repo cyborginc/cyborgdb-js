@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Standard error response model.  Attributes:     status_code (int): HTTP status code of the error.     detail (str): A detailed message describing the error.
 */
