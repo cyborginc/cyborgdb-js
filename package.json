@@ -12,8 +12,8 @@
   ],
   "scripts": {
     "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types",
-    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:h5wasm --external:request --external:dotenv --external:fs --external:path",
-    "build:esm": "esbuild src/index.ts --bundle --platform=neutral --format=esm --outfile=dist/index.esm.js --external:h5wasm --external:request --external:dotenv --external:fs --external:path",
+    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:h5wasm --external:dotenv --external:fs --external:path --external:form-data",
+    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:h5wasm --external:dotenv --external:fs --external:path --external:form-data",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
     "clean": "rm -rf dist",
     "lint": "eslint src/**/*.ts",
