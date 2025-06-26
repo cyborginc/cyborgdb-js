@@ -5,11 +5,10 @@ import * as path from 'path';
 import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
 import { EncryptedIndex } from '../encryptedIndex';
-import { IndexConfig } from '../model/indexConfig';
 import { QueryResponse } from '../model/queryResponse';
-import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexIVFPQModel } from '../model/indexIVFPQModel';
 import { IndexIVFFlatModel } from '../model/indexIVFFlatModel';
+import { IndexIVFModel } from '../model/indexIVFModel';
 
 /**
  * Combined CyborgDB Integration Tests
@@ -44,8 +43,7 @@ const N_PROBES = 10;
 const BATCH_SIZE = 100;
 const MAX_ITERS = 5;
 const TOLERANCE = 1e-5;
-const IS_LITE_MODE = process.env.IS_LITE_MODE === 'true';
-const testIndexType = "ivfflat"
+const testIndexType: "ivfflat" | "ivfpq" | "ivf" = "ivfflat";
 
 // Recall thresholds
 const RECALL_THRESHOLDS = {
@@ -89,6 +87,31 @@ function computeRecall(results: any[], groundTruth: number[][]): number {
   return RECALL_THRESHOLDS.trained + 0.05;
 }
 
+function generateIndexConfig(testIndexType:string, dimension: number): IndexIVFFlatModel | IndexIVFPQModel | IndexIVFModel {
+  // can you just create a helper function for this code block?
+if (testIndexType === "ivfpq") {
+      const indexConfig = new IndexIVFPQModel();
+      indexConfig.dimension = dimension;
+      indexConfig.metric = METRIC;
+      indexConfig.nLists = N_LISTS;
+      indexConfig.pqDim = PQ_DIM;
+      indexConfig.pqBits = PQ_BITS;
+      return indexConfig;
+    } else if (testIndexType === "ivfflat") {
+      const indexConfig = new IndexIVFFlatModel();
+      indexConfig.dimension = dimension;
+      indexConfig.metric = METRIC;
+      indexConfig.nLists = N_LISTS;
+      return indexConfig;
+    } else {
+      const indexConfig = new IndexIVFModel();
+      indexConfig.dimension = dimension;
+      indexConfig.metric = METRIC;
+      indexConfig.nLists = N_LISTS;
+      return indexConfig;
+    }
+}
+
 // Load dataset once before all tests
 beforeAll(async () => {
   try {
@@ -129,13 +152,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   beforeEach(async () => {
     indexName = generateIndexName();
     indexKey = generateRandomKey();
-    
-    const indexConfig = new IndexIVFFlatModel();
-    indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
-    // indexConfig.pqDim = PQ_DIM;
-    // indexConfig.pqBits = PQ_BITS;
+    const indexConfig = generateIndexConfig(testIndexType, dimension);
     console.log("Index config about to send:", JSON.stringify(indexConfig, null, 2));
     index = await client.createIndex(indexName, indexKey, indexConfig);
   }, 30000);
@@ -489,13 +506,7 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 13: Delete and recreate index
   test('should handle deleting and recreating an index', async () => {
-    const indexConfig = new IndexIVFFlatModel();
-    indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
-    // indexConfig.pqDim = PQ_DIM;
-    // indexConfig.pqBits = PQ_BITS;
-    
+    const indexConfig = generateIndexConfig(testIndexType, dimension);
     // Delete the index
     await index.deleteIndex();
     
