@@ -23,7 +23,6 @@ export class CyborgDB {
    * @param apiKey API key for authentication
    */
   constructor(baseUrl: string, apiKey?: string) {
-    console.log('Initializing CyborgDB client with URL:', baseUrl);
     this.api = new DefaultApi(baseUrl);
     
     // Use the public setter method
@@ -34,7 +33,6 @@ export class CyborgDB {
     
     // Set API key if provided
     if (apiKey) {
-      console.log('Using API key authentication');
       this.api.setApiKey(DefaultApiApiKeys.APIKeyHeader, apiKey);
     }
   }
@@ -71,9 +69,7 @@ export class CyborgDB {
    */
   async listIndexes() {
     try {
-      console.log('Attempting to list indexes...');
       const response = await this.api.listIndexesV1IndexesListGet();
-      console.log('Response received:', response);
       return response.body.indexes || [];
     } catch (error: any) {
       this.handleApiError(error);
@@ -118,7 +114,6 @@ export class CyborgDB {
         (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQModel).pqBits;
       }
       
-      console.log('Sending create index request...');
       await this.api.createIndexV1IndexesCreatePost(createRequest);
       return new EncryptedIndex(
         indexName, indexKey, createRequest.indexConfig, this.api, embeddingModel)
@@ -134,7 +129,6 @@ export class CyborgDB {
 
   async getHealth() {
     try {
-      console.log('Checking server health...');
       const response = await this.api.healthCheckV1HealthGet();
       return response.body;
     } catch (error: any) {

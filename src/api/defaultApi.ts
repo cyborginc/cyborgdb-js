@@ -708,7 +708,6 @@ export class DefaultApi {
                                 // Ignore parsing errors
                             }
                             
-                            console.error(`Query failed with status ${response.statusCode}: ${errorMessage}`);
                             reject(new HttpError(response, body, response.statusCode));
                         }
                     }
