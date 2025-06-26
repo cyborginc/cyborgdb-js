@@ -10,11 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-import { IndexIVFFlatModel } from './indexIVFFlatModel';
-import { IndexIVFModel } from './indexIVFModel';
-import { IndexIVFPQModel } from './indexIVFPQModel';
-
 export class IndexConfig {
     'dimension'?: number;
     'nLists'?: number;
@@ -42,7 +37,7 @@ export class IndexConfig {
             "type": "string"
         },
         {
-            "name": "type",
+            "name": "indexType",
             "baseName": "type",
             "type": "string"
         },

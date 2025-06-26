@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Response model for listing all indexes.  Attributes:     indexes (List[str]): List of available index names.
 */

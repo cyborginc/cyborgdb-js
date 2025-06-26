@@ -10,10 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-import { BatchQueryRequest } from './batchQueryRequest';
-import { QueryRequest } from './queryRequest';
-
 export class Request {
     /**
     * 32-byte encryption key as hex string

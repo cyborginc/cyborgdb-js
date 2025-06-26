@@ -10,8 +10,6 @@
  * Do not edit the class manually.
  */
 
-import { RequestFile } from './models';
-
 /**
 * Request model for performing operations on an existing index (e.g., delete, describe).  Attributes:     index_key (str): A 32-byte encryption key as a hex string.     index_name (str): The name/identifier of the index.
 */
