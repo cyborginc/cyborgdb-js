@@ -13,6 +13,9 @@ import {
     IndexConfig,
     ErrorResponseModel,
     HTTPValidationError,
+    IndexIVFFlatModel,
+    IndexIVFModel,
+    IndexIVFPQModel,
   } from './model/models';
 
 export class EncryptedIndex {
@@ -74,9 +77,15 @@ export class EncryptedIndex {
     public isTrained(): boolean {
         return this.trained;
     }
-    public getIndexConfig(): IndexConfig {
-        return this.indexConfig;
-    }
+    public getIndexConfig(): IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel {
+        // Return a copy to prevent external modification
+        if (this.indexConfig.indexType === 'ivf_flat') {
+            return { ...this.indexConfig } as IndexIVFFlatModel;
+        } else if (this.indexConfig.indexType === 'ivf_pq') {
+            return { ...this.indexConfig } as IndexIVFPQModel;
+        } else {
+            return { ...this.indexConfig } as IndexIVFModel;
+    }}
     /**
      * Delete an index
      * @returns Promise with the result of the operation
