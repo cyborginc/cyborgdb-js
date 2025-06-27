@@ -6,7 +6,7 @@ import {
   IndexIVFPQModel,
   IndexIVFFlatModel,
   IndexIVFModel,
-} from '../src/model/models';
+} from './model/models';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
 import { EncryptedIndex } from './encryptedIndex';

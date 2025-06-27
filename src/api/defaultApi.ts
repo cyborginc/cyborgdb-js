@@ -11,8 +11,7 @@
  */
 
 
-import localVarRequest from 'request';
-import http from 'http';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
 /* tslint:disable:no-unused-locals */
 import { CreateIndexRequest } from '../model/createIndexRequest';
@@ -106,7 +105,7 @@ export class DefaultApi {
      * @summary Create Encrypted Index
      * @param createIndexRequest 
      */
-    public async createIndexV1IndexesCreatePost (createIndexRequest: CreateIndexRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }> {
+    public async createIndexV1IndexesCreatePost (createIndexRequest: CreateIndexRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/indexes/create';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -117,7 +116,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'createIndexRequest' is not null or undefined
         if (createIndexRequest === null || createIndexRequest === undefined) {
@@ -126,17 +124,14 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(createIndexRequest, "CreateIndexRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(createIndexRequest, "CreateIndexRequest")
         };
+
         let authenticationPromise = Promise.resolve();
         if (this.authentications.APIKeyHeader.apiKey) {
             authenticationPromise = authenticationPromise.then(() => this.authentications.APIKeyHeader.applyToRequest(localVarRequestOptions));
@@ -148,36 +143,26 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "CyborgdbServiceApiSchemasIndexSuccessResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "CyborgdbServiceApiSchemasIndexSuccessResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Delete a specific index.
      * @summary Delete Encrypted Index
      * @param indexOperationRequest 
      */
-    public async deleteIndexV1IndexesDeletePost (indexOperationRequest: IndexOperationRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }> {
+    public async deleteIndexV1IndexesDeletePost (indexOperationRequest: IndexOperationRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/indexes/delete';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -188,7 +173,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'indexOperationRequest' is not null or undefined
         if (indexOperationRequest === null || indexOperationRequest === undefined) {
@@ -197,16 +181,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(indexOperationRequest, "IndexOperationRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(indexOperationRequest, "IndexOperationRequest")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -220,36 +200,26 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "CyborgdbServiceApiSchemasIndexSuccessResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "CyborgdbServiceApiSchemasIndexSuccessResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Delete vectors by their IDs.
      * @summary Delete Items from Encrypted Index
      * @param deleteRequest 
      */
-    public async deleteVectorsV1VectorsDeletePost (deleteRequest: DeleteRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasVectorsSuccessResponseModel;  }> {
+    public async deleteVectorsV1VectorsDeletePost (deleteRequest: DeleteRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: CyborgdbServiceApiSchemasVectorsSuccessResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/vectors/delete';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -260,7 +230,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'deleteRequest' is not null or undefined
         if (deleteRequest === null || deleteRequest === undefined) {
@@ -269,16 +238,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(deleteRequest, "DeleteRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(deleteRequest, "DeleteRequest")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -292,36 +257,26 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "CyborgdbServiceApiSchemasVectorsSuccessResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasVectorsSuccessResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "CyborgdbServiceApiSchemasVectorsSuccessResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Get information about a specific index.
      * @summary Describe Encrypted Index
      * @param indexOperationRequest 
      */
-    public async getIndexInfoV1IndexesDescribePost (indexOperationRequest: IndexOperationRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: IndexInfoResponseModel;  }> {
+    public async getIndexInfoV1IndexesDescribePost (indexOperationRequest: IndexOperationRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: IndexInfoResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/indexes/describe';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -332,7 +287,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'indexOperationRequest' is not null or undefined
         if (indexOperationRequest === null || indexOperationRequest === undefined) {
@@ -341,16 +295,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(indexOperationRequest, "IndexOperationRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(indexOperationRequest, "IndexOperationRequest")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -364,36 +314,26 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "IndexInfoResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: IndexInfoResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "IndexInfoResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Retrieve vectors by their IDs.
      * @summary Get Items from Encrypted Index
      * @param getRequest 
      */
-    public async getVectorsV1VectorsGetPost (getRequest: GetRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: GetResponseModel;  }> {
+    public async getVectorsV1VectorsGetPost (getRequest: GetRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: GetResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/vectors/get';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -404,7 +344,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'getRequest' is not null or undefined
         if (getRequest === null || getRequest === undefined) {
@@ -413,16 +352,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(getRequest, "GetRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(getRequest, "GetRequest")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -436,35 +371,25 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "GetResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: GetResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "GetResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Check if the API is running.
      * @summary Health check endpoint
      */
-    public async healthCheckV1HealthGet (options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: { [key: string]: string; };  }> {
+    public async healthCheckV1HealthGet (options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: { [key: string]: string; };  }> {
         const localVarPath = this.basePath + '/v1/health';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -475,19 +400,14 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'GET',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
+            url: localVarPath,
         };
 
         let authenticationPromise = Promise.resolve();
@@ -498,35 +418,25 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "{ [key: string]: string; }");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: { [key: string]: string; };  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "{ [key: string]: string; }");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * List all available indexes.
      * @summary List Encrypted Indexes
      */
-    public async listIndexesV1IndexesListGet (options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: IndexListResponseModel;  }> {
+    public async listIndexesV1IndexesListGet (options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: IndexListResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/indexes/list';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -537,19 +447,14 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'GET',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
+            url: localVarPath,
         };
 
         let authenticationPromise = Promise.resolve();
@@ -563,30 +468,20 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "IndexListResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: IndexListResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "IndexListResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Search for nearest neighbors in the index.
      * @summary Query Encrypted Index
@@ -595,7 +490,7 @@ export class DefaultApi {
     public async queryVectorsV1VectorsQueryPost(
         request: Request, 
         options: {headers: {[name: string]: string}} = {headers: {}}
-    ): Promise<{ response: http.IncomingMessage; body: QueryResponse; }> {
+    ): Promise<{ response: AxiosResponse; body: QueryResponse; }> {
         const localVarPath = this.basePath + '/v1/vectors/query';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -607,7 +502,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'request' is not null or undefined
         if (request === null || request === undefined) {
@@ -619,15 +513,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(request, "Request")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(request, "Request")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -643,84 +534,47 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
-                }
-            }
-            
-            return new Promise<{ response: http.IncomingMessage; body: QueryResponse; }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            try {
-                                // Parse the response body
-                                const queryResponse = ObjectSerializer.deserialize(body, "QueryResponse");
-                                
-                                // Ensure results are always in the correct format based on query type
-                                if (queryResponse.results) {
-                                    // If single item response but batch query was sent, wrap in an array
-                                    if (isBatchQuery && 
-                                        !Array.isArray(queryResponse.results[0]) && 
-                                        Array.isArray(queryResponse.results)) {
-                                        queryResponse.results = [queryResponse.results];
-                                    }
-                                    
-                                    // If batch response but single query was sent, unwrap it
-                                    if (!isBatchQuery && 
-                                        Array.isArray(queryResponse.results) && 
-                                        queryResponse.results.length === 1 && 
-                                        Array.isArray(queryResponse.results[0])) {
-                                        queryResponse.results = queryResponse.results[0];
-                                    }
-                                }
-                                
-                                resolve({ response: response, body: queryResponse });
-                            } catch (error: unknown) {
-                                let errorMessage = "Unknown error";
-                                
-                                // Type guard to safely access error properties
-                                if (error instanceof Error) {
-                                    errorMessage = error.message;
-                                } else if (typeof error === 'string') {
-                                    errorMessage = error;
-                                } else if (error && typeof error === 'object' && 'message' in error) {
-                                    errorMessage = String(error.message);
-                                }
-                                
-                                reject(new Error(`Failed to deserialize response: ${errorMessage}`));
-                            }
-                        } else {
-                            // For better error diagnosis, try to parse error response
-                            let errorMessage = "HTTP request failed";
-                            try {
-                                if (typeof body === 'string') {
-                                    errorMessage = body;
-                                } else if (body && typeof body === 'object') {
-                                    errorMessage = JSON.stringify(body);
-                                }
-                            } catch (e) {
-                                // Ignore parsing errors
-                            }
-                            
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                
+                // Parse the response body
+                const queryResponse = ObjectSerializer.deserialize(response.data, "QueryResponse");
+                
+                // Ensure results are always in the correct format based on query type
+                if (queryResponse.results) {
+                    // If single item response but batch query was sent, wrap in an array
+                    if (isBatchQuery && 
+                        !Array.isArray(queryResponse.results[0]) && 
+                        Array.isArray(queryResponse.results)) {
+                        queryResponse.results = [queryResponse.results];
                     }
-                });
-            });
+                    
+                    // If batch response but single query was sent, unwrap it
+                    if (!isBatchQuery && 
+                        Array.isArray(queryResponse.results) && 
+                        queryResponse.results.length === 1 && 
+                        Array.isArray(queryResponse.results[0])) {
+                        queryResponse.results = queryResponse.results[0];
+                    }
+                }
+                
+                return { response: response, body: queryResponse };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
+                }
+                throw error;
+            }
         });
     }
+
     /**
      * Train the index for efficient querying.
      * @summary Train Encrypted index
      * @param trainRequest 
      */
-    public async trainIndexV1IndexesTrainPost (trainRequest: TrainRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }> {
+    public async trainIndexV1IndexesTrainPost (trainRequest: TrainRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/indexes/train';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -731,7 +585,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'trainRequest' is not null or undefined
         if (trainRequest === null || trainRequest === undefined) {
@@ -740,16 +593,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(trainRequest, "TrainRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(trainRequest, "TrainRequest")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -763,36 +612,26 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "CyborgdbServiceApiSchemasIndexSuccessResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasIndexSuccessResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "CyborgdbServiceApiSchemasIndexSuccessResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
+
     /**
      * Add or update vectors in the index.
      * @summary Add Items to Encrypted Index
      * @param upsertRequest 
      */
-    public async upsertVectorsV1VectorsUpsertPost (upsertRequest: UpsertRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasVectorsSuccessResponseModel;  }> {
+    public async upsertVectorsV1VectorsUpsertPost (upsertRequest: UpsertRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: CyborgdbServiceApiSchemasVectorsSuccessResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/vectors/upsert';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -803,7 +642,6 @@ export class DefaultApi {
         } else {
             localVarHeaderParams.Accept = produces.join(',');
         }
-        let localVarFormParams: any = {};
 
         // verify required parameter 'upsertRequest' is not null or undefined
         if (upsertRequest === null || upsertRequest === undefined) {
@@ -812,16 +650,12 @@ export class DefaultApi {
 
         (<any>Object).assign(localVarHeaderParams, options.headers);
 
-        let localVarUseFormData = false;
-
-        let localVarRequestOptions: localVarRequest.Options = {
+        let localVarRequestOptions: AxiosRequestConfig = {
             method: 'POST',
-            qs: localVarQueryParameters,
+            params: localVarQueryParameters,
             headers: localVarHeaderParams,
-            uri: localVarPath,
-            useQuerystring: this._useQuerystring,
-            json: true,
-            body: ObjectSerializer.serialize(upsertRequest, "UpsertRequest")
+            url: localVarPath,
+            data: ObjectSerializer.serialize(upsertRequest, "UpsertRequest")
         };
 
         let authenticationPromise = Promise.resolve();
@@ -835,28 +669,17 @@ export class DefaultApi {
             interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
         }
 
-        return interceptorPromise.then(() => {
-            if (Object.keys(localVarFormParams).length) {
-                if (localVarUseFormData) {
-                    (<any>localVarRequestOptions).formData = localVarFormParams;
-                } else {
-                    localVarRequestOptions.form = localVarFormParams;
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "CyborgdbServiceApiSchemasVectorsSuccessResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
                 }
+                throw error;
             }
-            return new Promise<{ response: http.IncomingMessage; body: CyborgdbServiceApiSchemasVectorsSuccessResponseModel;  }>((resolve, reject) => {
-                localVarRequest(localVarRequestOptions, (error, response, body) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "CyborgdbServiceApiSchemasVectorsSuccessResponseModel");
-                            resolve({ response: response, body: body });
-                        } else {
-                            reject(new HttpError(response, body, response.statusCode));
-                        }
-                    }
-                });
-            });
         });
     }
 
