@@ -1,11 +1,10 @@
 // Main SDK exports
-export { CyborgDB } from './client';
+export { CyborgDB as Client } from './client';
 
 // Export commonly used types and interfaces
 export type {
   CreateIndexRequest,
   IndexOperationRequest,
-  IndexConfig,
   UpsertRequest,
   QueryRequest,
   BatchQueryRequest,
@@ -17,9 +16,9 @@ export type {
   QueryResponse,
   ErrorResponseModel,
   HTTPValidationError,
-  IndexIVFFlatModel,
-  IndexIVFModel,
-  IndexIVFPQModel,
+  IndexIVFFlatModel as IndexIVFFlat,
+  IndexIVFModel as IndexIVF,
+  IndexIVFPQModel as IndexIVFPQ,
   QueryResultItem
 } from './model/models';
 

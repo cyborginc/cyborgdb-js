@@ -1,8 +1,6 @@
 import { DefaultApi, DefaultApiApiKeys } from '../src/api/defaultApi';
 import { 
-  CreateIndexRequest, 
-  // IndexOperationRequest,
-  // IndexConfig,
+  CreateIndexRequest,
   IndexIVFPQModel,
   IndexIVFFlatModel,
   IndexIVFModel,
