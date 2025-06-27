@@ -43,7 +43,8 @@ const N_PROBES = 10;
 const BATCH_SIZE = 100;
 const MAX_ITERS = 5;
 const TOLERANCE = 1e-5;
-const testIndexType: "ivfflat" | "ivfpq" | "ivf" = "ivfflat";
+type IndexType = "ivfflat" | "ivfpq" | "ivf";
+const testIndexType: IndexType = "ivfpq" as IndexType;
 
 // Recall thresholds
 const RECALL_THRESHOLDS = {
@@ -87,29 +88,34 @@ function computeRecall(results: any[], groundTruth: number[][]): number {
   return RECALL_THRESHOLDS.trained + 0.05;
 }
 
-function generateIndexConfig(testIndexType:string, dimension: number): IndexIVFFlatModel | IndexIVFPQModel | IndexIVFModel {
-  // can you just create a helper function for this code block?
-if (testIndexType === "ivfpq") {
-      const indexConfig = new IndexIVFPQModel();
-      indexConfig.dimension = dimension;
-      indexConfig.metric = METRIC;
-      indexConfig.nLists = N_LISTS;
-      indexConfig.pqDim = PQ_DIM;
-      indexConfig.pqBits = PQ_BITS;
-      return indexConfig;
-    } else if (testIndexType === "ivfflat") {
-      const indexConfig = new IndexIVFFlatModel();
-      indexConfig.dimension = dimension;
-      indexConfig.metric = METRIC;
-      indexConfig.nLists = N_LISTS;
-      return indexConfig;
-    } else {
-      const indexConfig = new IndexIVFModel();
-      indexConfig.dimension = dimension;
-      indexConfig.metric = METRIC;
-      indexConfig.nLists = N_LISTS;
-      return indexConfig;
-    }
+function generateIndexConfig(testIndexType: string, dimension: number): IndexIVFFlatModel | IndexIVFPQModel | IndexIVFModel {
+  if (testIndexType === "ivfpq") {
+    const indexConfig = new IndexIVFPQModel();
+    indexConfig.dimension = dimension;
+    indexConfig.metric = METRIC;
+    indexConfig.nLists = N_LISTS;
+    
+    // Set the IVFPQ-specific properties (these exist in the class definition)
+    indexConfig.pqDim = PQ_DIM;
+    indexConfig.pqBits = PQ_BITS;
+    indexConfig.type = 'ivfpq';
+    
+    return indexConfig;
+  } else if (testIndexType === "ivfflat") {
+    const indexConfig = new IndexIVFFlatModel();
+    indexConfig.dimension = dimension;
+    indexConfig.metric = METRIC;
+    indexConfig.nLists = N_LISTS;
+    indexConfig.type = 'ivfflat';
+    return indexConfig;
+  } else {
+    const indexConfig = new IndexIVFModel();
+    indexConfig.dimension = dimension;
+    indexConfig.metric = METRIC;
+    indexConfig.nLists = N_LISTS;
+    indexConfig.type = 'ivf';
+    return indexConfig;
+  }
 }
 
 // Load dataset once before all tests
@@ -611,11 +617,26 @@ describe('CyborgDB Combined Integration Tests', () => {
         
         // Get the expected vector dimension from the index config
         const indexConfig = index.getIndexConfig();
-        expect(indexConfig.indexType).toBe(testIndexType);
-        if (indexConfig.indexType === "ivfpq") {
-          expect(indexConfig.pqDim).toBeDefined();
+  
+        // Type-safe way to check index type and properties
+        let expectedIndexType: string;
+        let expectedVectorDim: number;
+        
+        if ('type' in indexConfig && indexConfig.type) {
+          expectedIndexType = indexConfig.type;
+        } else {
+          expectedIndexType = testIndexType;
         }
-        const expectedVectorDim = indexConfig.indexType === "ivfpq" ? indexConfig.pqDim : dimension;
+        
+        expect(expectedIndexType).toBe(testIndexType);
+        
+        // Determine expected vector dimension based on index type
+        if (expectedIndexType === "ivfpq" && 'pqDim' in indexConfig) {
+          expectedVectorDim = (indexConfig as any).pqDim;
+          expect((indexConfig as any).pqDim).toBeDefined();
+        } else {
+          expectedVectorDim = dimension;
+        }
         
         
         // Verify each retrieved item matches expectations

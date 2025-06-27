@@ -104,6 +104,11 @@ export class CyborgDB {
           metric: indexConfig.metric || undefined,
           indexType: indexConfig.type || undefined, // This is already snake_case
           nLists: indexConfig.nLists || undefined,       // This is already snake_case
+          // For IVFPQ, add additional properties
+          ...(indexConfig instanceof IndexIVFPQModel ? {
+            pqDim: indexConfig.pqDim,
+            pqBits: indexConfig.pqBits
+          } : {})
         },
         embeddingModel: embeddingModel  // Use snake_case as expected by server
       };
