@@ -5,7 +5,6 @@ export { CyborgDB } from './client';
 export type {
   CreateIndexRequest,
   IndexOperationRequest,
-  IndexConfig,
   UpsertRequest,
   QueryRequest,
   BatchQueryRequest,
