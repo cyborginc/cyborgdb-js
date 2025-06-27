@@ -153,7 +153,6 @@ describe('CyborgDB Combined Integration Tests', () => {
     indexName = generateIndexName();
     indexKey = generateRandomKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
-    console.log("Index config about to send:", JSON.stringify(indexConfig, null, 2));
     index = await client.createIndex(indexName, indexKey, indexConfig);
   }, 30000);
   
@@ -213,7 +212,6 @@ describe('CyborgDB Combined Integration Tests', () => {
       {},
       ["metadata"]
     );
-    
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
     expect(response.results.length).toBeGreaterThan(0);
