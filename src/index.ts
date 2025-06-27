@@ -1,6 +1,5 @@
 // Main SDK exports
 export { CyborgDB } from './client';
-export { EncryptedIndex } from './encryptedIndex';
 
 // Export commonly used types and interfaces
 export type {
@@ -21,6 +20,7 @@ export type {
   IndexIVFFlatModel,
   IndexIVFModel,
   IndexIVFPQModel,
+  QueryResultItem
 } from './model/models';
 
 // Export API classes if users need direct access
