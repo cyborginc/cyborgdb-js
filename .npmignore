@@ -40,6 +40,15 @@ npm-debug.log*
 build/
 lib/
 
+# Integrated test that works with the service only
+src/__tests__/
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+test/
+tests/
+
 # Git
 .git/
 .gitignore
