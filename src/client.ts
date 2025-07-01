@@ -91,6 +91,7 @@ export class CyborgDB {
     embeddingModel?: string
   ) {
     try {
+
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(indexKey).toString('hex');
 
@@ -105,9 +106,9 @@ export class CyborgDB {
           indexType: indexConfig.type || undefined, // This is already snake_case
           nLists: indexConfig.nLists || undefined,       // This is already snake_case
           // For IVFPQ, add additional properties
-          ...(indexConfig instanceof IndexIVFPQModel ? {
-            pqDim: indexConfig.pqDim,
-            pqBits: indexConfig.pqBits
+          ...(indexConfig.type === 'ivfpq' ? {
+            pqDim: (indexConfig as IndexIVFPQModel).pqDim || undefined,
+            pqBits: (indexConfig as IndexIVFPQModel).pqBits ||undefined
           } : {})
         },
         embeddingModel: embeddingModel  // Use snake_case as expected by server
