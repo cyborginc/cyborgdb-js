@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import { AxiosRequestConfig } from 'axios';
 
 export * from './batchQueryRequest';
 export * from './createIndexRequest';
