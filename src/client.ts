@@ -8,6 +8,8 @@ import {
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
 import { EncryptedIndex } from './encryptedIndex';
+import https from 'https';
+import axios from 'axios';
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service
@@ -20,9 +22,40 @@ export class CyborgDB {
    * @param baseUrl Base URL of the CyborgDB service
    * @param apiKey API key for authentication
    */
-  constructor(baseUrl: string, apiKey?: string) {
-    this.api = new DefaultApi(baseUrl);
+  constructor(baseUrl: string, apiKey?: string,verifySsl?: boolean) {
+    // Ensure the URL uses HTTPS (same as Python SDK)
+    if (baseUrl.startsWith('http://')) {
+      baseUrl = baseUrl.replace('http://', 'https://');
+      console.warn(`Automatically converted HTTP URL to HTTPS: ${baseUrl}`);
+    }
     
+    // Validate that the URL uses HTTPS
+    if (!baseUrl.startsWith('https://')) {
+      throw new Error('API URL must use HTTPS protocol');
+    }
+
+    this.api = new DefaultApi(baseUrl);
+  
+    // Configure SSL verification (same logic as Python SDK)
+    if (verifySsl === undefined) {
+      // Auto-detect: disable SSL verification for localhost/127.0.0.1 (development)
+      if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+        verifySsl = false;
+        console.info('SSL verification disabled for localhost (development mode)');
+      } else {
+        verifySsl = true;
+      }
+    } else if (!verifySsl) {
+      console.warn('SSL verification is disabled. Not recommended for production.');
+    }
+
+    // Configure axios to handle SSL (Node.js only)
+    if (typeof window === 'undefined') {
+      
+      axios.defaults.httpsAgent = new https.Agent({
+        rejectUnauthorized: verifySsl
+      });
+    }
     // Use the public setter method
     this.api.defaultHeaders = {
       'Content-Type': 'application/json',
