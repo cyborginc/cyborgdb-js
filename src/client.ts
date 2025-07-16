@@ -30,16 +30,6 @@ export class CyborgDB {
     apiKey?: string, 
     verifySsl?: boolean
   ) {
-    // Ensure the URL uses HTTPS 
-    if (baseUrl.startsWith('http://')) {
-      baseUrl = baseUrl.replace('http://', 'https://');
-      console.warn(`Automatically converted HTTP URL to HTTPS: ${baseUrl}`);
-    }
-    
-    // Validate that the URL uses HTTPS
-    if (!baseUrl.startsWith('https://')) {
-      throw new Error('API URL must use HTTPS protocol');
-    }
 
     // Configure SSL verification 
     if (verifySsl === undefined) {
