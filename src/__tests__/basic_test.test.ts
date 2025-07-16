@@ -1,5 +1,3 @@
-// import { Client, IndexIVFPQ,} from '../../cyborgdb/dist';
-
 import { Client, IndexIVFPQ} from '../../dist';
 
 import { randomBytes } from 'crypto';
@@ -25,7 +23,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // Constants
-const API_URL = 'https://localhost:8000';
+const API_URL = 'http://localhost:8000';
 const CYBORGDB_API_KEY = "cyborg_e9n8t7e6r5p4r3i2s1e0987654321abc"
 
 if (!CYBORGDB_API_KEY) {
