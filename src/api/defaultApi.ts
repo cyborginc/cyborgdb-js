@@ -32,7 +32,6 @@ import { ObjectSerializer, Authentication, VoidAuth, Interceptor } from '../mode
 import { ApiKeyAuth } from '../model/models';
 
 import { HttpError } from './apis';
-import https from 'https';
 
 let defaultBasePath = 'http://localhost';
 
@@ -48,7 +47,7 @@ export class DefaultApi {
     protected _basePath = defaultBasePath;
     protected _defaultHeaders : any = {};
     protected _useQuerystring : boolean = false;
-    protected _httpsAgent?: https.Agent;
+
     protected authentications = {
         'default': <Authentication>new VoidAuth(),
         'APIKeyHeader': new ApiKeyAuth('header', 'X-API-Key'),
@@ -130,9 +129,7 @@ export class DefaultApi {
             params: localVarQueryParameters,
             headers: localVarHeaderParams,
             url: localVarPath,
-            data: ObjectSerializer.serialize(createIndexRequest, "CreateIndexRequest"),
-            // Add HTTPS agent if available
-            httpsAgent: this._httpsAgent
+            data: ObjectSerializer.serialize(createIndexRequest, "CreateIndexRequest")
         };
 
         let authenticationPromise = Promise.resolve();

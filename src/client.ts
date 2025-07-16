@@ -9,21 +9,28 @@ import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
 import { EncryptedIndex } from './encryptedIndex';
 import https from 'https';
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
+
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service
  */
 export class CyborgDB {
   private api: DefaultApi;
+  private interceptorId?: number;
 
   /**
    * Create a new CyborgDB client
-   * @param baseUrl Base URL of the CyborgDB service
+   * @param baseUrl Base URL of the CyborgDB service  
    * @param apiKey API key for authentication
+   * @param verifySsl Whether to verify SSL certificates (auto-detected if not specified)
    */
-  constructor(baseUrl: string, apiKey?: string,verifySsl?: boolean) {
-    // Ensure the URL uses HTTPS (same as Python SDK)
+  constructor(
+    baseUrl: string, 
+    apiKey?: string, 
+    verifySsl?: boolean
+  ) {
+    // Ensure the URL uses HTTPS 
     if (baseUrl.startsWith('http://')) {
       baseUrl = baseUrl.replace('http://', 'https://');
       console.warn(`Automatically converted HTTP URL to HTTPS: ${baseUrl}`);
@@ -34,9 +41,7 @@ export class CyborgDB {
       throw new Error('API URL must use HTTPS protocol');
     }
 
-    this.api = new DefaultApi(baseUrl);
-  
-    // Configure SSL verification (same logic as Python SDK)
+    // Configure SSL verification 
     if (verifySsl === undefined) {
       // Auto-detect: disable SSL verification for localhost/127.0.0.1 (development)
       if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
@@ -49,14 +54,33 @@ export class CyborgDB {
       console.warn('SSL verification is disabled. Not recommended for production.');
     }
 
-    // Configure axios to handle SSL (Node.js only)
+    // Configure axios interceptor for SSL (Node.js only)
     if (typeof window === 'undefined') {
-      
-      axios.defaults.httpsAgent = new https.Agent({
+      // Create HTTPS agent
+      const httpsAgent = new https.Agent({
         rejectUnauthorized: verifySsl
       });
+
+      // Add request interceptor to inject HTTPS agent
+      this.interceptorId = axios.interceptors.request.use(
+        (config: InternalAxiosRequestConfig) => {
+          // Only add agent for HTTPS requests
+          if (config.url?.startsWith('https://') || 
+              (config.baseURL?.startsWith('https://') && !config.url?.startsWith('http'))) {
+            config.httpsAgent = httpsAgent;
+          }
+          return config;
+        },
+        (error) => {
+          return Promise.reject(error);
+        }
+      );
     }
-    // Use the public setter method
+
+    // Create the API instance (after interceptor is set up)
+    this.api = new DefaultApi(baseUrl);
+    
+    // Set default headers
     this.api.defaultHeaders = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
@@ -65,6 +89,15 @@ export class CyborgDB {
     // Set API key if provided
     if (apiKey) {
       this.api.setApiKey(DefaultApiApiKeys.APIKeyHeader, apiKey);
+    }
+  }
+
+  /**
+   * Clean up interceptors when done
+   */
+  public cleanup() {
+    if (this.interceptorId !== undefined) {
+      axios.interceptors.request.eject(this.interceptorId);
     }
   }
 
@@ -107,8 +140,6 @@ export class CyborgDB {
     }
   }
 
-  
-
   /**
    * Create a new encrypted index
    * @param indexName Name of the index
@@ -124,28 +155,27 @@ export class CyborgDB {
     embeddingModel?: string
   ) {
     try {
-
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(indexKey).toString('hex');
 
       // Create the request using the proper snake_case property names
       const createRequest: CreateIndexRequest = {
-        indexName: indexName,  // Use snake_case as expected by server
-        indexKey: keyHex,     // Hex string format
+        indexName: indexName,
+        indexKey: keyHex,
         indexConfig: {
-          // Convert from your camelCase properties to snake_case expected by server
           dimension: indexConfig.dimension || undefined,
           metric: indexConfig.metric || undefined,
-          indexType: indexConfig.type || undefined, // This is already snake_case
-          nLists: indexConfig.nLists || undefined,       // This is already snake_case
+          indexType: indexConfig.type || undefined,
+          nLists: indexConfig.nLists || undefined,
           // For IVFPQ, add additional properties
           ...(indexConfig.type === 'ivfpq' ? {
             pqDim: (indexConfig as IndexIVFPQModel).pqDim || undefined,
-            pqBits: (indexConfig as IndexIVFPQModel).pqBits ||undefined
+            pqBits: (indexConfig as IndexIVFPQModel).pqBits || undefined
           } : {})
         },
-        embeddingModel: embeddingModel  // Use snake_case as expected by server
+        embeddingModel: embeddingModel
       };
+      
       if (indexConfig.type === 'ivfpq') {
         (createRequest.indexConfig as any).pq_dim = (indexConfig as IndexIVFPQModel).pqDim;
         (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQModel).pqBits;
@@ -163,7 +193,6 @@ export class CyborgDB {
    * Check the health of the server
    * @returns Promise with the health status
    */
-
   async getHealth() {
     try {
       const response = await this.api.healthCheckV1HealthGet();
