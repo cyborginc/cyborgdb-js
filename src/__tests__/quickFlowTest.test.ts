@@ -183,8 +183,41 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 2: Index creation and basic operations
   test('should create index and verify properties', async () => {
-    expect(index.getIndexName()).toBe(indexName);
-    expect(index.getIndexType()).toBe(testIndexType);
+    const retrievedIndexName = await index.getIndexName();
+    const retrievedIndexType = await index.getIndexType();
+    
+    expect(retrievedIndexName).toBe(indexName);
+    expect(retrievedIndexType).toBe(testIndexType);
+  });
+
+  // New Test: Load existing index
+  test('should load existing index and verify properties', async () => {
+    // Create some test data in the original index
+    const vectors = trainData.slice(0, 10).map((vector, i) => ({
+      id: `load-test-${i}`,
+      vector,
+      metadata: { test: true, index: i }
+    }));
+    await index.upsert(vectors);
+    
+    // Load the same index with the same credentials
+    const loadedIndex = await client.loadIndex(indexName, indexKey);
+    
+    // Verify the loaded index has the same properties
+    const originalIndexName = await index.getIndexName();
+    const originalIndexType = await index.getIndexType();
+    const loadedIndexName = await loadedIndex.getIndexName();
+    const loadedIndexType = await loadedIndex.getIndexType();
+    
+    expect(loadedIndexName).toBe(originalIndexName);
+    expect(loadedIndexType).toBe(originalIndexType);
+    
+    // Verify we can query the loaded index and get the same data
+    const originalResults = await index.get(['load-test-0', 'load-test-1']);
+    const loadedResults = await loadedIndex.get(['load-test-0', 'load-test-1']);
+    
+    expect(loadedResults.length).toBe(originalResults.length);
+    expect(loadedResults[0].id).toBe(originalResults[0].id);
   });
 
   // Test 3: Untrained upsert (equivalent to Python test_01_untrained_upsert)
@@ -338,9 +371,17 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(vectors);
     
+    // Verify index is not trained initially
+    const initialTrainedState = await index.isTrained();
+    expect(initialTrainedState).toBe(false);
+    
     // Train the index
     const trainResult = await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
     expect(trainResult.status).toBe('success');
+    
+    // Verify index is now trained
+    const finalTrainedState = await index.isTrained();
+    expect(finalTrainedState).toBe(true);
   });
 
   // Test 8: Trained upsert and query (equivalent to Python test_06_trained_upsert + test_07_trained_query_no_metadata)
@@ -516,8 +557,11 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     // Recreate with the same name
     const recreatedIndex = await client.createIndex(indexName, indexKey, indexConfig);
-    expect(recreatedIndex.getIndexName()).toBe(indexName);
-    expect(recreatedIndex.getIndexType()).toBe(testIndexType);
+    const recreatedIndexName = await recreatedIndex.getIndexName();
+    const recreatedIndexType = await recreatedIndex.getIndexType();
+    
+    expect(recreatedIndexName).toBe(indexName);
+    expect(recreatedIndexType).toBe(testIndexType);
     
     // Verify the index works
     const vectors = trainData.slice(0, 5).map((vector, i) => ({
@@ -567,144 +611,130 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(results.length).toBeGreaterThan(0);
   });
 
-  // Fix the test to handle the fact that IVFPQ returns compressed vectors
-    test('should retrieve vectors by ID from trained index', async () => {
-        // Setup: upsert initial vectors
-        const initialVectors = trainData.slice(0, 50).map((vector, i) => ({
-            id: `trained-id-${i}`,
-            vector,
-            metadata: { 
-            category: "initial", 
-            index: i,
-            test: true,
-            owner: {
-                name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
-                pets_owned: i % 3 + 1
-            }
-            }
-        }));
-        await index.upsert(initialVectors);
-        
-        // Train the index
-        await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
-        
-        // Add more vectors after training
-        const additionalVectors = trainData.slice(50, 80).map((vector, i) => ({
-            id: `trained-id-${i + 50}`,
-            vector,
-            metadata: { 
-            category: "additional", 
-            index: i + 50,
-            test: true,
-            owner: {
-                name: (i + 50) % 3 === 0 ? "John" : ((i + 50) % 3 === 1 ? "Joseph" : "Mike"),
-                pets_owned: (i + 50) % 3 + 1
-            }
-            }
-        }));
-        await index.upsert(additionalVectors);
-        
-        // Test getting vectors from both initial and additional sets
-        const idsToGet = [
-            'trained-id-0', 'trained-id-1', 'trained-id-10',  // from initial set
-            'trained-id-50', 'trained-id-55', 'trained-id-70' // from additional set
-        ];
-        
-        const retrieved = await index.get(idsToGet);
-        
-        // Verify we got the expected number of results
-        expect(retrieved.length).toBe(idsToGet.length);
-        
-        // Get the expected vector dimension from the index config
-        const indexConfig = index.getIndexConfig();
-  
-        // Type-safe way to check index type and properties
-        let expectedIndexType: string;
-        let expectedVectorDim: number;
-        
-        if ('type' in indexConfig && indexConfig.type) {
-          expectedIndexType = indexConfig.type;
-        } else {
-          expectedIndexType = testIndexType;
+  // Test 15: Retrieve vectors by ID from trained index with updated async calls
+  test('should retrieve vectors by ID from trained index', async () => {
+    // Setup: upsert initial vectors
+    const initialVectors = trainData.slice(0, 50).map((vector, i) => ({
+      id: `trained-id-${i}`,
+      vector,
+      metadata: { 
+        category: "initial", 
+        index: i,
+        test: true,
+        owner: {
+          name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
+          pets_owned: i % 3 + 1
         }
-        
-        expect(expectedIndexType).toBe(testIndexType);
-        
-        // Determine expected vector dimension based on index type
-        if (expectedIndexType === "ivfpq" && 'pqDim' in indexConfig) {
-          expectedVectorDim = (indexConfig as any).pqDim;
-          expect((indexConfig as any).pqDim).toBeDefined();
-        } else {
-          expectedVectorDim = dimension;
+      }
+    }));
+    await index.upsert(initialVectors);
+    
+    // Train the index
+    await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+    
+    // Add more vectors after training
+    const additionalVectors = trainData.slice(50, 80).map((vector, i) => ({
+      id: `trained-id-${i + 50}`,
+      vector,
+      metadata: { 
+        category: "additional", 
+        index: i + 50,
+        test: true,
+        owner: {
+          name: (i + 50) % 3 === 0 ? "John" : ((i + 50) % 3 === 1 ? "Joseph" : "Mike"),
+          pets_owned: (i + 50) % 3 + 1
         }
+      }
+    }));
+    await index.upsert(additionalVectors);
+    
+    // Test getting vectors from both initial and additional sets
+    const idsToGet = [
+      'trained-id-0', 'trained-id-1', 'trained-id-10',  // from initial set
+      'trained-id-50', 'trained-id-55', 'trained-id-70' // from additional set
+    ];
+    
+    const retrieved = await index.get(idsToGet);
+    
+    // Verify we got the expected number of results
+    expect(retrieved.length).toBe(idsToGet.length);
+    
+    // Get the index type to determine expected vector dimension
+    const indexType = await index.getIndexType();
+    
+    // For IVFPQ, vectors are compressed to pqDim, for others they keep original dimension
+    let expectedVectorDim: number;
+    if (indexType === "ivfpq" || indexType === "ivf_pq") {
+      expectedVectorDim = PQ_DIM; // Use the constant we defined for IVFPQ
+    } else {
+      expectedVectorDim = dimension;
+    }
+    
+    // Verify each retrieved item matches expectations
+    retrieved.forEach((item, idx) => {
+      const expectedId = idsToGet[idx];
+      const expectedIndex = parseInt(expectedId.replace('trained-id-', ''));
+      
+      expect(item.id).toBe(expectedId);
+      expect(item.vector).toBeDefined();
+      
+      // Check vector dimension based on index type
+      if (item.vector && item.vector.length > 0) {
+        expect(item.vector.length).toBe(expectedVectorDim);
+      } else {
+        console.warn(`Skipping vector dimension check for ${item.id} (vector missing or empty)`);
+      }
+      
+      // Verify metadata structure
+      if (item.metadata) {
+        const metadata = typeof item.metadata === 'string'
+          ? JSON.parse(item.metadata)
+          : item.metadata;
         
+        expect(metadata.index).toBe(expectedIndex);
+        expect(metadata.test).toBe(true);
+        expect(metadata.owner).toBeDefined();
+        expect(metadata.owner.name).toMatch(/^(John|Joseph|Mike)$/);
+        expect(typeof metadata.owner.pets_owned).toBe('number');
         
-        // Verify each retrieved item matches expectations
-        retrieved.forEach((item, idx) => {
-            const expectedId = idsToGet[idx];
-            const expectedIndex = parseInt(expectedId.replace('trained-id-', ''));
-            
-            expect(item.id).toBe(expectedId);
-            expect(item.vector).toBeDefined();
-            
-            // For IVFPQ, expect compressed dimension; for others, expect full dimension
-            if (item.vector && item.vector.length > 0) {
-              expect(item.vector.length).toBe(expectedVectorDim);
-            } else {
-              console.warn(`Skipping vector dimension check for ${item.id} (vector missing or empty)`);
-            }
-            
-            // Verify metadata structure
-            if (item.metadata) {
-            const metadata = typeof item.metadata === 'string'
-                ? JSON.parse(item.metadata)
-                : item.metadata;
-            
-            expect(metadata.index).toBe(expectedIndex);
-            expect(metadata.test).toBe(true);
-            expect(metadata.owner).toBeDefined();
-            expect(metadata.owner.name).toMatch(/^(John|Joseph|Mike)$/);
-            expect(typeof metadata.owner.pets_owned).toBe('number');
-            
-            if (expectedIndex < 50) {
-                expect(metadata.category).toBe('initial');
-            } else {
-                expect(metadata.category).toBe('additional');
-            }
-            }
-        });
-        
+        if (expectedIndex < 50) {
+          expect(metadata.category).toBe('initial');
+        } else {
+          expect(metadata.category).toBe('additional');
+        }
+      }
     });
+  });
 
-    // Test 16: Get deleted items verification (equivalent to Python test_11_get_deleted)
-    test('should verify deleted vectors cannot be retrieved', async () => {
+  // Test 16: Get deleted items verification (equivalent to Python test_11_get_deleted)
+  test('should verify deleted vectors cannot be retrieved', async () => {
     // Setup: upsert vectors with specific IDs for deletion testing
     const vectorsToDelete = trainData.slice(0, 30).map((vector, i) => ({
-        id: `delete-test-${i}`,
-        vector,
-        metadata: { 
+      id: `delete-test-${i}`,
+      vector,
+      metadata: { 
         test: true, 
         index: i,
         category: "to-be-deleted",
         owner: {
-            name: "TestUser",
-            pets_owned: i % 5 + 1
+          name: "TestUser",
+          pets_owned: i % 5 + 1
         }
-        }
+      }
     }));
     
     const vectorsToKeep = trainData.slice(30, 50).map((vector, i) => ({
-        id: `keep-test-${i}`,
-        vector,
-        metadata: { 
+      id: `keep-test-${i}`,
+      vector,
+      metadata: { 
         test: true, 
         index: i + 30,
         category: "to-be-kept",
         owner: {
-            name: "TestUser",
-            pets_owned: (i + 30) % 5 + 1
+          name: "TestUser",
+          pets_owned: (i + 30) % 5 + 1
         }
-        }
+      }
     }));
     
     // Upsert all vectors
@@ -712,8 +742,8 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     // Verify all vectors exist before deletion
     const allIds = [
-        ...vectorsToDelete.map(v => v.id),
-        ...vectorsToKeep.map(v => v.id)
+      ...vectorsToDelete.map(v => v.id),
+      ...vectorsToKeep.map(v => v.id)
     ];
     const beforeDeletion = await index.get(allIds);
     expect(beforeDeletion.length).toBe(allIds.length);
@@ -734,8 +764,8 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     // If any results are returned, they should not be the deleted items
     deletedResults.forEach(result => {
-        // This shouldn't happen - no deleted IDs should be returned
-        expect(idsToDelete).not.toContain(result.id);
+      // This shouldn't happen - no deleted IDs should be returned
+      expect(idsToDelete).not.toContain(result.id);
     });
     
     // Verify that non-deleted vectors are still accessible
@@ -745,29 +775,80 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     // Verify the kept vectors have correct data
     keptResults.forEach(result => {
-        expect(keptIds).toContain(result.id);
-        expect(result.vector).toBeDefined();
-        
-        if (result.metadata) {
+      expect(keptIds).toContain(result.id);
+      expect(result.vector).toBeDefined();
+      
+      if (result.metadata) {
         const metadata = typeof result.metadata === 'string'
-            ? JSON.parse(result.metadata)
-            : result.metadata;
+          ? JSON.parse(result.metadata)
+          : result.metadata;
         expect(metadata.category).toBe('to-be-kept');
-        }
+      }
     });
-        
+    
     // Additional verification: try to get a mix of deleted and existing IDs
     const mixedIds = [
-        idsToDelete[0], idsToDelete[1],  // deleted
-        keptIds[0], keptIds[1]           // existing
+      idsToDelete[0], idsToDelete[1],  // deleted
+      keptIds[0], keptIds[1]           // existing
     ];
     const mixedResults = await index.get(mixedIds);
     
     // Should only get back the existing ones
     expect(mixedResults.length).toBe(2);
     mixedResults.forEach(result => {
-        expect(keptIds).toContain(result.id);
-        expect(idsToDelete).not.toContain(result.id);
+      expect(keptIds).toContain(result.id);
+      expect(idsToDelete).not.toContain(result.id);
     });
-    });
+  });
+
+  // New Test 17: Test index configuration retrieval
+  test('should retrieve and validate index configuration', async () => {
+    const indexConfig = await index.getIndexConfig();
+    
+    expect(indexConfig).toBeDefined();
+    expect(indexConfig.dimension).toBe(dimension);
+    expect(indexConfig.metric).toBe(METRIC);
+    
+    // The property name might be nLists or n_lists depending on the API response
+    const nLists = indexConfig.nLists ?? (indexConfig as any).n_lists;
+    expect(nLists).toBe(N_LISTS);
+    
+    if (testIndexType === "ivfpq") {
+      const ivfpqConfig = indexConfig as IndexIVFPQModel;
+      // Handle both possible property names for PQ dimensions and bits
+      const pqDim = ivfpqConfig.pqDim ?? (ivfpqConfig as any).pq_dim;
+      const pqBits = ivfpqConfig.pqBits ?? (ivfpqConfig as any).pq_bits;
+      
+      expect(pqDim).toBe(PQ_DIM);
+      expect(pqBits).toBe(PQ_BITS);
+    }
+  });
+
+  // New Test 18: Test loadIndex with wrong credentials (error case)
+  test('should fail to load index with wrong credentials', async () => {
+    const wrongKey = generateRandomKey();
+    
+    try {
+      await client.loadIndex(indexName, wrongKey);
+      // If we reach here, the test should fail because an error was expected
+      expect(true).toBe(false);
+    } catch (error) {
+      // This is expected - loading with wrong key should fail
+      expect(error).toBeDefined();
+    }
+  });
+
+  // New Test 19: Test loadIndex with non-existent index
+  test('should fail to load non-existent index', async () => {
+    const nonExistentIndexName = generateIndexName("nonexistent");
+    
+    try {
+      await client.loadIndex(nonExistentIndexName, indexKey);
+      // If we reach here, the test should fail because an error was expected
+      expect(true).toBe(false);
+    } catch (error) {
+      // This is expected - loading non-existent index should fail
+      expect(error).toBeDefined();
+    }
+  });
 });
