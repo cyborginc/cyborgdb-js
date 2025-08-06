@@ -16,6 +16,7 @@ import {
     IndexIVFFlatModel,
     IndexIVFModel,
     IndexIVFPQModel,
+    IndexInfoResponseModel,
   } from './model/models';
 
 export class EncryptedIndex {
@@ -68,16 +69,43 @@ export class EncryptedIndex {
     delete (this.indexConfig as any).pq_dim;
     delete (this.indexConfig as any).pq_bits;
   }
-    public getIndexName(): string {
-        return this.indexName;
+
+
+  private async describeIndex(
+      indexName: string, 
+      indexKey: Uint8Array
+    ): Promise<IndexInfoResponseModel> {
+      try {
+        const keyHex = Buffer.from(indexKey).toString('hex');
+        const request: IndexOperationRequest = {
+          indexName: indexName,
+          indexKey: keyHex
+        }
+        
+        // Get the full response object
+        const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost(request);
+        
+        // Extract the body which contains the IndexInfoResponseModel
+        return apiResponse.body;
+      } catch (error: any) {
+        this.handleApiError(error);
+      }
+    }  
+    public async getIndexName(): Promise<string> {
+        const response = await this.describeIndex(this.indexName, this.indexKey);
+        return response.indexName;
     }
-    public getIndexType(): string|undefined {
-        return this.indexConfig.indexType;
+    public async getIndexType(): Promise<string|undefined> {
+        const response = await this.describeIndex(this.indexName, this.indexKey);
+        return response.indexType;
     }
-    public isTrained(): boolean {
-        return this.trained;
+    public async isTrained(): Promise<boolean> {
+        const response = await this.describeIndex(this.indexName, this.indexKey);
+        return response.isTrained;
     }
-    public getIndexConfig(): IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel {
+    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel> {
+        const response = await this.describeIndex(this.indexName, this.indexKey);
+        this.indexConfig = response.indexConfig;
         // Return a copy to prevent external modification
         if (this.indexConfig.indexType === 'ivf_flat') {
             return { ...this.indexConfig } as IndexIVFFlatModel;

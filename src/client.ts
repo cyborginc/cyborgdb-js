@@ -4,6 +4,8 @@ import {
   IndexIVFPQModel,
   IndexIVFFlatModel,
   IndexIVFModel,
+  IndexOperationRequest,
+  IndexInfoResponseModel,
 } from './model/models';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
@@ -121,6 +123,42 @@ export class CyborgDB {
       await this.api.createIndexV1IndexesCreatePost(createRequest);
       return new EncryptedIndex(
         indexName, indexKey, createRequest.indexConfig, this.api, embeddingModel)
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  private async describeIndex(
+    indexName: string, 
+    indexKey: Uint8Array
+  ): Promise<IndexInfoResponseModel> {
+    try {
+      const keyHex = Buffer.from(indexKey).toString('hex');
+      const request: IndexOperationRequest = {
+        indexName: indexName,
+        indexKey: keyHex
+      }
+      
+      // Get the full response object
+      const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost(request);
+      
+      // Extract the body which contains the IndexInfoResponseModel
+      return apiResponse.body;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  async loadIndex(
+    indexName: string,
+    indexKey: Uint8Array
+  ) : Promise<EncryptedIndex> {
+    try {
+      const response = await this.describeIndex(indexName, indexKey);
+      const indexConfig = response.indexConfig;
+      const loadedIndex: EncryptedIndex = new EncryptedIndex(
+        response.indexName, indexKey, indexConfig, this.api);
+      return loadedIndex;
     } catch (error: any) {
       this.handleApiError(error);
     }
