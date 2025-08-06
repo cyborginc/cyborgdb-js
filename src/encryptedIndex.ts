@@ -2,7 +2,8 @@ import { DefaultApi } from "./api/apis";
 import { 
     UpsertRequest, 
     IndexOperationRequest,
-    Request as QueryRequest,
+    QueryRequest,
+    // Request as QueryRequest,
     TrainRequest,
     DeleteRequest,
     GetRequest,
@@ -17,6 +18,7 @@ import {
     IndexIVFModel,
     IndexIVFPQModel,
     IndexInfoResponseModel,
+    Request,
   } from './model/models';
 
 export class EncryptedIndex {
@@ -281,68 +283,124 @@ export class EncryptedIndex {
       }
     }
 
-    /**
-     * Search for nearest neighbors in the index
-     * @param queryVector Either a single vector or an array of vectors to search for
-     * @param topK Number of results to return
-     * @param nProbes Number of probes for approximate search
-     * @param greedy Use greedy search or not
-     * @param filters Metadata filters
-     * @param include Fields to include in results
-     * @returns Promise with search results
-     */
-    async query(...args: [number[] | number[][], number?, number?, boolean?, object?, string[]?] | [QueryRequest]): Promise<QueryResponse> {
-    const keyHex = Buffer.from(this.indexKey).toString('hex');
+    
+  /**
+ * Search for nearest neighbors in the index
+ */
+async query(
+  queryVectors?: number[] | number[][],
+  queryContents?: string,
+  topK?: number,
+  nProbes?: number,
+  filters?: object,
+  include?: string[],
+  greedy?: boolean
+): Promise<QueryResponse>;
 
-    let inputVectors: number[] | number[][] = [];
-    let topK: number = 100;
-    let nProbes: number = 1;
-    let greedy: boolean = false;
-    let filters: object = {};
-    let include: string[] = ["distance", "metadata"];
+async query(request: QueryRequest): Promise<QueryResponse>;
 
-    // Handle overloaded arguments
-    if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
-      const options = args[0] as QueryRequest;
+async query(...args: any[]): Promise<QueryResponse> {
+  const keyHex = Buffer.from(this.indexKey).toString('hex');
 
-      // Normalize to queryVectors always
-      if (!options.queryVector && !options.queryVectors) {
-        throw new Error("At least one of queryVector or queryVectors must be provided.");
+  let queryVectors: number[][] | undefined;
+  let queryContents: string | undefined;
+  let topK: number = 100;
+  let nProbes: number = 1;
+  let greedy: boolean = false;
+  let filters: object = {};
+  let include: string[] = ["distance", "metadata"];
+  let isSingleQuery: boolean = false; // Track if original input was single query
+
+  // Handle different function signatures
+  if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
+    const request = args[0] as QueryRequest;
+    const inputVector = request.queryVector;
+    queryContents = request.queryContents ?? undefined;
+    topK = request.topK ?? topK;
+    nProbes = request.nProbes ?? nProbes;
+    greedy = request.greedy ?? greedy;
+    filters = request.filters ?? filters;
+    include = request.include ?? include;
+
+    if (inputVector) {
+      const is2DArray = (arr: number[] | number[][]): arr is number[][] => {
+        return arr.length > 0 && Array.isArray(arr[0]);
+      };
+
+      if (is2DArray(inputVector)) {
+        queryVectors = inputVector;
+      } else {
+        // Single query - wrap in array to make it 2D
+        queryVectors = [inputVector as number[]];
+        isSingleQuery = true;
       }
-
-      inputVectors = options.queryVectors ?? [options.queryVector as number[]];
-      topK = options.topK ?? topK;
-      nProbes = options.nProbes ?? nProbes;
-      greedy = options.greedy ?? greedy;
-      filters = options.filters ?? filters;
-      include = options.include ?? include;
-    } else {
-      [inputVectors, topK = 100, nProbes = 1, greedy = false, filters = {}, include = ["distance", "metadata"]] = args as [number[] | number[][], number?, number?, boolean?, object?, string[]?];
-      if (!inputVectors) {
-        throw new Error("Invalid query input: queryVector(s) is required.");
-      }
-
-      // Wrap single vector in array
-      inputVectors = Array.isArray(inputVectors[0])
-        ? inputVectors as number[][]
-        : [inputVectors as number[]];
     }
+  } else {
+    const [inputVectors, contents, k, probes, filtersArg, includeArg, greedyArg] = args;
+    
+    queryContents = contents;
+    topK = k ?? topK;
+    nProbes = probes ?? nProbes;
+    filters = filtersArg ?? filters;
+    include = includeArg ?? include;
+    greedy = greedyArg ?? greedy;
 
-    // Always send as BatchQueryRequest using queryVectors
-    const batchRequest: BatchQueryRequest = new BatchQueryRequest();
-    batchRequest.indexName = this.indexName;
-    batchRequest.indexKey = keyHex;
-    batchRequest.queryVectors = inputVectors as number[][];
-    batchRequest.topK = topK;
-    batchRequest.nProbes = nProbes;
-    batchRequest.greedy = greedy;
-    batchRequest.filters = filters;
-    batchRequest.include = include;
-
-    const response = await this.api.queryVectorsV1VectorsQueryPost(batchRequest);
-    return response.body;
+    if (inputVectors) {
+      if (Array.isArray(inputVectors) && inputVectors.length > 0 && Array.isArray(inputVectors[0])) {
+        // Already 2D array (batch query)
+        queryVectors = inputVectors as number[][];
+      } else if (Array.isArray(inputVectors)) {
+        // Single query - wrap in array to make it 2D
+        queryVectors = [inputVectors as number[]];
+        isSingleQuery = true;
+      }
+    }
   }
 
+  // Validation
+  if (!queryVectors && !queryContents) {
+    throw new Error("You must provide queryVectors or queryContents.");
+  }
+
+  try {
+    // Always use queryVectors (2D array) for consistency
+    const requestData: Request = {
+      indexName: this.indexName,
+      indexKey: keyHex,
+      topK: topK,
+      nProbes: nProbes,
+      greedy: greedy,
+      filters: filters,
+      include: include,
+      // Always send as queryVectors (2D array) - never use queryVector
+      queryVectors: queryVectors ? queryVectors.map(vector => vector.map(v => Number(v))) : undefined,
+      queryContents: queryContents ? queryContents : undefined
+    };
+
+    const response = await this.api.queryVectorsV1VectorsQueryPost(requestData as Request);
+
+    if (!response) {
+      throw new Error("No response received from query API");
+    }
+
+    // Handle response unwrapping for single queries
+    let finalResponse = response.body;
+    
+    // If this was originally a single query but we wrapped it, unwrap the response
+    if (isSingleQuery && finalResponse.results && Array.isArray(finalResponse.results) && finalResponse.results.length === 1) {
+      // Check if the result is wrapped in an extra array level
+      if (Array.isArray(finalResponse.results[0])) {
+        finalResponse.results = finalResponse.results[0];
+      }
+    }
+
+    return finalResponse;
+
+  } catch (error: any) {
+    console.error("Query error:", error.response?.data || error.message);
+    this.handleApiError(error);
+  }
+}
 
     /**
      * Delete vectors from the index
