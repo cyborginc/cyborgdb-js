@@ -193,7 +193,7 @@ export class CyborgDB {
    * 
    * @returns Uint8Array containing 32 cryptographically secure random bytes
    */
-  generateRandomKey(): Uint8Array {
+  generateKey(): Uint8Array {
     // Generate 32 bytes of cryptographically secure random data
     // Uses Node.js crypto.randomBytes() which leverages OS entropy sources
     return new Uint8Array(randomBytes(32));
