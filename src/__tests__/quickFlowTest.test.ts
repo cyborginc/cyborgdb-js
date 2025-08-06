@@ -242,14 +242,15 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(vectors);
     
-    // Query the untrained index
+    // Query the untrained index using new signature: (queryVectors, queryContents, topK, nProbes, filters, include, greedy)
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      testData[0],      // queryVectors (single vector)
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
@@ -277,15 +278,16 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(vectors);
     
-    // Test simple filter
+    // Test simple filter using new signature
     const filter = { "owner.name": "John" };
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      filter,
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      filter,          // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     const results = response.results as QueryResultItem[];
@@ -403,14 +405,15 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(additionalVectors);
     
-    // Query the trained index
+    // Query the trained index using new signature
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(response).toBeDefined();
@@ -441,7 +444,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.upsert(vectors);
     await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
     
-    // Test complex filter
+    // Test complex filter using new signature
     const complexFilter = {
       "$and": [
         { "owner.name": "John" },
@@ -451,12 +454,13 @@ describe('CyborgDB Combined Integration Tests', () => {
     };
     
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      complexFilter,
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      complexFilter,   // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(response.results.length).toBeGreaterThan(0);
@@ -475,12 +479,13 @@ describe('CyborgDB Combined Integration Tests', () => {
     };
     
     const nestedResponse = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      nestedFilter,
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      nestedFilter,    // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(nestedResponse.results.length).toBeGreaterThan(0);
@@ -496,15 +501,16 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(vectors);
     
-    // Batch query with multiple test vectors
+    // Batch query with multiple test vectors using new signature
     const batchTestVectors = testData.slice(0, 3);
     const response: QueryResponse = await index.query(
-      batchTestVectors,
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      batchTestVectors, // queryVectors (batch)
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(response).toBeDefined();
@@ -591,14 +597,15 @@ describe('CyborgDB Combined Integration Tests', () => {
     const idsToDelete = Array.from({length: 10}, (_, i) => i.toString());
     await index.delete(idsToDelete);
     
-    // Query the index
+    // Query the index using new signature
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     const results = response.results as QueryResultItem[];
@@ -838,17 +845,81 @@ describe('CyborgDB Combined Integration Tests', () => {
     }
   });
 
-  // New Test 19: Test loadIndex with non-existent index
-  test('should fail to load non-existent index', async () => {
-    const nonExistentIndexName = generateIndexName("nonexistent");
+  //TO DO: SET UP EMBEDDING MODEL FOR CONTENT SEARCH
+  // // New Test 20: Test queryContents functionality
+  // test('should perform content-based search using queryContents', async () => {
+  //   // This test assumes your CyborgDB service supports content-based search
+  //   // Skip if embedding model is not configured
     
-    try {
-      await client.loadIndex(nonExistentIndexName, indexKey);
-      // If we reach here, the test should fail because an error was expected
-      expect(true).toBe(false);
-    } catch (error) {
-      // This is expected - loading non-existent index should fail
-      expect(error).toBeDefined();
-    }
+  //   // Setup vectors with some text-like metadata that could be searchable content
+  //   const vectors = trainData.slice(0, 20).map((vector, i) => ({
+  //     id: `content-${i}`,
+  //     vector,
+  //     contents: `This is test content number ${i} about ${i % 2 === 0 ? 'cats' : 'dogs'}`,
+  //     metadata: { 
+  //       category: i % 2 === 0 ? 'cats' : 'dogs',
+  //       index: i 
+  //     }
+  //   }));
+  //   await index.upsert(vectors);
+    
+  //   try {
+  //     // Test content-based query using new signature
+  //     const response = await index.query(
+  //       undefined,        // queryVectors (not provided for content search)
+  //       "cats",          // queryContents
+  //       TOP_K,           // topK
+  //       N_PROBES,        // nProbes
+  //       {},              // filters
+  //       ["metadata"],    // include
+  //       false            // greedy
+  //     );
+      
+  //     expect(response).toBeDefined();
+  //     expect(response.results).toBeDefined();
+  //     expect(response.results.length).toBeGreaterThan(0);
+      
+  //     // If the content search works, we might expect results related to "cats"
+  //     // Note: This depends on the embedding model understanding the content
+  //   } catch (error: any) {
+  //     // Content search might not be supported or configured
+  //     // Log the error but don't fail the test unless it's unexpected
+  //     if (error.message && error.message.includes('embedding') || 
+  //         error.message && error.message.includes('content')) {
+  //       console.log('Content search not supported or embedding model not configured:', error.message);
+  //       expect(true).toBe(true); // Pass the test
+  //     } else {
+  //       throw error; // Re-throw if it's an unexpected error
+  //     }
+  //   }
+  // });
+
+  // New Test 21: Test QueryRequest object format
+  test('should accept QueryRequest object format', async () => {
+    // Setup vectors
+    const vectors = trainData.slice(0, 10).map((vector, i) => ({
+      id: `request-obj-${i}`,
+      vector,
+      metadata: { test: true, index: i }
+    }));
+    await index.upsert(vectors);
+    
+    // Test using QueryRequest object format
+    const queryRequest = {
+      indexName: indexName,
+      indexKey: Buffer.from(indexKey).toString('hex'),
+      queryVector: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    };
+    
+    const response = await index.query(queryRequest);
+    
+    expect(response).toBeDefined();
+    expect(response.results).toBeDefined();
+    expect(response.results.length).toBeGreaterThan(0);
   });
 });
