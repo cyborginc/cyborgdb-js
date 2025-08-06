@@ -10,6 +10,7 @@ import {
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
 import { EncryptedIndex } from './encryptedIndex';
+import { randomBytes } from 'crypto';
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service
@@ -147,6 +148,10 @@ export class CyborgDB {
     } catch (error: any) {
       this.handleApiError(error);
     }
+  }
+
+  generateRandomKey(): Uint8Array {
+    return new Uint8Array(randomBytes(32));
   }
 
   async loadIndex(

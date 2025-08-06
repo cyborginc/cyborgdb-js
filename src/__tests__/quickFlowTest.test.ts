@@ -72,11 +72,6 @@ let sharedData: {
 // Set global timeout
 jest.setTimeout(300000); // 5 minutes per test timeout
 
-// Helper function to generate random key
-function generateRandomKey(): Uint8Array {
-  return new Uint8Array(randomBytes(32));
-}
-
 // Helper function to generate unique index name
 function generateIndexName(prefix = "test"): string {
   return `${prefix}_index_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -157,7 +152,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   // Set up for each test
   beforeEach(async () => {
     indexName = generateIndexName();
-    indexKey = generateRandomKey();
+    indexKey = client.generateRandomKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
     index = await client.createIndex(indexName, indexKey, indexConfig);
   }, 30000);
@@ -851,7 +846,7 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // New Test 18: Test loadIndex with wrong credentials (error case)
   test('should fail to load index with wrong credentials', async () => {
-    const wrongKey = generateRandomKey();
+    const wrongKey = client.generateRandomKey();
     
     try {
       await client.loadIndex(indexName, wrongKey);
