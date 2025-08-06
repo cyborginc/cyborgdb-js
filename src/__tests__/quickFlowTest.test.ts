@@ -152,7 +152,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   // Set up for each test
   beforeEach(async () => {
     indexName = generateIndexName();
-    indexKey = client.generateRandomKey();
+    indexKey = client.generateKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
     index = await client.createIndex(indexName, indexKey, indexConfig);
   }, 30000);
@@ -846,7 +846,7 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // New Test 18: Test loadIndex with wrong credentials (error case)
   test('should fail to load index with wrong credentials', async () => {
-    const wrongKey = client.generateRandomKey();
+    const wrongKey = client.generateKey();
     
     try {
       await client.loadIndex(indexName, wrongKey);
