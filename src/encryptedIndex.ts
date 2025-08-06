@@ -239,189 +239,436 @@ export class EncryptedIndex {
     }
   }
 
-  /**
-     * Add or update vectors in the index
-     * @param items Items to upsert (with id, vector, contents, metadata)
-     * @returns Promise with the result of the operation
-     */
-    async upsert(items: VectorItem[]) {
-      try {
-        // Convert indexKey to hex string for transmission
-        const keyHex = Buffer.from(this.indexKey).toString('hex');
-        
-        // Convert items to the format expected by the API
-        const vectors: VectorItem[] = items.map(item => {
-          let contentValue: string | undefined = undefined;
+/**
+   * Add or update vectors in the index
+   * 
+   * This method provides two distinct overloads for maximum flexibility:
+   * 
+   * **Overload 1: VectorItem[] - Complete vector objects**
+   * - Use when you have rich data with metadata, contents, or mixed data types
+   * - Each item must contain: id (string), vector (number[])
+   * - Optional fields: contents (string|Buffer), metadata (object)
+   * - Example: `await index.upsert([{id: "doc1", vector: [0.1, 0.2], metadata: {title: "Document 1"}}])`
+   * 
+   * **Overload 2: (ids[], vectors[][]) - Parallel arrays**
+   * - Use for bulk operations with just IDs and vectors (no metadata/contents)
+   * - More efficient for large batches of uniform data
+   * - Arrays must be same length and aligned by index
+   * - Example: `await index.upsert(["id1", "id2"], [[0.1, 0.2], [0.3, 0.4]])`
+   * 
+   * @param arg1 Either an array of VectorItems or an array of ID strings
+   * @param arg2 If arg1 is IDs, this should be the corresponding vector embeddings
+   * @returns Promise resolving to operation result with status and details
+   * @throws Error with detailed validation information for invalid inputs
+   */
+  async upsert(items: VectorItem[]): Promise<any>;
+  async upsert(ids: string[], vectors: number[][]): Promise<any>;
+  async upsert(
+    arg1: VectorItem[] | string[],
+    arg2?: number[][]
+  ): Promise<any> {
+    try {
+      // Convert indexKey to hex string for transmission
+      const keyHex = Buffer.from(this.indexKey).toString('hex');
+      
+      let items: VectorItem[] = [];
+
+      // Case 1: arg1 is an array of VectorItems (dictionaries)
+      if (arg2 === undefined) {
+        if (!Array.isArray(arg1)) {
+          throw new Error("Invalid upsert call: First argument must be an array when using single-argument form");
+        }
+
+        if (arg1.length === 0) {
+          // Empty array is valid - just return early success
+          return { status: 'success', message: 'No items to upsert' };
+        }
+
+        // Type guard to check if it's VectorItem[]
+        const isVectorItemArray = (arr: VectorItem[] | string[]): arr is VectorItem[] => {
+          return arr.length === 0 || (typeof arr[0] === 'object' && arr[0] !== null);
+        };
+
+        if (!isVectorItemArray(arg1)) {
+          throw new Error("Invalid upsert call: When using single argument, it must be an array of VectorItem objects, not strings");
+        }
+
+        // Validate each VectorItem in detail
+        for (let i = 0; i < arg1.length; i++) {
+          const item = arg1[i];
           
-          if (item.contents) {
-            if (typeof item.contents === 'string') {
-              contentValue = item.contents;
-            } else {
-              contentValue = Buffer.from(item.contents).toString('base64');
+          if (!item || typeof item !== 'object') {
+            throw new Error(`Invalid VectorItem at index ${i}: Item must be an object, got ${typeof item}`);
+          }
+          
+          if (!item.id) {
+            throw new Error(`Invalid VectorItem at index ${i}: Missing required 'id' field. Each VectorItem must have an 'id' property.`);
+          }
+          
+          if (typeof item.id !== 'string') {
+            throw new Error(`Invalid VectorItem at index ${i}: Field 'id' must be a string, got ${typeof item.id}`);
+          }
+          
+          if (!item.vector) {
+            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Missing required 'vector' field`);
+          }
+          
+          if (!Array.isArray(item.vector)) {
+            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`);
+          }
+          
+          if (item.vector.length === 0) {
+            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`);
+          }
+          
+          // Validate vector contains only numbers
+          for (let j = 0; j < item.vector.length; j++) {
+            if (typeof item.vector[j] !== 'number' || !isFinite(item.vector[j])) {
+              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`);
             }
           }
           
-          return {
-            id: item.id,
-            vector: item.vector,
-            contents: contentValue,
-            metadata: item.metadata || undefined
-          };
-        });
+          // Optional: validate metadata if present
+          if (item.metadata !== undefined && item.metadata !== null && typeof item.metadata !== 'object') {
+            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'metadata' must be an object or null, got ${typeof item.metadata}`);
+          }
+        }
+
+        items = arg1;
+      }
+      
+      // Case 2: arg1 is an array of IDs, arg2 is an array of vectors
+      else {
+        if (!Array.isArray(arg1)) {
+          throw new Error("Invalid upsert call: First argument must be an array of ID strings when using two-argument form");
+        }
         
-        // Use snake_case property names for the request
-        const upsertRequest: UpsertRequest = {
-          indexName: this.indexName,  // snake_case
-          indexKey: keyHex,      // Hex format
-          items: vectors
+        if (!Array.isArray(arg2)) {
+          throw new Error("Invalid upsert call: Second argument must be an array of vectors when using two-argument form");
+        }
+
+        const ids = arg1 as string[];
+        const vectors = arg2;
+
+        if (ids.length !== vectors.length) {
+          throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${vectors.length} vectors provided. The number of IDs must match the number of vectors.`);
+        }
+        
+        if (ids.length === 0) {
+          // Empty arrays are valid - just return early success
+          return { status: 'success', message: 'No items to upsert' };
+        }
+
+        // Validate IDs
+        for (let i = 0; i < ids.length; i++) {
+          if (typeof ids[i] !== 'string') {
+            throw new Error(`Invalid ID at index ${i}: IDs must be strings, got ${typeof ids[i]}`);
+          }
+          if (ids[i].trim() === '') {
+            throw new Error(`Invalid ID at index ${i}: IDs cannot be empty strings`);
+          }
+        }
+
+        // Validate vectors
+        for (let i = 0; i < vectors.length; i++) {
+          const vector = vectors[i];
+          if (!Array.isArray(vector)) {
+            throw new Error(`Invalid vector at index ${i} (id: "${ids[i]}"): Vector must be an array, got ${typeof vector}`);
+          }
+          if (vector.length === 0) {
+            throw new Error(`Invalid vector at index ${i} (id: "${ids[i]}"): Vector array cannot be empty`);
+          }
+          
+          // Validate vector contains only numbers
+          for (let j = 0; j < vector.length; j++) {
+            if (typeof vector[j] !== 'number' || !isFinite(vector[j])) {
+              throw new Error(`Invalid vector at index ${i} (id: "${ids[i]}"): Vector element at position ${j} must be a finite number, got ${typeof vector[j]}`);
+            }
+          }
+        }
+
+        // Create VectorItems from IDs and vectors
+        items = ids.map((id, index) => ({
+          id: id.toString(),
+          vector: vectors[index],
+          contents: undefined,
+          metadata: undefined
+        }));
+      }
+      
+      // Convert items to the format expected by the API
+      const processedItems: VectorItem[] = items.map((item, index) => {
+        let contentValue: string | undefined = undefined;
+        
+        if (item.contents) {
+          try {
+            if (typeof item.contents === 'string') {
+              contentValue = item.contents;
+            } else {
+              // Assume it's some other binary data
+              contentValue = Buffer.from(item.contents as any).toString('base64');
+            }
+          } catch (error) {
+            throw new Error(`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
+        
+        return {
+          id: item.id,
+          vector: item.vector,
+          contents: contentValue,
+          metadata: item.metadata || undefined
         };
-        
-        const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
-        return response.body;
-      } catch (error: any) {
-        this.handleApiError(error);
+      });
+      
+      const upsertRequest: UpsertRequest = {
+        indexName: this.indexName,
+        indexKey: keyHex,
+        items: processedItems
+      };
+      
+      const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
+      return response.body;
+    } catch (error: any) {
+      // Enhance error handling for API errors
+      if (error.message && !error.message.startsWith('Invalid')) {
+        // This is likely an API error, enhance it with context
+        const enhancedMessage = `Upsert operation failed: ${error.message}`;
+        const enhancedError = new Error(enhancedMessage);
+        enhancedError.stack = error.stack;
+        throw enhancedError;
+      }
+      
+      // Re-throw validation errors as-is since they're already detailed
+      throw error;
+    }
+  }
+
+  /**
+   * Search for semantically similar vectors in the index
+   * 
+   * This method supports both single and batch queries with flexible input formats:
+   * 
+   * **Single Vector Query:**
+   * ```typescript
+   * // Query with single vector
+   * const results = await index.query([0.1, 0.2, 0.3], undefined, 10);
+   * 
+   * // With filters and metadata
+   * const results = await index.query(
+   *   [0.1, 0.2, 0.3],     // query vector
+   *   undefined,           // query contents (optional)
+   *   10,                  // top K results
+   *   5,                   // number of probes
+   *   {category: "tech"},  // metadata filters
+   *   ["metadata"],        // fields to include
+   *   false               // greedy search
+   * );
+   * ```
+   * 
+   * **Batch Query (multiple vectors):**
+   * ```typescript
+   * const batchResults = await index.query(
+   *   [[0.1, 0.2], [0.3, 0.4]],  // multiple query vectors
+   *   undefined,
+   *   5
+   * );
+   * // Returns array of result arrays, one per query vector
+   * ```
+   * 
+   * **QueryRequest Object Format:**
+   * ```typescript
+   * const results = await index.query({
+   *   indexName: "my-index",
+   *   indexKey: "hex-encoded-key", 
+   *   queryVector: [0.1, 0.2, 0.3],  // or queryVectors for batch
+   *   topK: 10,
+   *   filters: {owner: "john"},
+   *   include: ["metadata", "contents"]
+   * });
+   * ```
+   * 
+   * **Content-Based Search:**
+   * ```typescript
+   * // Search by text content (requires embedding model)
+   * const results = await index.query(
+   *   undefined,              // no vector provided
+   *   "search text here",     // content to embed and search
+   *   10
+   * );
+   * ```
+   * 
+   * **Advanced Filtering Examples:**
+   * ```typescript
+   * // Simple filter
+   * const simpleFilter = {category: "tech"};
+   * 
+   * // Complex nested filter
+   * const complexFilter = {
+   *   "$and": [
+   *     {"owner.name": "John"},
+   *     {"age": {"$gt": 25}},
+   *     {"tags": {"$in": ["premium", "verified"]}}
+   *   ]
+   * };
+   * ```
+   * 
+   * **Response Format:**
+   * - Single query: `{results: QueryResultItem[]}` 
+   * - Batch query: `{results: QueryResultItem[][]}` (array of arrays)
+   * - Each result item contains: id, distance, and requested fields (vector, metadata, contents)
+   * 
+   * @param queryVectors Single vector [0.1, 0.2] or batch vectors [[0.1, 0.2], [0.3, 0.4]]
+   * @param queryContents Optional text content to embed and search (alternative to queryVectors)
+   * @param topK Maximum number of results to return per query (default: 100)
+   * @param nProbes Number of cluster centers to search (higher = better recall, default: 1)
+   * @param filters Metadata filters to apply (MongoDB-style queries supported)
+   * @param include Fields to include in results: "vector", "metadata", "contents", "distance" (default: ["distance", "metadata"])
+   * @param greedy Use faster approximate search (default: false)
+   * @returns Promise resolving to QueryResponse with results array
+   * @throws Error if neither queryVectors nor queryContents provided, or for API errors
+   */
+  async query(
+    queryVectors?: number[] | number[][],
+    queryContents?: string,
+    topK?: number,
+    nProbes?: number,
+    filters?: object,
+    include?: string[],
+    greedy?: boolean
+  ): Promise<QueryResponse>;
+
+  /**
+   * Search using a QueryRequest object (alternative signature)
+   * 
+   * @param request Complete query request object with all parameters
+   * @returns Promise resolving to QueryResponse with results
+   */
+  async query(request: QueryRequest): Promise<QueryResponse>;
+
+  async query(...args: any[]): Promise<QueryResponse> {
+    const keyHex = Buffer.from(this.indexKey).toString('hex');
+
+    let queryVectors: number[][] | undefined;
+    let queryContents: string | undefined;
+    let topK: number = 100;
+    let nProbes: number = 1;
+    let greedy: boolean = false;
+    let filters: object = {};
+    let include: string[] = ["distance", "metadata"];
+    let isSingleQuery: boolean = false; // Track if original input was single query
+
+    // Handle different function signatures
+    if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
+      const request = args[0] as QueryRequest;
+      const inputVector = request.queryVector;
+      queryContents = request.queryContents ?? undefined;
+      topK = request.topK ?? topK;
+      nProbes = request.nProbes ?? nProbes;
+      greedy = request.greedy ?? greedy;
+      filters = request.filters ?? filters;
+      include = request.include ?? include;
+
+      if (inputVector) {
+        const is2DArray = (arr: number[] | number[][]): arr is number[][] => {
+          return arr.length > 0 && Array.isArray(arr[0]);
+        };
+
+        if (is2DArray(inputVector)) {
+          queryVectors = inputVector;
+        } else {
+          // Single query - wrap in array to make it 2D
+          queryVectors = [inputVector as number[]];
+          isSingleQuery = true;
+        }
+      }
+    } else {
+      const [inputVectors, contents, k, probes, filtersArg, includeArg, greedyArg] = args;
+      
+      queryContents = contents;
+      topK = k ?? topK;
+      nProbes = probes ?? nProbes;
+      filters = filtersArg ?? filters;
+      include = includeArg ?? include;
+      greedy = greedyArg ?? greedy;
+
+      if (inputVectors) {
+        if (Array.isArray(inputVectors) && inputVectors.length > 0 && Array.isArray(inputVectors[0])) {
+          // Already 2D array (batch query)
+          queryVectors = inputVectors as number[][];
+        } else if (Array.isArray(inputVectors)) {
+          // Single query - wrap in array to make it 2D
+          queryVectors = [inputVectors as number[]];
+          isSingleQuery = true;
+        }
       }
     }
 
-    
-  /**
- * Search for nearest neighbors in the index
- */
-async query(
-  queryVectors?: number[] | number[][],
-  queryContents?: string,
-  topK?: number,
-  nProbes?: number,
-  filters?: object,
-  include?: string[],
-  greedy?: boolean
-): Promise<QueryResponse>;
+    // Validation
+    if (!queryVectors && !queryContents) {
+      throw new Error("You must provide queryVectors or queryContents.");
+    }
 
-async query(request: QueryRequest): Promise<QueryResponse>;
-
-async query(...args: any[]): Promise<QueryResponse> {
-  const keyHex = Buffer.from(this.indexKey).toString('hex');
-
-  let queryVectors: number[][] | undefined;
-  let queryContents: string | undefined;
-  let topK: number = 100;
-  let nProbes: number = 1;
-  let greedy: boolean = false;
-  let filters: object = {};
-  let include: string[] = ["distance", "metadata"];
-  let isSingleQuery: boolean = false; // Track if original input was single query
-
-  // Handle different function signatures
-  if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
-    const request = args[0] as QueryRequest;
-    const inputVector = request.queryVector;
-    queryContents = request.queryContents ?? undefined;
-    topK = request.topK ?? topK;
-    nProbes = request.nProbes ?? nProbes;
-    greedy = request.greedy ?? greedy;
-    filters = request.filters ?? filters;
-    include = request.include ?? include;
-
-    if (inputVector) {
-      const is2DArray = (arr: number[] | number[][]): arr is number[][] => {
-        return arr.length > 0 && Array.isArray(arr[0]);
+    try {
+      // Always use queryVectors (2D array) for consistency
+      const requestData: Request = {
+        indexName: this.indexName,
+        indexKey: keyHex,
+        topK: topK,
+        nProbes: nProbes,
+        greedy: greedy,
+        filters: filters,
+        include: include,
+        // Always send as queryVectors (2D array) - never use queryVector
+        queryVectors: queryVectors ? queryVectors.map(vector => vector.map(v => Number(v))) : undefined,
+        queryContents: queryContents ? queryContents : undefined
       };
 
-      if (is2DArray(inputVector)) {
-        queryVectors = inputVector;
-      } else {
-        // Single query - wrap in array to make it 2D
-        queryVectors = [inputVector as number[]];
-        isSingleQuery = true;
+      const response = await this.api.queryVectorsV1VectorsQueryPost(requestData as Request);
+
+      if (!response) {
+        throw new Error("No response received from query API");
       }
-    }
-  } else {
-    const [inputVectors, contents, k, probes, filtersArg, includeArg, greedyArg] = args;
-    
-    queryContents = contents;
-    topK = k ?? topK;
-    nProbes = probes ?? nProbes;
-    filters = filtersArg ?? filters;
-    include = includeArg ?? include;
-    greedy = greedyArg ?? greedy;
 
-    if (inputVectors) {
-      if (Array.isArray(inputVectors) && inputVectors.length > 0 && Array.isArray(inputVectors[0])) {
-        // Already 2D array (batch query)
-        queryVectors = inputVectors as number[][];
-      } else if (Array.isArray(inputVectors)) {
-        // Single query - wrap in array to make it 2D
-        queryVectors = [inputVectors as number[]];
-        isSingleQuery = true;
-      }
-    }
-  }
-
-  // Validation
-  if (!queryVectors && !queryContents) {
-    throw new Error("You must provide queryVectors or queryContents.");
-  }
-
-  try {
-    // Always use queryVectors (2D array) for consistency
-    const requestData: Request = {
-      indexName: this.indexName,
-      indexKey: keyHex,
-      topK: topK,
-      nProbes: nProbes,
-      greedy: greedy,
-      filters: filters,
-      include: include,
-      // Always send as queryVectors (2D array) - never use queryVector
-      queryVectors: queryVectors ? queryVectors.map(vector => vector.map(v => Number(v))) : undefined,
-      queryContents: queryContents ? queryContents : undefined
-    };
-
-    const response = await this.api.queryVectorsV1VectorsQueryPost(requestData as Request);
-
-    if (!response) {
-      throw new Error("No response received from query API");
-    }
-
-    // Handle response unwrapping for single queries
-    let finalResponse = response.body;
-    
-    // If this was originally a single query but we wrapped it, unwrap the response
-    if (isSingleQuery && finalResponse.results && Array.isArray(finalResponse.results) && finalResponse.results.length === 1) {
-      // Check if the result is wrapped in an extra array level
-      if (Array.isArray(finalResponse.results[0])) {
-        finalResponse.results = finalResponse.results[0];
-      }
-    }
-
-    return finalResponse;
-
-  } catch (error: any) {
-    console.error("Query error:", error.response?.data || error.message);
-    this.handleApiError(error);
-  }
-}
-
-    /**
-     * Delete vectors from the index
-     * @param ids IDs of vectors to delete
-     * @returns Promise with the result of the operation
-     */
-    async delete(ids: string[]) {
-        try {
-        // Convert indexKey to hex string to match other methods
-        const keyHex = Buffer.from(this.indexKey).toString('hex');
-        
-        const deleteRequest: DeleteRequest = {
-            indexName: this.indexName,
-            indexKey: keyHex,
-            ids: ids
-        };
-        
-        const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
-        return response.body;
-        } catch (error: any) {
-        this.handleApiError(error);
+      // Handle response unwrapping for single queries
+      let finalResponse = response.body;
+      
+      // If this was originally a single query but we wrapped it, unwrap the response
+      if (isSingleQuery && finalResponse.results && Array.isArray(finalResponse.results) && finalResponse.results.length === 1) {
+        // Check if the result is wrapped in an extra array level
+        if (Array.isArray(finalResponse.results[0])) {
+          finalResponse.results = finalResponse.results[0];
         }
+      }
+
+      return finalResponse;
+
+    } catch (error: any) {
+      console.error("Query error:", error.response?.data || error.message);
+      this.handleApiError(error);
     }
-}
+  }
+
+      /**
+       * Delete vectors from the index
+       * @param ids IDs of vectors to delete
+       * @returns Promise with the result of the operation
+       */
+      async delete(ids: string[]) {
+          try {
+          // Convert indexKey to hex string to match other methods
+          const keyHex = Buffer.from(this.indexKey).toString('hex');
+          
+          const deleteRequest: DeleteRequest = {
+              indexName: this.indexName,
+              indexKey: keyHex,
+              ids: ids
+          };
+          
+          const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
+          return response.body;
+          } catch (error: any) {
+          this.handleApiError(error);
+          }
+      }
+  }
