@@ -23,7 +23,7 @@ import { IndexIVFModel } from '../model/indexIVFModel';
 dotenv.config();
 
 // Constants
-const API_URL = 'http://localhost:8000';
+const API_URL = 'https://localhost:8000';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
 
 if (!ADMIN_API_KEY) {
@@ -135,7 +135,7 @@ beforeAll(async () => {
 
 // Main test suite combining all functionality
 describe('CyborgDB Combined Integration Tests', () => {
-  const client = new CyborgDB(API_URL, ADMIN_API_KEY);
+  const client = new CyborgDB(API_URL, ADMIN_API_KEY,false);
   let indexName: string;
   let indexKey: Uint8Array;
   let dimension: number;
