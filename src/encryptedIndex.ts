@@ -240,7 +240,7 @@ export class EncryptedIndex {
     }
   }
 
-/**
+  /**
    * Add or update vectors in the index
    * 
    * This method provides two distinct overloads for maximum flexibility:
@@ -257,13 +257,26 @@ export class EncryptedIndex {
    * - Arrays must be same length and aligned by index
    * - Example: `await index.upsert(["id1", "id2"], [[0.1, 0.2], [0.3, 0.4]])`
    * 
-   * @param arg1 Either an array of VectorItems or an array of ID strings
-   * @param arg2 If arg1 is IDs, this should be the corresponding vector embeddings
+   * @param items Array of VectorItems containing id, vector, and optional metadata/contents
    * @returns Promise resolving to operation result with status and details
    * @throws Error with detailed validation information for invalid inputs
    */
   async upsert(items: VectorItem[]): Promise<any>;
+
+  /**
+   * Add or update vectors in the index using parallel arrays
+   * 
+   * @param ids Array of ID strings for each vector
+   * @param vectors Array of vector embeddings corresponding to each ID
+   * @returns Promise resolving to operation result with status and details
+   * @throws Error with detailed validation information for invalid inputs
+   */
   async upsert(ids: string[], vectors: number[][]): Promise<any>;
+
+  /**
+   * Implementation signature - handles both overloads
+   * @internal
+   */
   async upsert(
     arg1: VectorItem[] | string[],
     arg2?: number[][]
