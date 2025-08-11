@@ -22,11 +22,43 @@ export class CyborgDB {
    * Create a new CyborgDB client
    * @param baseUrl Base URL of the CyborgDB service
    * @param apiKey API key for authentication
+   * @param verifySsl Optional SSL verification setting. If not provided, auto-detects based on URL
    */
-  constructor(baseUrl: string, apiKey?: string) {
+  constructor(baseUrl: string, apiKey?: string, verifySsl?: boolean) {
+    // If baseUrl is http, disable SSL verification
+    if (baseUrl.startsWith('http://')) {
+      verifySsl = false;
+    }
+
+    // Auto-detect SSL verification if not explicitly set
+    if (verifySsl === undefined) {
+      // Auto-detect: disable SSL verification for localhost/127.0.0.1 (development)
+      if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+        verifySsl = false;
+        console.info('SSL verification disabled for localhost (development mode)');
+      } else {
+        verifySsl = true;
+      }
+    } else if (!verifySsl) {
+      console.warn('SSL verification is disabled. Not recommended for production.');
+    }
+
     this.api = new DefaultApi(baseUrl);
     
-    // Use the public setter method
+    // Configure SSL verification for Axios in Node.js environments
+    if (!verifySsl && typeof process !== 'undefined' && process.versions && process.versions.node) {
+      // In Node.js, configure axios defaults to disable SSL verification
+      const https = require('https');
+      const axiosDefaults = require('axios').defaults;
+      
+      axiosDefaults.httpsAgent = new https.Agent({
+        rejectUnauthorized: false
+      });
+      
+      console.warn('SSL verification disabled in Node.js environment');
+    }
+    
+    // Set default headers
     this.api.defaultHeaders = {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
