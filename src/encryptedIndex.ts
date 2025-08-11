@@ -30,29 +30,30 @@ export class EncryptedIndex {
     private api: DefaultApi;
 
     private handleApiError(error: any): never {
-    if (error.response) {
+      if (error.response) {
         console.error("HTTP Status Code:", error.response.status);
         console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-        console.error("Response Body:", JSON.stringify(error.response.body, null, 2));
-    } else {
+        console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); // CHANGED: .body to .data
+      } else {
         console.error("No response from server");
-    }
-    if (error.response?.body) {
+      }
+      
+      if (error.response?.data) { // CHANGED: .body to .data
         try {
-            const errBody = error.response.body;
-            if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
-                const err = errBody as ErrorResponseModel;
-                throw new Error(`${err.statusCode} - ${err.detail}`);
-            }
-            if ('detail' in errBody && Array.isArray(errBody.detail)) {
-                const err = errBody as HTTPValidationError;
-                throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-            }
+          const errBody = error.response.data; // CHANGED: .body to .data
+          if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
+            const err = errBody as ErrorResponseModel;
+            throw new Error(`${err.statusCode} - ${err.detail}`);
+          }
+          if ('detail' in errBody && Array.isArray(errBody.detail)) {
+            const err = errBody as HTTPValidationError;
+            throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
+          }
         } catch (e) {
-            throw new Error(`Unhandled error format: ${JSON.stringify(error.response.body)}`);
+          throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); // CHANGED: .body to .data
         }
-    }
-        throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
+      }
+      throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
     }
 
     constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, embeddingModel?: string) {
