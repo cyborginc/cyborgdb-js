@@ -42,13 +42,16 @@ export class CyborgDB {
     if (error.response) {
       console.error("HTTP Status Code:", error.response.status);
       console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-      console.error("Response Body:", JSON.stringify(error.response.body, null, 2));
+      console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); // CHANGED: .body to .data
     } else {
       console.error("No response from server");
+      console.error("Error message:", error.message);
     }
-    if (error.response?.body) {
+    
+    // Check error.response.data instead of error.response.body
+    if (error.response?.data) { // CHANGED: .body to .data
       try {
-        const errBody = error.response.body;
+        const errBody = error.response.data; // CHANGED: .body to .data
         if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
           const err = errBody as ErrorResponseModel;
           throw new Error(`${err.statusCode} - ${err.detail}`);
@@ -58,7 +61,7 @@ export class CyborgDB {
           throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
         }
       } catch (e) {
-        throw new Error(`Unhandled error format: ${JSON.stringify(error.response.body)}`);
+        throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); // CHANGED: .body to .data
       }
     }
     throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);

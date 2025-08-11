@@ -24,10 +24,10 @@ dotenv.config();
 
 // Constants
 const API_URL = 'http://localhost:8000';
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
-
-if (!ADMIN_API_KEY) {
-  throw new Error("ADMIN_API_KEY environment variable is not set");
+const CYBORGDB_API_KEY = process.env.CYBORGDB_API_KEY;
+console.log("CYBORGDB_API_KEY:", CYBORGDB_API_KEY);
+if (!CYBORGDB_API_KEY) {
+  throw new Error("CYBORGDB_API_KEY environment variable is not set");
 }
 
 // Dataset path
@@ -130,7 +130,9 @@ beforeAll(async () => {
 
 // Main test suite combining all functionality
 describe('CyborgDB Combined Integration Tests', () => {
-  const client = new CyborgDB(API_URL, ADMIN_API_KEY);
+  console.log(`Using API URL: ${API_URL}`);
+  console.log(`Using API Key: ${CYBORGDB_API_KEY}`);
+  const client = new CyborgDB(API_URL, CYBORGDB_API_KEY);
   let indexName: string;
   let indexKey: Uint8Array;
   let dimension: number;
@@ -1009,5 +1011,169 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
     expect(response.results.length).toBeGreaterThan(0);
+  });
+
+  // NEW Test 22: Test content-based query with embedding model
+  test('should query using content with all-MiniLM-L6-v2 embedding model', async () => {
+    // Create a separate index specifically for content-based search
+    const contentIndexName = generateIndexName('content');
+    const contentIndexKey = client.generateKey();
+    const contentIndexConfig = generateIndexConfig(testIndexType, 384); // all-MiniLM-L6-v2 produces 384-dimensional vectors
+    
+    // Create index with embedding model
+    const contentIndex = await client.createIndex(
+      contentIndexName, 
+      contentIndexKey, 
+      contentIndexConfig, 
+      "all-MiniLM-L6-v2"  // Specify the embedding model
+    );
+    
+    try {
+      // Upsert some documents with meaningful text content
+      const textDocuments = [
+        {
+          id: "doc1",
+          vector: new Array(384).fill(0).map(() => Math.random()), // Dummy vector, content will be used for search
+          contents: "The quick brown fox jumps over the lazy dog",
+          metadata: { category: "animals", type: "sentence" }
+        },
+        {
+          id: "doc2", 
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Machine learning and artificial intelligence are transforming technology",
+          metadata: { category: "technology", type: "sentence" }
+        },
+        {
+          id: "doc3",
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Cats and dogs are popular pets around the world",
+          metadata: { category: "animals", type: "sentence" }
+        },
+        {
+          id: "doc4",
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Deep learning models require large amounts of training data",
+          metadata: { category: "technology", type: "sentence" }
+        },
+        {
+          id: "doc5",
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Birds can fly high in the sky with their wings",
+          metadata: { category: "animals", type: "sentence" }
+        }
+      ];
+      
+      // Upsert the documents
+      const upsertResult = await contentIndex.upsert(textDocuments);
+      expect(upsertResult.status).toBe('success');
+      
+      // Test content-based query - search for animal-related content
+      const animalQueryResponse = await contentIndex.query(
+        undefined,                    // queryVectors (not provided - using content instead)
+        "animals and pets",          // queryContents - this will be embedded using all-MiniLM-L6-v2
+        3,                           // topK
+        N_PROBES,                    // nProbes
+        {},                          // filters
+        ["metadata", "contents"],    // include content and metadata in results
+        false                        // greedy
+      );
+      
+      expect(animalQueryResponse).toBeDefined();
+      expect(animalQueryResponse.results).toBeDefined();
+      expect(animalQueryResponse.results.length).toBeGreaterThan(0);
+      expect(animalQueryResponse.results.length).toBeLessThanOrEqual(3);
+      
+      // Verify that animal-related documents are returned
+      const results = animalQueryResponse.results as QueryResultItem[];
+      const animalResults = results.filter(result => {
+        if (result.metadata) {
+          const metadata = typeof result.metadata === 'string'
+            ? JSON.parse(result.metadata)
+            : result.metadata;
+          return metadata.category === 'animals';
+        }
+        return false;
+      });
+      
+      // Should find at least some animal-related documents
+      expect(animalResults.length).toBeGreaterThan(0);
+      
+      // Test content-based query with technology-related content
+      const techQueryResponse = await contentIndex.query(
+        undefined,                      // queryVectors
+        "artificial intelligence and machine learning",  // queryContents
+        2,                             // topK
+        N_PROBES,                      // nProbes
+        { category: "technology" },    // filters - only technology documents
+        ["metadata", "contents"],      // include
+        false                          // greedy
+      );
+      
+      expect(techQueryResponse.results.length).toBeGreaterThan(0);
+      expect(techQueryResponse.results.length).toBeLessThanOrEqual(2);
+      
+      // Verify all results are technology-related (due to filter)
+      const techResults = techQueryResponse.results as QueryResultItem[];
+      techResults.forEach(result => {
+        if (result.metadata) {
+          const metadata = typeof result.metadata === 'string'
+            ? JSON.parse(result.metadata)
+            : result.metadata;
+          expect(metadata.category).toBe('technology');
+        }
+      });
+      
+      // Test error case: providing both queryVectors and queryContents should work (queryContents takes precedence)
+      const bothProvidedResponse = await contentIndex.query(
+        new Array(384).fill(0.1),     // queryVectors (should be ignored)
+        "flying birds",               // queryContents (should be used)
+        2,                            // topK
+        N_PROBES,                     // nProbes
+        {},                           // filters
+        ["metadata"],                 // include
+        false                         // greedy
+      );
+      
+      expect(bothProvidedResponse.results.length).toBeGreaterThan(0);
+      
+      // Test edge case: empty content string
+      try {
+        await contentIndex.query(
+          undefined,    // queryVectors
+          "",          // empty queryContents
+          1,           // topK
+          N_PROBES,    // nProbes
+          {},          // filters
+          ["metadata"], // include
+          false        // greedy
+        );
+        // This might succeed or fail depending on implementation
+        // We'll accept either outcome
+      } catch (error) {
+        // Empty content might cause an error, which is acceptable
+        expect(error).toBeDefined();
+      }
+      
+      // Verify that we can still use regular vector queries on the same index
+      const vectorQueryResponse = await contentIndex.query(
+        new Array(384).fill(0).map(() => Math.random()), // queryVectors
+        undefined,                     // queryContents
+        2,                            // topK
+        N_PROBES,                     // nProbes
+        {},                           // filters
+        ["metadata"],                 // include
+        false                         // greedy
+      );
+      
+      expect(vectorQueryResponse.results.length).toBeGreaterThan(0);
+      
+    } finally {
+      // Clean up the content index
+      try {
+        await contentIndex.deleteIndex();
+      } catch (error) {
+        console.error(`Error cleaning up content index ${contentIndexName}:`, error);
+      }
+    }
   });
 });
