@@ -1,9 +1,9 @@
 import { DefaultApi, DefaultApiApiKeys } from '../src/api/defaultApi';
 import { 
   CreateIndexRequest,
-  IndexIVFPQModel,
-  IndexIVFFlatModel,
-  IndexIVFModel,
+  IndexIVFPQ,
+  IndexIVFFlat,
+  IndexIVF,
   IndexOperationRequest,
   IndexInfoResponseModel,
 } from './model/models';
@@ -125,7 +125,7 @@ export class CyborgDB {
   async createIndex(
     indexName: string, 
     indexKey: Uint8Array, 
-    indexConfig: IndexIVFPQModel | IndexIVFFlatModel | IndexIVFModel,
+    indexConfig: IndexIVFPQ | IndexIVFFlat | IndexIVF,
     embeddingModel?: string
   ) {
     try {
@@ -145,15 +145,15 @@ export class CyborgDB {
           nLists: indexConfig.nLists || undefined,       // This is already snake_case
           // For IVFPQ, add additional properties
           ...(indexConfig.type === 'ivfpq' ? {
-            pqDim: (indexConfig as IndexIVFPQModel).pqDim || undefined,
-            pqBits: (indexConfig as IndexIVFPQModel).pqBits ||undefined
+            pqDim: (indexConfig as IndexIVFPQ).pqDim || undefined,
+            pqBits: (indexConfig as IndexIVFPQ).pqBits ||undefined
           } : {})
         },
         embeddingModel: embeddingModel  // Use snake_case as expected by server
       };
       if (indexConfig.type === 'ivfpq') {
-        (createRequest.indexConfig as any).pq_dim = (indexConfig as IndexIVFPQModel).pqDim;
-        (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQModel).pqBits;
+        (createRequest.indexConfig as any).pq_dim = (indexConfig as IndexIVFPQ).pqDim;
+        (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQ).pqBits;
       }
       
       await this.api.createIndexV1IndexesCreatePost(createRequest);

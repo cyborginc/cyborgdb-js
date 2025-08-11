@@ -6,9 +6,9 @@ import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
 import { EncryptedIndex } from '../encryptedIndex';
 import { QueryResponse } from '../model/queryResponse';
-import { IndexIVFPQModel } from '../model/indexIVFPQModel';
-import { IndexIVFFlatModel } from '../model/indexIVFFlatModel';
-import { IndexIVFModel } from '../model/indexIVFModel';
+import { IndexIVFPQ } from '../model/indexIVFPQModel';
+import { IndexIVFFlat } from '../model/indexIVFFlatModel';
+import { IndexIVF } from '../model/indexIVFModel';
 
 /**
  * Combined CyborgDB Integration Tests
@@ -83,9 +83,9 @@ function computeRecall(results: any[], groundTruth: number[][]): number {
   return RECALL_THRESHOLDS.trained + 0.05;
 }
 
-function generateIndexConfig(testIndexType: string, dimension: number): IndexIVFFlatModel | IndexIVFPQModel | IndexIVFModel {
+function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF | IndexIVFPQ | IndexIVFFlat {
   if (testIndexType === "ivfpq") {
-    const indexConfig = new IndexIVFPQModel();
+    const indexConfig = new IndexIVFPQ();
     indexConfig.dimension = dimension;
     indexConfig.metric = METRIC;
     indexConfig.nLists = N_LISTS;
@@ -97,14 +97,14 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
     
     return indexConfig;
   } else if (testIndexType === "ivfflat") {
-    const indexConfig = new IndexIVFFlatModel();
+    const indexConfig = new IndexIVFFlat();
     indexConfig.dimension = dimension;
     indexConfig.metric = METRIC;
     indexConfig.nLists = N_LISTS;
     indexConfig.type = 'ivfflat';
     return indexConfig;
   } else {
-    const indexConfig = new IndexIVFModel();
+    const indexConfig = new IndexIVF();
     indexConfig.dimension = dimension;
     indexConfig.metric = METRIC;
     indexConfig.nLists = N_LISTS;
@@ -836,7 +836,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(nLists).toBe(N_LISTS);
     
     if (testIndexType === "ivfpq") {
-      const ivfpqConfig = indexConfig as IndexIVFPQModel;
+      const ivfpqConfig = indexConfig as IndexIVFPQ;
       // Handle both possible property names for PQ dimensions and bits
       const pqDim = ivfpqConfig.pqDim ?? (ivfpqConfig as any).pq_dim;
       const pqBits = ivfpqConfig.pqBits ?? (ivfpqConfig as any).pq_bits;
