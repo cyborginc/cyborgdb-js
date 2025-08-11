@@ -13,7 +13,7 @@
 /**
 * Model for configuring an IVFFlat (Inverted File with Flat quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfflat\".
 */
-export class IndexIVFFlatModel {
+export class IndexIVFFlat {
     'dimension'?: number | null;
     'nLists': number;
     'metric'?: string | null;
@@ -44,7 +44,7 @@ export class IndexIVFFlatModel {
         }    ];
 
     static getAttributeTypeMap() {
-        return IndexIVFFlatModel.attributeTypeMap;
+        return IndexIVFFlat.attributeTypeMap;
     }
 }
 

@@ -51,9 +51,9 @@ import { GetResponseModel } from './getResponseModel';
 import { GetResultItemModel } from './getResultItemModel';
 import { HTTPValidationError } from './hTTPValidationError';
 import { IndexConfig } from './indexConfig';
-import { IndexIVFFlatModel } from './indexIVFFlatModel';
-import { IndexIVFModel } from './indexIVFModel';
-import { IndexIVFPQModel } from './indexIVFPQModel';
+import { IndexIVFFlat } from './indexIVFFlatModel';
+import { IndexIVF } from './indexIVFModel';
+import { IndexIVFPQ } from './indexIVFPQModel';
 import { IndexInfoResponseModel } from './indexInfoResponseModel';
 import { IndexListResponseModel } from './indexListResponseModel';
 import { IndexOperationRequest } from './indexOperationRequest';
@@ -94,9 +94,9 @@ let typeMap: {[index: string]: any} = {
     "GetResultItemModel": GetResultItemModel,
     "HTTPValidationError": HTTPValidationError,
     "IndexConfig": IndexConfig,
-    "IndexIVFFlatModel": IndexIVFFlatModel,
-    "IndexIVFModel": IndexIVFModel,
-    "IndexIVFPQModel": IndexIVFPQModel,
+    "IndexIVFFlat": IndexIVFFlat,
+    "IndexIVF": IndexIVF,
+    "IndexIVFPQ": IndexIVFPQ,
     "IndexInfoResponseModel": IndexInfoResponseModel,
     "IndexListResponseModel": IndexListResponseModel,
     "IndexOperationRequest": IndexOperationRequest,
