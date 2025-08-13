@@ -987,33 +987,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(queryResponse.results.length).toBe(20);
   });
 
-  // New Test 21: Test QueryRequest object format
-  test('should accept QueryRequest object format', async () => {
-    // Setup vectors using (ids, vectors) overload
-    const vectorData = trainData.slice(0, 10);
-    const ids = vectorData.map((_, i) => `request-obj-${i}`);
-    await index.upsert(ids, vectorData);
-    
-    // Test using QueryRequest object format
-    const queryRequest = {
-      indexName: indexName,
-      indexKey: Buffer.from(indexKey).toString('hex'),
-      queryVector: testData[0],
-      topK: TOP_K,
-      nProbes: N_PROBES,
-      filters: {},
-      include: ["metadata"],
-      greedy: false
-    };
-    
-    const response = await index.query(queryRequest);
-    
-    expect(response).toBeDefined();
-    expect(response.results).toBeDefined();
-    expect(response.results.length).toBeGreaterThan(0);
-  });
-
-  // NEW Test 22: Test content-based query with embedding model
+  // Test 21: Test content-based query with embedding model
   test('should query using content with all-MiniLM-L6-v2 embedding model', async () => {
     // Create a separate index specifically for content-based search
     const contentIndexName = generateIndexName('content');

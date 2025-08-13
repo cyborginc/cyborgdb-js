@@ -6,7 +6,6 @@ export type {
   CreateIndexRequest,
   IndexOperationRequest,
   UpsertRequest,
-  QueryRequest,
   BatchQueryRequest,
   TrainRequest,
   DeleteRequest,

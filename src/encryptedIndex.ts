@@ -459,183 +459,59 @@ export class EncryptedIndex {
   }
 
   /**
-   * Search for semantically similar vectors in the index
-   * 
-   * This method supports both single and batch queries with flexible input formats:
-   * 
-   * **Single Vector Query:**
-   * ```typescript
-   * // Query with single vector
-   * const results = await index.query([0.1, 0.2, 0.3], undefined, 10);
-   * 
-   * // With filters and metadata
-   * const results = await index.query(
-   *   [0.1, 0.2, 0.3],     // query vector
-   *   undefined,           // query contents (optional)
-   *   10,                  // top K results
-   *   5,                   // number of probes
-   *   {category: "tech"},  // metadata filters
-   *   ["metadata"],        // fields to include
-   *   false               // greedy search
-   * );
-   * ```
-   * 
-   * **Batch Query (multiple vectors):**
-   * ```typescript
-   * const batchResults = await index.query(
-   *   [[0.1, 0.2], [0.3, 0.4]],  // multiple query vectors
-   *   undefined,
-   *   5
-   * );
-   * // Returns array of result arrays, one per query vector
-   * ```
-   * 
-   * **QueryRequest Object Format:**
-   * ```typescript
-   * const results = await index.query({
-   *   indexName: "my-index",
-   *   indexKey: "hex-encoded-key", 
-   *   queryVector: [0.1, 0.2, 0.3],  // or queryVectors for batch
-   *   topK: 10,
-   *   filters: {owner: "john"},
-   *   include: ["metadata", "contents"]
-   * });
-   * ```
-   * 
-   * **Content-Based Search:**
-   * ```typescript
-   * // Search by text content (requires embedding model)
-   * const results = await index.query(
-   *   undefined,              // no vector provided
-   *   "search text here",     // content to embed and search
-   *   10
-   * );
-   * ```
-   * 
-   * **Advanced Filtering Examples:**
-   * ```typescript
-   * // Simple filter
-   * const simpleFilter = {category: "tech"};
-   * 
-   * // Complex nested filter
-   * const complexFilter = {
-   *   "$and": [
-   *     {"owner.name": "John"},
-   *     {"age": {"$gt": 25}},
-   *     {"tags": {"$in": ["premium", "verified"]}}
-   *   ]
-   * };
-   * ```
-   * 
-   * **Response Format:**
-   * - Single query: `{results: QueryResultItem[]}` 
-   * - Batch query: `{results: QueryResultItem[][]}` (array of arrays)
-   * - Each result item contains: id, distance, and requested fields (vector, metadata, contents)
-   * 
-   * @param queryVectors Single vector [0.1, 0.2] or batch vectors [[0.1, 0.2], [0.3, 0.4]]
+   * Search for semantically similar vectors in the index.
+   * Supports single vector, batch vectors, or content-based queries.
+   *
+   * @param queryVectors Single vector [0.1, 0.2] or batch [[0.1, 0.2], [0.3, 0.4]]
    * @param queryContents Optional text content to embed and search (alternative to queryVectors)
    * @param topK Maximum number of results to return per query (default: 100)
-   * @param nProbes Number of cluster centers to search (higher = better recall, default: 1)
-   * @param filters Metadata filters to apply (MongoDB-style queries supported)
-   * @param include Fields to include in results: "vector", "metadata", "contents", "distance" (default: ["distance", "metadata"])
+   * @param nProbes Number of cluster centers to search (default: 1)
+   * @param filters Metadata filters (MongoDB-style queries supported)
+   * @param include Fields to include in results (default: ["distance", "metadata"])
    * @param greedy Use faster approximate search (default: false)
-   * @returns Promise resolving to QueryResponse with results array
-   * @throws Error if neither queryVectors nor queryContents provided, or for API errors
+   * @returns Promise resolving to QueryResponse
+   * @throws Error if neither queryVectors nor queryContents provided
    */
   async query(
     queryVectors?: number[] | number[][],
     queryContents?: string,
-    topK?: number,
-    nProbes?: number,
-    filters?: object,
-    include?: string[],
-    greedy?: boolean
-  ): Promise<QueryResponse>;
-
-  /**
-   * Search using a QueryRequest object (alternative signature)
-   * 
-   * @param request Complete query request object with all parameters
-   * @returns Promise resolving to QueryResponse with results
-   */
-  async query(request: QueryRequest): Promise<QueryResponse>;
-
-  async query(...args: any[]): Promise<QueryResponse> {
+    topK: number = 100,
+    nProbes: number = 1,
+    filters: object = {},
+    include: string[] = ["distance", "metadata"],
+    greedy: boolean = false
+  ): Promise<QueryResponse> {
     const keyHex = Buffer.from(this.indexKey).toString('hex');
+    let isSingleQuery = false;
 
-    let queryVectors: number[][] | undefined;
-    let queryContents: string | undefined;
-    let topK: number = 100;
-    let nProbes: number = 1;
-    let greedy: boolean = false;
-    let filters: object = {};
-    let include: string[] = ["distance", "metadata"];
-    let isSingleQuery: boolean = false; // Track if original input was single query
+    let vectors2D: number[][] | undefined;
 
-    // Handle different function signatures
-    if (args.length === 1 && typeof args[0] === 'object' && 'indexName' in args[0]) {
-      const request = args[0] as QueryRequest;
-      const inputVector = request.queryVector;
-      queryContents = request.queryContents ?? undefined;
-      topK = request.topK ?? topK;
-      nProbes = request.nProbes ?? nProbes;
-      greedy = request.greedy ?? greedy;
-      filters = request.filters ?? filters;
-      include = request.include ?? include;
-
-      if (inputVector) {
-        const is2DArray = (arr: number[] | number[][]): arr is number[][] => {
-          return arr.length > 0 && Array.isArray(arr[0]);
-        };
-
-        if (is2DArray(inputVector)) {
-          queryVectors = inputVector;
-        } else {
-          // Single query - wrap in array to make it 2D
-          queryVectors = [inputVector as number[]];
-          isSingleQuery = true;
-        }
-      }
-    } else {
-      const [inputVectors, contents, k, probes, filtersArg, includeArg, greedyArg] = args;
-      
-      queryContents = contents;
-      topK = k ?? topK;
-      nProbes = probes ?? nProbes;
-      filters = filtersArg ?? filters;
-      include = includeArg ?? include;
-      greedy = greedyArg ?? greedy;
-
-      if (inputVectors) {
-        if (Array.isArray(inputVectors) && inputVectors.length > 0 && Array.isArray(inputVectors[0])) {
-          // Already 2D array (batch query)
-          queryVectors = inputVectors as number[][];
-        } else if (Array.isArray(inputVectors)) {
-          // Single query - wrap in array to make it 2D
-          queryVectors = [inputVectors as number[]];
-          isSingleQuery = true;
-        }
+    if (queryVectors) {
+      if (Array.isArray(queryVectors) && queryVectors.length > 0 && Array.isArray(queryVectors[0])) {
+        vectors2D = queryVectors as number[][];
+      } else {
+        vectors2D = [queryVectors as number[]];
+        isSingleQuery = true;
       }
     }
 
-    // Validation
-    if (!queryVectors && !queryContents) {
+    if (!vectors2D && !queryContents) {
       throw new Error("You must provide queryVectors or queryContents.");
     }
 
     try {
-      // Always use queryVectors (2D array) for consistency
       const requestData: Request = {
         indexName: this.indexName,
         indexKey: keyHex,
-        topK: topK,
-        nProbes: nProbes,
-        greedy: greedy,
-        filters: filters,
-        include: include,
-        // Always send as queryVectors (2D array) - never use queryVector
-        queryVectors: queryVectors ? queryVectors.map(vector => vector.map(v => Number(v))) : undefined,
-        queryContents: queryContents ? queryContents : undefined
+        topK,
+        nProbes,
+        greedy,
+        filters,
+        include,
+        queryVectors: vectors2D
+          ? vectors2D.map(vector => vector.map(v => Number(v)))
+          : undefined,
+        queryContents: queryContents ?? undefined
       };
 
       const response = await this.api.queryVectorsV1VectorsQueryPost(requestData as Request);
@@ -644,19 +520,19 @@ export class EncryptedIndex {
         throw new Error("No response received from query API");
       }
 
-      // Handle response unwrapping for single queries
       let finalResponse = response.body;
-      
-      // If this was originally a single query but we wrapped it, unwrap the response
-      if (isSingleQuery && finalResponse.results && Array.isArray(finalResponse.results) && finalResponse.results.length === 1) {
-        // Check if the result is wrapped in an extra array level
-        if (Array.isArray(finalResponse.results[0])) {
-          finalResponse.results = finalResponse.results[0];
-        }
+
+      if (
+        isSingleQuery &&
+        finalResponse.results &&
+        Array.isArray(finalResponse.results) &&
+        finalResponse.results.length === 1 &&
+        Array.isArray(finalResponse.results[0])
+      ) {
+        finalResponse.results = finalResponse.results[0];
       }
 
       return finalResponse;
-
     } catch (error: any) {
       console.error("Query error:", error.response?.data || error.message);
       this.handleApiError(error);
