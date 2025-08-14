@@ -23,7 +23,7 @@ dotenv.config();
 // Constants
 const API_URL = 'http://localhost:8000';
 const CYBORGDB_API_KEY = process.env.CYBORGDB_API_KEY;
-console.log("CYBORGDB_API_KEY:", CYBORGDB_API_KEY);
+
 if (!CYBORGDB_API_KEY) {
   throw new Error("CYBORGDB_API_KEY environment variable is not set");
 }
@@ -131,6 +131,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   console.log(`Using API URL: ${API_URL}`);
   console.log(`Using API Key: ${CYBORGDB_API_KEY}`);
   const client = new CyborgDB(API_URL, CYBORGDB_API_KEY);
+
   let indexName: string;
   let indexKey: Uint8Array;
   let dimension: number;
