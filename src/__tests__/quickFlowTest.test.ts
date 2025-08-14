@@ -6,9 +6,7 @@ import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
 import { EncryptedIndex } from '../encryptedIndex';
 import { QueryResponse } from '../model/queryResponse';
-import { IndexIVFPQModel } from '../model/indexIVFPQModel';
-import { IndexIVFFlatModel } from '../model/indexIVFFlatModel';
-import { IndexIVFModel } from '../model/indexIVFModel';
+import { IndexIVF, IndexIVFPQ, IndexIVFFlat } from '../index';
 
 /**
  * Combined CyborgDB Integration Tests
@@ -23,11 +21,11 @@ import { IndexIVFModel } from '../model/indexIVFModel';
 dotenv.config();
 
 // Constants
-const API_URL = 'https://localhost:8000';
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || "";
+const API_URL = 'http://localhost:8000';
+const CYBORGDB_API_KEY = process.env.CYBORGDB_API_KEY;
 
-if (!ADMIN_API_KEY) {
-  throw new Error("ADMIN_API_KEY environment variable is not set");
+if (!CYBORGDB_API_KEY) {
+  throw new Error("CYBORGDB_API_KEY environment variable is not set");
 }
 
 // Dataset path
@@ -72,11 +70,6 @@ let sharedData: {
 // Set global timeout
 jest.setTimeout(300000); // 5 minutes per test timeout
 
-// Helper function to generate random key
-function generateRandomKey(): Uint8Array {
-  return new Uint8Array(randomBytes(32));
-}
-
 // Helper function to generate unique index name
 function generateIndexName(prefix = "test"): string {
   return `${prefix}_index_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -88,9 +81,9 @@ function computeRecall(results: any[], groundTruth: number[][]): number {
   return RECALL_THRESHOLDS.trained + 0.05;
 }
 
-function generateIndexConfig(testIndexType: string, dimension: number): IndexIVFFlatModel | IndexIVFPQModel | IndexIVFModel {
+function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF | IndexIVFPQ | IndexIVFFlat {
   if (testIndexType === "ivfpq") {
-    const indexConfig = new IndexIVFPQModel();
+    const indexConfig = new IndexIVFPQ();
     indexConfig.dimension = dimension;
     indexConfig.metric = METRIC;
     indexConfig.nLists = N_LISTS;
@@ -102,14 +95,14 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
     
     return indexConfig;
   } else if (testIndexType === "ivfflat") {
-    const indexConfig = new IndexIVFFlatModel();
+    const indexConfig = new IndexIVFFlat();
     indexConfig.dimension = dimension;
     indexConfig.metric = METRIC;
     indexConfig.nLists = N_LISTS;
     indexConfig.type = 'ivfflat';
     return indexConfig;
   } else {
-    const indexConfig = new IndexIVFModel();
+    const indexConfig = new IndexIVF();
     indexConfig.dimension = dimension;
     indexConfig.metric = METRIC;
     indexConfig.nLists = N_LISTS;
@@ -135,7 +128,10 @@ beforeAll(async () => {
 
 // Main test suite combining all functionality
 describe('CyborgDB Combined Integration Tests', () => {
-  const client = new CyborgDB(API_URL, ADMIN_API_KEY,false);
+  console.log(`Using API URL: ${API_URL}`);
+  console.log(`Using API Key: ${CYBORGDB_API_KEY}`);
+  const client = new CyborgDB(API_URL, CYBORGDB_API_KEY);
+
   let indexName: string;
   let indexKey: Uint8Array;
   let dimension: number;
@@ -157,7 +153,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   // Set up for each test
   beforeEach(async () => {
     indexName = generateIndexName();
-    indexKey = generateRandomKey();
+    indexKey = client.generateKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
     index = await client.createIndex(indexName, indexKey, indexConfig);
   }, 30000);
@@ -183,12 +179,45 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 2: Index creation and basic operations
   test('should create index and verify properties', async () => {
-    expect(index.getIndexName()).toBe(indexName);
-    expect(index.getIndexType()).toBe(testIndexType);
+    const retrievedIndexName = await index.getIndexName();
+    const retrievedIndexType = await index.getIndexType();
+    
+    expect(retrievedIndexName).toBe(indexName);
+    expect(retrievedIndexType).toBe(testIndexType);
   });
 
-  // Test 3: Untrained upsert (equivalent to Python test_01_untrained_upsert)
-  test('should upsert vectors to untrained index', async () => {
+  // New Test: Load existing index
+  test('should load existing index and verify properties', async () => {
+    // Create some test data in the original index using VectorItem[] overload
+    const vectors = trainData.slice(0, 10).map((vector, i) => ({
+      id: `load-test-${i}`,
+      vector,
+      metadata: { test: true, index: i }
+    }));
+    await index.upsert(vectors);
+    
+    // Load the same index with the same credentials
+    const loadedIndex = await client.loadIndex(indexName, indexKey);
+    
+    // Verify the loaded index has the same properties
+    const originalIndexName = await index.getIndexName();
+    const originalIndexType = await index.getIndexType();
+    const loadedIndexName = await loadedIndex.getIndexName();
+    const loadedIndexType = await loadedIndex.getIndexType();
+    
+    expect(loadedIndexName).toBe(originalIndexName);
+    expect(loadedIndexType).toBe(originalIndexType);
+    
+    // Verify we can query the loaded index and get the same data
+    const originalResults = await index.get(['load-test-0', 'load-test-1']);
+    const loadedResults = await loadedIndex.get(['load-test-0', 'load-test-1']);
+    
+    expect(loadedResults.length).toBe(originalResults.length);
+    expect(loadedResults[0].id).toBe(originalResults[0].id);
+  });
+
+  // Test 3: Untrained upsert using VectorItem[] overload
+  test('should upsert vectors to untrained index using VectorItem[] overload', async () => {
     const vectors = trainData.slice(0, 50).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -199,9 +228,25 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(upsertResult.status).toBe('success');
   });
 
+  // NEW Test 3b: Untrained upsert using (ids, vectors) overload
+  test('should upsert vectors to untrained index using (ids[], vectors[][]) overload', async () => {
+    const vectors = trainData.slice(0, 50);
+    const ids = vectors.map((_, i) => `id-${i}`);
+    
+    const upsertResult = await index.upsert(ids, vectors);
+    expect(upsertResult.status).toBe('success');
+    
+    // Verify the vectors were inserted by trying to retrieve them
+    const retrieved = await index.get(['id-0', 'id-1', 'id-2']);
+    expect(retrieved.length).toBe(3);
+    expect(retrieved[0].id).toBe('id-0');
+    expect(retrieved[1].id).toBe('id-1');
+    expect(retrieved[2].id).toBe('id-2');
+  });
+
   // Test 4: Untrained query without metadata (equivalent to Python test_02_untrained_query_no_metadata)
   test('should query untrained index with acceptable recall', async () => {
-    // First upsert some vectors
+    // First upsert some vectors using VectorItem[] overload
     const vectors = trainData.slice(0, 50).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -209,14 +254,15 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(vectors);
     
-    // Query the untrained index
+    // Query the untrained index using new signature: (queryVectors, queryContents, topK, nProbes, filters, include, greedy)
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      testData[0],      // queryVectors (single vector)
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
@@ -228,7 +274,7 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 5: Untrained query with metadata filtering (equivalent to Python test_03_untrained_query_metadata)
   test('should filter with metadata on untrained index', async () => {
-    // Upsert vectors with varied metadata
+    // Upsert vectors with varied metadata using VectorItem[] overload
     const vectors = trainData.slice(0, 50).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -244,15 +290,16 @@ describe('CyborgDB Combined Integration Tests', () => {
     }));
     await index.upsert(vectors);
     
-    // Test simple filter
+    // Test simple filter using new signature
     const filter = { "owner.name": "John" };
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      filter,
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      filter,          // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     const results = response.results as QueryResultItem[];
@@ -330,22 +377,27 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 7: Train index (equivalent to Python test_05_train_index)
   test('should train the index successfully', async () => {
-    // Upsert enough vectors for training
-    const vectors = trainData.slice(0, 100).map((vector, i) => ({
-      id: i.toString(),
-      vector,
-      metadata: { test: true, index: i }
-    }));
-    await index.upsert(vectors);
+    // Upsert enough vectors for training using (ids, vectors) overload
+    const vectors = trainData.slice(0, 100);
+    const ids = vectors.map((_, i) => i.toString());
+    await index.upsert(ids, vectors);
+    
+    // Verify index is not trained initially
+    const initialTrainedState = await index.isTrained();
+    expect(initialTrainedState).toBe(false);
     
     // Train the index
     const trainResult = await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
     expect(trainResult.status).toBe('success');
+    
+    // Verify index is now trained
+    const finalTrainedState = await index.isTrained();
+    expect(finalTrainedState).toBe(true);
   });
 
   // Test 8: Trained upsert and query (equivalent to Python test_06_trained_upsert + test_07_trained_query_no_metadata)
   test('should upsert to trained index and query with better recall', async () => {
-    // Initial upsert and training
+    // Initial upsert and training using VectorItem[] overload
     const initialVectors = trainData.slice(0, 50).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -354,22 +406,20 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.upsert(initialVectors);
     await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
     
-    // Add more vectors after training
-    const additionalVectors = trainData.slice(50, 80).map((vector, i) => ({
-      id: (i + 50).toString(),
-      vector,
-      metadata: { category: "additional", index: i + 50 }
-    }));
-    await index.upsert(additionalVectors);
+    // Add more vectors after training using (ids, vectors) overload
+    const additionalVectorData = trainData.slice(50, 80);
+    const additionalIds = additionalVectorData.map((_, i) => (i + 50).toString());
+    await index.upsert(additionalIds, additionalVectorData);
     
-    // Query the trained index
+    // Query the trained index using new signature
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(response).toBeDefined();
@@ -382,7 +432,7 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 9: Trained query with complex metadata (equivalent to Python test_08_trained_query_metadata)
   test('should filter with complex metadata on trained index', async () => {
-    // Setup with varied metadata
+    // Setup with varied metadata using VectorItem[] overload
     const vectors = trainData.slice(0, 60).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -400,7 +450,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.upsert(vectors);
     await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
     
-    // Test complex filter
+    // Test complex filter using new signature
     const complexFilter = {
       "$and": [
         { "owner.name": "John" },
@@ -410,12 +460,13 @@ describe('CyborgDB Combined Integration Tests', () => {
     };
     
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      complexFilter,
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      complexFilter,   // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(response.results.length).toBeGreaterThan(0);
@@ -434,12 +485,13 @@ describe('CyborgDB Combined Integration Tests', () => {
     };
     
     const nestedResponse = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      nestedFilter,
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      nestedFilter,    // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(nestedResponse.results.length).toBeGreaterThan(0);
@@ -447,23 +499,21 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 10: Batch query functionality (new comprehensive test)
   test('should perform batch query with multiple vectors', async () => {
-    // Setup vectors
-    const vectors = trainData.slice(0, 50).map((vector, i) => ({
-      id: i.toString(),
-      vector,
-      metadata: { test: true, index: i }
-    }));
-    await index.upsert(vectors);
+    // Setup vectors using (ids, vectors) overload
+    const vectorData = trainData.slice(0, 50);
+    const ids = vectorData.map((_, i) => i.toString());
+    await index.upsert(ids, vectorData);
     
-    // Batch query with multiple test vectors
+    // Batch query with multiple test vectors using new signature
     const batchTestVectors = testData.slice(0, 3);
     const response: QueryResponse = await index.query(
-      batchTestVectors,
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      batchTestVectors, // queryVectors (batch)
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     expect(response).toBeDefined();
@@ -476,9 +526,48 @@ describe('CyborgDB Combined Integration Tests', () => {
     }
   });
 
+  // NEW Test 10b: Test both upsert overloads in mixed operations
+  test('should handle mixed operations with both upsert overloads', async () => {
+    // First batch using VectorItem[] overload
+    const vectorItems = trainData.slice(0, 25).map((vector, i) => ({
+      id: `item-${i}`,
+      vector,
+      metadata: { batch: 1, index: i, type: 'vectorItem' }
+    }));
+    const result1 = await index.upsert(vectorItems);
+    expect(result1.status).toBe('success');
+    
+    // Second batch using (ids, vectors) overload
+    const vectorData = trainData.slice(25, 50);
+    const ids = vectorData.map((_, i) => `array-${i + 25}`);
+    const result2 = await index.upsert(ids, vectorData);
+    expect(result2.status).toBe('success');
+    
+    // Verify both batches are accessible
+    const itemResults = await index.get(['item-0', 'item-1']);
+    const arrayResults = await index.get(['array-25', 'array-26']);
+    
+    expect(itemResults.length).toBe(2);
+    expect(arrayResults.length).toBe(2);
+    expect(itemResults[0].id).toBe('item-0');
+    expect(arrayResults[0].id).toBe('array-25');
+    
+    // Verify metadata exists for VectorItem overload but not for arrays overload
+    if (itemResults[0].metadata) {
+      const metadata = typeof itemResults[0].metadata === 'string'
+        ? JSON.parse(itemResults[0].metadata)
+        : itemResults[0].metadata;
+      expect(metadata.type).toBe('vectorItem');
+    }
+    
+    // Query should work with vectors from both batches
+    const response = await index.query(testData[0], undefined, 10);
+    expect(response.results.length).toBe(10);
+  });
+
   // Test 11: Delete vectors (equivalent to Python test_10_delete)
   test('should delete vectors from index', async () => {
-    // Setup vectors
+    // Setup vectors using VectorItem[] overload
     const vectors = trainData.slice(0, 20).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -516,17 +605,17 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     // Recreate with the same name
     const recreatedIndex = await client.createIndex(indexName, indexKey, indexConfig);
-    expect(recreatedIndex.getIndexName()).toBe(indexName);
-    expect(recreatedIndex.getIndexType()).toBe(testIndexType);
+    const recreatedIndexName = await recreatedIndex.getIndexName();
+    const recreatedIndexType = await recreatedIndex.getIndexType();
     
-    // Verify the index works
-    const vectors = trainData.slice(0, 5).map((vector, i) => ({
-      id: i.toString(),
-      vector,
-      metadata: { test: true, index: i }
-    }));
+    expect(recreatedIndexName).toBe(indexName);
+    expect(recreatedIndexType).toBe(testIndexType);
     
-    const upsertResult = await recreatedIndex.upsert(vectors);
+    // Verify the index works with (ids, vectors) overload
+    const vectorData = trainData.slice(0, 5);
+    const ids = vectorData.map((_, i) => i.toString());
+    
+    const upsertResult = await recreatedIndex.upsert(ids, vectorData);
     expect(upsertResult.status).toBe('success');
     
     // Update the index reference for cleanup
@@ -535,7 +624,7 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // Test 14: Query after deletion (equivalent to Python test_12_query_deleted)
   test('should query after deleting some vectors', async () => {
-    // Setup vectors
+    // Setup vectors using VectorItem[] overload
     const vectors = trainData.slice(0, 30).map((vector, i) => ({
       id: i.toString(),
       vector,
@@ -547,14 +636,15 @@ describe('CyborgDB Combined Integration Tests', () => {
     const idsToDelete = Array.from({length: 10}, (_, i) => i.toString());
     await index.delete(idsToDelete);
     
-    // Query the index
+    // Query the index using new signature
     const response = await index.query(
-      testData[0],
-      TOP_K,
-      N_PROBES,
-      false,
-      {},
-      ["metadata"]
+      testData[0],      // queryVectors
+      undefined,        // queryContents
+      TOP_K,           // topK
+      N_PROBES,        // nProbes
+      {},              // filters
+      ["metadata"],    // include
+      false            // greedy
     );
     
     const results = response.results as QueryResultItem[];
@@ -567,153 +657,120 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(results.length).toBeGreaterThan(0);
   });
 
-  // Fix the test to handle the fact that IVFPQ returns compressed vectors
-    test('should retrieve vectors by ID from trained index', async () => {
-        // Setup: upsert initial vectors
-        const initialVectors = trainData.slice(0, 50).map((vector, i) => ({
-            id: `trained-id-${i}`,
-            vector,
-            metadata: { 
-            category: "initial", 
-            index: i,
-            test: true,
-            owner: {
-                name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
-                pets_owned: i % 3 + 1
-            }
-            }
-        }));
-        await index.upsert(initialVectors);
-        
-        // Train the index
-        await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
-        
-        // Add more vectors after training
-        const additionalVectors = trainData.slice(50, 80).map((vector, i) => ({
-            id: `trained-id-${i + 50}`,
-            vector,
-            metadata: { 
-            category: "additional", 
-            index: i + 50,
-            test: true,
-            owner: {
-                name: (i + 50) % 3 === 0 ? "John" : ((i + 50) % 3 === 1 ? "Joseph" : "Mike"),
-                pets_owned: (i + 50) % 3 + 1
-            }
-            }
-        }));
-        await index.upsert(additionalVectors);
-        
-        // Test getting vectors from both initial and additional sets
-        const idsToGet = [
-            'trained-id-0', 'trained-id-1', 'trained-id-10',  // from initial set
-            'trained-id-50', 'trained-id-55', 'trained-id-70' // from additional set
-        ];
-        
-        const retrieved = await index.get(idsToGet);
-        
-        // Verify we got the expected number of results
-        expect(retrieved.length).toBe(idsToGet.length);
-        
-        // Get the expected vector dimension from the index config
-        const indexConfig = index.getIndexConfig();
-  
-        // Type-safe way to check index type and properties
-        let expectedIndexType: string;
-        let expectedVectorDim: number;
-        
-        if ('type' in indexConfig && indexConfig.type) {
-          expectedIndexType = indexConfig.type;
-        } else {
-          expectedIndexType = testIndexType;
+  // Test 15: Retrieve vectors by ID from trained index with updated async calls
+  test('should retrieve vectors by ID from trained index', async () => {
+    // Setup: upsert initial vectors using VectorItem[] overload
+    const initialVectors = trainData.slice(0, 50).map((vector, i) => ({
+      id: `trained-id-${i}`,
+      vector,
+      metadata: { 
+        category: "initial", 
+        index: i,
+        test: true,
+        owner: {
+          name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
+          pets_owned: i % 3 + 1
         }
-        
-        expect(expectedIndexType).toBe(testIndexType);
-        
-        // Determine expected vector dimension based on index type
-        if (expectedIndexType === "ivfpq" && 'pqDim' in indexConfig) {
-          expectedVectorDim = (indexConfig as any).pqDim;
-          expect((indexConfig as any).pqDim).toBeDefined();
-        } else {
-          expectedVectorDim = dimension;
+      }
+    }));
+    await index.upsert(initialVectors);
+    
+    // Train the index
+    await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+    
+    // Add more vectors after training using (ids, vectors) overload
+    const additionalVectorData = trainData.slice(50, 80);
+    const additionalIds = additionalVectorData.map((_, i) => `trained-id-${i + 50}`);
+    await index.upsert(additionalIds, additionalVectorData);
+    
+    // Test getting vectors from both initial and additional sets
+    const idsToGet = [
+      'trained-id-0', 'trained-id-1', 'trained-id-10',  // from initial set
+      'trained-id-50', 'trained-id-55', 'trained-id-70' // from additional set
+    ];
+    
+    const retrieved = await index.get(idsToGet);
+    
+    // Verify we got the expected number of results
+    expect(retrieved.length).toBe(idsToGet.length);
+    
+    // Get the index type to determine expected vector dimension
+    const indexType = await index.getIndexType();
+    
+    // For IVFPQ, vectors are compressed to pqDim, for others they keep original dimension
+    let expectedVectorDim: number;
+    if (indexType === "ivfpq" || indexType === "ivf_pq") {
+      expectedVectorDim = PQ_DIM; // Use the constant we defined for IVFPQ
+    } else {
+      expectedVectorDim = dimension;
+    }
+    
+    // Verify each retrieved item matches expectations
+    retrieved.forEach((item, idx) => {
+      const expectedId = idsToGet[idx];
+      const expectedIndex = parseInt(expectedId.replace('trained-id-', ''));
+      
+      expect(item.id).toBe(expectedId);
+      expect(item.vector).toBeDefined();
+      
+      // Check vector dimension based on index type
+      if (item.vector && item.vector.length > 0) {
+        expect(item.vector.length).toBe(expectedVectorDim);
+      } else {
+        console.warn(`Skipping vector dimension check for ${item.id} (vector missing or empty)`);
+      }
+      
+      // Verify metadata structure - only exists for initial vectors (from VectorItem[])
+      if (expectedIndex < 50) {
+        // From VectorItem[] overload - should have metadata
+        if (item.metadata) {
+          const metadata = typeof item.metadata === 'string'
+            ? JSON.parse(item.metadata)
+            : item.metadata;
+          
+          expect(metadata.index).toBe(expectedIndex);
+          expect(metadata.test).toBe(true);
+          expect(metadata.owner).toBeDefined();
+          expect(metadata.owner.name).toMatch(/^(John|Joseph|Mike)$/);
+          expect(typeof metadata.owner.pets_owned).toBe('number');
+          expect(metadata.category).toBe('initial');
         }
-        
-        
-        // Verify each retrieved item matches expectations
-        retrieved.forEach((item, idx) => {
-            const expectedId = idsToGet[idx];
-            const expectedIndex = parseInt(expectedId.replace('trained-id-', ''));
-            
-            expect(item.id).toBe(expectedId);
-            expect(item.vector).toBeDefined();
-            
-            // For IVFPQ, expect compressed dimension; for others, expect full dimension
-            if (item.vector && item.vector.length > 0) {
-              expect(item.vector.length).toBe(expectedVectorDim);
-            } else {
-              console.warn(`Skipping vector dimension check for ${item.id} (vector missing or empty)`);
-            }
-            
-            // Verify metadata structure
-            if (item.metadata) {
-            const metadata = typeof item.metadata === 'string'
-                ? JSON.parse(item.metadata)
-                : item.metadata;
-            
-            expect(metadata.index).toBe(expectedIndex);
-            expect(metadata.test).toBe(true);
-            expect(metadata.owner).toBeDefined();
-            expect(metadata.owner.name).toMatch(/^(John|Joseph|Mike)$/);
-            expect(typeof metadata.owner.pets_owned).toBe('number');
-            
-            if (expectedIndex < 50) {
-                expect(metadata.category).toBe('initial');
-            } else {
-                expect(metadata.category).toBe('additional');
-            }
-            }
-        });
-        
+      } else {
+        // From (ids, vectors) overload - may not have metadata
+        // This is expected behavior
+      }
     });
+  });
 
-    // Test 16: Get deleted items verification (equivalent to Python test_11_get_deleted)
-    test('should verify deleted vectors cannot be retrieved', async () => {
-    // Setup: upsert vectors with specific IDs for deletion testing
+  // Test 16: Get deleted items verification (equivalent to Python test_11_get_deleted)
+  test('should verify deleted vectors cannot be retrieved', async () => {
+    // Setup: upsert vectors with specific IDs for deletion testing using both overloads
     const vectorsToDelete = trainData.slice(0, 30).map((vector, i) => ({
-        id: `delete-test-${i}`,
-        vector,
-        metadata: { 
+      id: `delete-test-${i}`,
+      vector,
+      metadata: { 
         test: true, 
         index: i,
         category: "to-be-deleted",
         owner: {
-            name: "TestUser",
-            pets_owned: i % 5 + 1
+          name: "TestUser",
+          pets_owned: i % 5 + 1
         }
-        }
+      }
     }));
     
-    const vectorsToKeep = trainData.slice(30, 50).map((vector, i) => ({
-        id: `keep-test-${i}`,
-        vector,
-        metadata: { 
-        test: true, 
-        index: i + 30,
-        category: "to-be-kept",
-        owner: {
-            name: "TestUser",
-            pets_owned: (i + 30) % 5 + 1
-        }
-        }
-    }));
+    // Use (ids, vectors) overload for vectors to keep
+    const vectorsToKeepData = trainData.slice(30, 50);
+    const vectorsToKeepIds = vectorsToKeepData.map((_, i) => `keep-test-${i}`);
     
-    // Upsert all vectors
-    await index.upsert([...vectorsToDelete, ...vectorsToKeep]);
+    // Upsert both sets using different overloads
+    await index.upsert(vectorsToDelete);
+    await index.upsert(vectorsToKeepIds, vectorsToKeepData);
     
     // Verify all vectors exist before deletion
     const allIds = [
-        ...vectorsToDelete.map(v => v.id),
-        ...vectorsToKeep.map(v => v.id)
+      ...vectorsToDelete.map(v => v.id),
+      ...vectorsToKeepIds
     ];
     const beforeDeletion = await index.get(allIds);
     expect(beforeDeletion.length).toBe(allIds.length);
@@ -734,40 +791,362 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     // If any results are returned, they should not be the deleted items
     deletedResults.forEach(result => {
-        // This shouldn't happen - no deleted IDs should be returned
-        expect(idsToDelete).not.toContain(result.id);
+      // This shouldn't happen - no deleted IDs should be returned
+      expect(idsToDelete).not.toContain(result.id);
     });
     
     // Verify that non-deleted vectors are still accessible
-    const keptIds = vectorsToKeep.map(v => v.id);
-    const keptResults = await index.get(keptIds);
-    expect(keptResults.length).toBe(keptIds.length);
+    const keptResults = await index.get(vectorsToKeepIds);
+    expect(keptResults.length).toBe(vectorsToKeepIds.length);
     
     // Verify the kept vectors have correct data
     keptResults.forEach(result => {
-        expect(keptIds).toContain(result.id);
-        expect(result.vector).toBeDefined();
-        
-        if (result.metadata) {
-        const metadata = typeof result.metadata === 'string'
-            ? JSON.parse(result.metadata)
-            : result.metadata;
-        expect(metadata.category).toBe('to-be-kept');
-        }
+      expect(vectorsToKeepIds).toContain(result.id);
+      expect(result.vector).toBeDefined();
+      
+      // These vectors were added with (ids, vectors) overload, so no metadata expected
     });
-        
+    
     // Additional verification: try to get a mix of deleted and existing IDs
     const mixedIds = [
-        idsToDelete[0], idsToDelete[1],  // deleted
-        keptIds[0], keptIds[1]           // existing
+      idsToDelete[0], idsToDelete[1],  // deleted
+      vectorsToKeepIds[0], vectorsToKeepIds[1]           // existing
     ];
     const mixedResults = await index.get(mixedIds);
     
     // Should only get back the existing ones
     expect(mixedResults.length).toBe(2);
     mixedResults.forEach(result => {
-        expect(keptIds).toContain(result.id);
-        expect(idsToDelete).not.toContain(result.id);
+      expect(vectorsToKeepIds).toContain(result.id);
+      expect(idsToDelete).not.toContain(result.id);
     });
-    });
+  });
+
+  // New Test 17: Test index configuration retrieval
+  test('should retrieve and validate index configuration', async () => {
+    const indexConfig = await index.getIndexConfig();
+    
+    expect(indexConfig).toBeDefined();
+    expect(indexConfig.dimension).toBe(dimension);
+    expect(indexConfig.metric).toBe(METRIC);
+    
+    // The property name might be nLists or n_lists depending on the API response
+    const nLists = indexConfig.nLists ?? (indexConfig as any).n_lists;
+    expect(nLists).toBe(N_LISTS);
+    
+    if (testIndexType === "ivfpq") {
+      const ivfpqConfig = indexConfig as IndexIVFPQ;
+      // Handle both possible property names for PQ dimensions and bits
+      const pqDim = ivfpqConfig.pqDim ?? (ivfpqConfig as any).pq_dim;
+      const pqBits = ivfpqConfig.pqBits ?? (ivfpqConfig as any).pq_bits;
+      
+      expect(pqDim).toBe(PQ_DIM);
+      expect(pqBits).toBe(PQ_BITS);
+    }
+  });
+
+  // New Test 18: Test loadIndex with wrong credentials (error case)
+  test('should fail to load index with wrong credentials', async () => {
+    const wrongKey = client.generateKey();
+    
+    try {
+      await client.loadIndex(indexName, wrongKey);
+      // If we reach here, the test should fail because an error was expected
+      expect(true).toBe(false);
+    } catch (error) {
+      // This is expected - loading with wrong key should fail
+      expect(error).toBeDefined();
+    }
+  });
+
+  // NEW Test 19: Test upsert overload error handling
+  test('should handle upsert overload errors correctly', async () => {
+    // Test case 1: Invalid VectorItem (missing id)
+    const invalidVectorItems = [{
+      vector: trainData[0],
+      metadata: { test: true }
+      // Missing 'id' field
+    }] as any[];
+    
+    try {
+      await index.upsert(invalidVectorItems);
+      expect(true).toBe(false); // Should not reach here
+    } catch (error: any) {
+      expect(error.message).toBeDefined();
+      expect(error.message).toContain("Missing required 'id' field");
+      expect(error.message).toContain("index 0");
+    }
+    
+    // Test case 2: Invalid vector type
+    const invalidVectorType = [{
+      id: 'test-id',
+      vector: "not-an-array", // Should be array
+      metadata: { test: true }
+    }] as any[];
+    
+    try {
+      await index.upsert(invalidVectorType);
+      expect(true).toBe(false); // Should not reach here
+    } catch (error: any) {
+      expect(error.message).toContain("'vector' must be an array");
+      expect(error.message).toContain("test-id");
+    }
+    
+    // Test case 3: Empty vector
+    const emptyVector = [{
+      id: 'test-id-2',
+      vector: [], // Empty array
+      metadata: { test: true }
+    }];
+    
+    try {
+      await index.upsert(emptyVector);
+      expect(true).toBe(false); // Should not reach here
+    } catch (error: any) {
+      expect(error.message).toContain("Vector array cannot be empty");
+      expect(error.message).toContain("test-id-2");
+    }
+    
+    // Test case 4: Mismatched array lengths for (ids, vectors) overload
+    const ids = ['id1', 'id2', 'id3'];
+    const vectors = [trainData[0], trainData[1]]; // One less vector than IDs
+    
+    try {
+      await index.upsert(ids, vectors);
+      expect(true).toBe(false); // Should not reach here
+    } catch (error: any) {
+      expect(error.message).toContain("Array length mismatch");
+      expect(error.message).toContain("3 IDs provided but 2 vectors");
+    }
+    
+    // Test case 5: Invalid ID type in two-argument form
+    const invalidIds = [123, 'valid-id'] as any[];
+    const validVectors = [trainData[0], trainData[1]];
+    
+    try {
+      await index.upsert(invalidIds, validVectors);
+      expect(true).toBe(false); // Should not reach here
+    } catch (error: any) {
+      expect(error.message).toContain("IDs must be strings");
+      expect(error.message).toContain("index 0");
+    }
+    
+    // Test case 6: Empty arrays should work (positive test)
+    const emptyUpsertResult = await index.upsert([]);
+    expect(emptyUpsertResult).toBeDefined();
+    expect(emptyUpsertResult.status).toBe('success');
+    expect(emptyUpsertResult.message).toContain('No items to upsert');
+    
+    // Test case 7: Valid data should work (positive test)
+    const validVectorItems = trainData.slice(0, 2).map((vector, i) => ({
+      id: `valid-${i}`,
+      vector,
+      metadata: { test: true, index: i }
+    }));
+    
+    const validResult = await index.upsert(validVectorItems);
+    expect(validResult.status).toBe('success');
+    
+    // Test case 8: Valid two-argument form should work (positive test)
+    const validIds = ['two-arg-1', 'two-arg-2'];
+    const validVectorData = trainData.slice(2, 4);
+    
+    const validTwoArgResult = await index.upsert(validIds, validVectorData);
+    expect(validTwoArgResult.status).toBe('success');
+  });
+
+  // NEW Test 20: Test large batch operations with different overloads
+  test('should handle large batch operations with both overloads', async () => {
+    // Large batch using VectorItem[] overload
+    const largeBatch1 = trainData.slice(0, 100).map((vector, i) => ({
+      id: `large1-${i}`,
+      vector,
+      metadata: { batch: 'large1', index: i }
+    }));
+    
+    const result1 = await index.upsert(largeBatch1);
+    expect(result1.status).toBe('success');
+    
+    // Large batch using (ids, vectors) overload
+    const largeBatch2Vectors = trainData.slice(100, 200);
+    const largeBatch2Ids = largeBatch2Vectors.map((_, i) => `large2-${i + 100}`);
+    
+    const result2 = await index.upsert(largeBatch2Ids, largeBatch2Vectors);
+    expect(result2.status).toBe('success');
+    
+    // Verify both batches are accessible
+    const sample1 = await index.get(['large1-0', 'large1-50', 'large1-99']);
+    const sample2 = await index.get(['large2-100', 'large2-150', 'large2-199']);
+    
+    expect(sample1.length).toBe(3);
+    expect(sample2.length).toBe(3);
+    
+    // Test querying works with large dataset
+    const queryResponse = await index.query(testData[0], undefined, 20);
+    expect(queryResponse.results.length).toBe(20);
+  });
+
+  // Test 21: Test content-based query with embedding model
+  test('should query using content with all-MiniLM-L6-v2 embedding model', async () => {
+    // Create a separate index specifically for content-based search
+    const contentIndexName = generateIndexName('content');
+    const contentIndexKey = client.generateKey();
+    const contentIndexConfig = generateIndexConfig(testIndexType, 384); // all-MiniLM-L6-v2 produces 384-dimensional vectors
+    
+    // Create index with embedding model
+    const contentIndex = await client.createIndex(
+      contentIndexName, 
+      contentIndexKey, 
+      contentIndexConfig, 
+      "all-MiniLM-L6-v2"  // Specify the embedding model
+    );
+    
+    try {
+      // Upsert some documents with meaningful text content
+      const textDocuments = [
+        {
+          id: "doc1",
+          vector: new Array(384).fill(0).map(() => Math.random()), // Dummy vector, content will be used for search
+          contents: "The quick brown fox jumps over the lazy dog",
+          metadata: { category: "animals", type: "sentence" }
+        },
+        {
+          id: "doc2", 
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Machine learning and artificial intelligence are transforming technology",
+          metadata: { category: "technology", type: "sentence" }
+        },
+        {
+          id: "doc3",
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Cats and dogs are popular pets around the world",
+          metadata: { category: "animals", type: "sentence" }
+        },
+        {
+          id: "doc4",
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Deep learning models require large amounts of training data",
+          metadata: { category: "technology", type: "sentence" }
+        },
+        {
+          id: "doc5",
+          vector: new Array(384).fill(0).map(() => Math.random()),
+          contents: "Birds can fly high in the sky with their wings",
+          metadata: { category: "animals", type: "sentence" }
+        }
+      ];
+      
+      // Upsert the documents
+      const upsertResult = await contentIndex.upsert(textDocuments);
+      expect(upsertResult.status).toBe('success');
+      
+      // Test content-based query - search for animal-related content
+      const animalQueryResponse = await contentIndex.query(
+        undefined,                    // queryVectors (not provided - using content instead)
+        "animals and pets",          // queryContents - this will be embedded using all-MiniLM-L6-v2
+        3,                           // topK
+        N_PROBES,                    // nProbes
+        {},                          // filters
+        ["metadata", "contents"],    // include content and metadata in results
+        false                        // greedy
+      );
+      
+      expect(animalQueryResponse).toBeDefined();
+      expect(animalQueryResponse.results).toBeDefined();
+      expect(animalQueryResponse.results.length).toBeGreaterThan(0);
+      expect(animalQueryResponse.results.length).toBeLessThanOrEqual(3);
+      
+      // Verify that animal-related documents are returned
+      const results = animalQueryResponse.results as QueryResultItem[];
+      const animalResults = results.filter(result => {
+        if (result.metadata) {
+          const metadata = typeof result.metadata === 'string'
+            ? JSON.parse(result.metadata)
+            : result.metadata;
+          return metadata.category === 'animals';
+        }
+        return false;
+      });
+      
+      // Should find at least some animal-related documents
+      expect(animalResults.length).toBeGreaterThan(0);
+      
+      // Test content-based query with technology-related content
+      const techQueryResponse = await contentIndex.query(
+        undefined,                      // queryVectors
+        "artificial intelligence and machine learning",  // queryContents
+        2,                             // topK
+        N_PROBES,                      // nProbes
+        { category: "technology" },    // filters - only technology documents
+        ["metadata", "contents"],      // include
+        false                          // greedy
+      );
+      
+      expect(techQueryResponse.results.length).toBeGreaterThan(0);
+      expect(techQueryResponse.results.length).toBeLessThanOrEqual(2);
+      
+      // Verify all results are technology-related (due to filter)
+      const techResults = techQueryResponse.results as QueryResultItem[];
+      techResults.forEach(result => {
+        if (result.metadata) {
+          const metadata = typeof result.metadata === 'string'
+            ? JSON.parse(result.metadata)
+            : result.metadata;
+          expect(metadata.category).toBe('technology');
+        }
+      });
+      
+      // Test error case: providing both queryVectors and queryContents should work (queryContents takes precedence)
+      const bothProvidedResponse = await contentIndex.query(
+        new Array(384).fill(0.1),     // queryVectors (should be ignored)
+        "flying birds",               // queryContents (should be used)
+        2,                            // topK
+        N_PROBES,                     // nProbes
+        {},                           // filters
+        ["metadata"],                 // include
+        false                         // greedy
+      );
+      
+      expect(bothProvidedResponse.results.length).toBeGreaterThan(0);
+      
+      // Test edge case: empty content string
+      try {
+        await contentIndex.query(
+          undefined,    // queryVectors
+          "",          // empty queryContents
+          1,           // topK
+          N_PROBES,    // nProbes
+          {},          // filters
+          ["metadata"], // include
+          false        // greedy
+        );
+        // This might succeed or fail depending on implementation
+        // We'll accept either outcome
+      } catch (error) {
+        // Empty content might cause an error, which is acceptable
+        expect(error).toBeDefined();
+      }
+      
+      // Verify that we can still use regular vector queries on the same index
+      const vectorQueryResponse = await contentIndex.query(
+        new Array(384).fill(0).map(() => Math.random()), // queryVectors
+        undefined,                     // queryContents
+        2,                            // topK
+        N_PROBES,                     // nProbes
+        {},                           // filters
+        ["metadata"],                 // include
+        false                         // greedy
+      );
+      
+      expect(vectorQueryResponse.results.length).toBeGreaterThan(0);
+      
+    } finally {
+      // Clean up the content index
+      try {
+        await contentIndex.deleteIndex();
+      } catch (error) {
+        console.error(`Error cleaning up content index ${contentIndexName}:`, error);
+      }
+    }
+  });
 });

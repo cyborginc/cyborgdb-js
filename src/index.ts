@@ -2,11 +2,10 @@
 export { CyborgDB as Client } from './client';
 
 // Export commonly used types and interfaces
-export type {
+export {
   CreateIndexRequest,
   IndexOperationRequest,
   UpsertRequest,
-  QueryRequest,
   BatchQueryRequest,
   TrainRequest,
   DeleteRequest,
