@@ -2,7 +2,7 @@
 export { CyborgDB as Client } from './client';
 
 // Export commonly used types and interfaces
-export type {
+export {
   CreateIndexRequest,
   IndexOperationRequest,
   UpsertRequest,
@@ -15,9 +15,9 @@ export type {
   QueryResponse,
   ErrorResponseModel,
   HTTPValidationError,
-  IndexIVFFlat,
-  IndexIVF,
-  IndexIVFPQ,
+  IndexIVFFlatModel as IndexIVFFlat,
+  IndexIVFModel as IndexIVF,
+  IndexIVFPQModel as IndexIVFPQ,
   QueryResultItem
 } from './model/models';
 

@@ -6,9 +6,7 @@ import dotenv from 'dotenv';
 import { QueryResultItem } from '../model/queryResultItem';
 import { EncryptedIndex } from '../encryptedIndex';
 import { QueryResponse } from '../model/queryResponse';
-import { IndexIVFPQ } from '../model/indexIVFPQModel';
-import { IndexIVFFlat } from '../model/indexIVFFlatModel';
-import { IndexIVF } from '../model/indexIVFModel';
+import { IndexIVF, IndexIVFPQ, IndexIVFFlat } from '../index';
 
 /**
  * Combined CyborgDB Integration Tests
