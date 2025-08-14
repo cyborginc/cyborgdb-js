@@ -13,7 +13,7 @@
 /**
 * Model for configuring an IVFPQ (Inverted File with Product Quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfpq\".     pq_dim (int): Dimensionality of PQ codes.     pq_bits (int): Number of bits per quantizer.
 */
-export class IndexIVFPQ {
+export class IndexIVFPQModel {
     'dimension'?: number | null;
     'nLists': number;
     'metric'?: string | null;
@@ -56,7 +56,7 @@ export class IndexIVFPQ {
         }    ];
 
     static getAttributeTypeMap() {
-        return IndexIVFPQ.attributeTypeMap;
+        return IndexIVFPQModel.attributeTypeMap;
     }
 }
 

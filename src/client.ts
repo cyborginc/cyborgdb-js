@@ -5,12 +5,12 @@ import {
   IndexIVFFlat,
   IndexIVF,
   IndexOperationRequest,
-  IndexInfoResponseModel,
-} from './model/models';
+} from './index';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
 import { EncryptedIndex } from './encryptedIndex';
 import { randomBytes } from 'crypto';
+import { IndexInfoResponseModel } from './model/indexInfoResponseModel';
 /**
  * CyborgDB TypeScript SDK
  * Provides an interface to interact with CyborgDB vector database service

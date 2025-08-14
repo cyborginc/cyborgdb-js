@@ -13,7 +13,7 @@
 /**
 * Model for configuring an IVF (Inverted File) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivf\".
 */
-export class IndexIVF {
+export class IndexIVFModel {
     'dimension'?: number | null;
     'nLists': number;
     'metric'?: string | null;
@@ -44,7 +44,7 @@ export class IndexIVF {
         }    ];
 
     static getAttributeTypeMap() {
-        return IndexIVF.attributeTypeMap;
+        return IndexIVFModel.attributeTypeMap;
     }
 }
 

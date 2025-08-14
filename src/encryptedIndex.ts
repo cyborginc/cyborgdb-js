@@ -2,21 +2,18 @@ import { DefaultApi } from "./api/apis";
 import { 
     UpsertRequest, 
     IndexOperationRequest,
-    QueryRequest,
-    // Request as QueryRequest,
     TrainRequest,
     DeleteRequest,
     GetRequest,
     VectorItem,
-    BatchQueryRequest,
     GetResponseModel,
     QueryResponse,
     IndexConfig,
     ErrorResponseModel,
     HTTPValidationError,
-    IndexIVFFlat,
-    IndexIVF,
-    IndexIVFPQ,
+    IndexIVFFlatModel,
+    IndexIVFModel,
+    IndexIVFPQModel,
     IndexInfoResponseModel,
     Request,
   } from './model/models';
@@ -33,14 +30,14 @@ export class EncryptedIndex {
       if (error.response) {
         console.error("HTTP Status Code:", error.response.status);
         console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-        console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); // CHANGED: .body to .data
+        console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); 
       } else {
         console.error("No response from server");
       }
       
-      if (error.response?.data) { // CHANGED: .body to .data
+      if (error.response?.data) { 
         try {
-          const errBody = error.response.data; // CHANGED: .body to .data
+          const errBody = error.response.data; 
           if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
             const err = errBody as ErrorResponseModel;
             throw new Error(`${err.statusCode} - ${err.detail}`);
@@ -50,7 +47,7 @@ export class EncryptedIndex {
             throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
           }
         } catch (e) {
-          throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); // CHANGED: .body to .data
+          throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); 
         }
       }
       throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
@@ -106,16 +103,16 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         return response.isTrained;
     }
-    public async getIndexConfig(): Promise<IndexIVFFlat | IndexIVF | IndexIVFPQ> {
+    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         this.indexConfig = response.indexConfig;
         // Return a copy to prevent external modification
         if (this.indexConfig.indexType === 'ivf_flat') {
-            return { ...this.indexConfig } as IndexIVFFlat;
+            return { ...this.indexConfig } as IndexIVFFlatModel;
         } else if (this.indexConfig.indexType === 'ivf_pq') {
-            return { ...this.indexConfig } as IndexIVFPQ;
+            return { ...this.indexConfig } as IndexIVFPQModel;
         } else {
-            return { ...this.indexConfig } as IndexIVF;
+            return { ...this.indexConfig } as IndexIVFModel;
     }}
     /**
      * Delete an index
@@ -170,7 +167,7 @@ export class EncryptedIndex {
           
           const getRequest: GetRequest = {
             indexName: this.indexName,
-            indexKey: keyHex, // Changed from base64 to hex
+            indexKey: keyHex,
             ids: ids,
             include: includeFields
           };
@@ -261,6 +258,7 @@ export class EncryptedIndex {
    * @returns Promise resolving to operation result with status and details
    * @throws Error with detailed validation information for invalid inputs
    */
+  /* eslint-disable no-dupe-class-members */
   async upsert(items: VectorItem[]): Promise<any>;
 
   /**
@@ -419,7 +417,6 @@ export class EncryptedIndex {
             if (typeof item.contents === 'string') {
               contentValue = item.contents;
             } else {
-              // Assume it's some other binary data
               contentValue = Buffer.from(item.contents as any).toString('base64');
             }
           } catch (error) {
