@@ -130,7 +130,7 @@ beforeAll(async () => {
 describe('CyborgDB Combined Integration Tests', () => {
   console.log(`Using API URL: ${API_URL}`);
   console.log(`Using API Key: ${CYBORGDB_API_KEY}`);
-  const client = new CyborgDB(API_URL, CYBORGDB_API_KEY);
+  const client = new CyborgDB({ baseUrl: API_URL, apiKey: CYBORGDB_API_KEY });
 
   let indexName: string;
   let indexKey: Uint8Array;
@@ -155,7 +155,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     indexName = generateIndexName();
     indexKey = client.generateKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
-    index = await client.createIndex(indexName, indexKey, indexConfig);
+    index = await client.createIndex({ indexName, indexKey, indexConfig });
   }, 30000);
   
   // Clean up after each test
@@ -194,10 +194,10 @@ describe('CyborgDB Combined Integration Tests', () => {
       vector,
       metadata: { test: true, index: i }
     }));
-    await index.upsert(vectors);
+    await index.upsert({ items: vectors });
     
     // Load the same index with the same credentials
-    const loadedIndex = await client.loadIndex(indexName, indexKey);
+    const loadedIndex = await client.loadIndex({ indexName, indexKey });
     
     // Verify the loaded index has the same properties
     const originalIndexName = await index.getIndexName();
@@ -209,8 +209,8 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(loadedIndexType).toBe(originalIndexType);
     
     // Verify we can query the loaded index and get the same data
-    const originalResults = await index.get(['load-test-0', 'load-test-1']);
-    const loadedResults = await loadedIndex.get(['load-test-0', 'load-test-1']);
+    const originalResults = await index.get({ ids: ['load-test-0', 'load-test-1'] });
+    const loadedResults = await loadedIndex.get({ ids: ['load-test-0', 'load-test-1'] });
     
     expect(loadedResults.length).toBe(originalResults.length);
     expect(loadedResults[0].id).toBe(originalResults[0].id);
@@ -224,7 +224,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       metadata: { category: "training", index: i, test: true }
     }));
     
-    const upsertResult = await index.upsert(vectors);
+    const upsertResult = await index.upsert({ items: vectors });
     expect(upsertResult.status).toBe('success');
   });
 
@@ -233,11 +233,11 @@ describe('CyborgDB Combined Integration Tests', () => {
     const vectors = trainData.slice(0, 50);
     const ids = vectors.map((_, i) => `id-${i}`);
     
-    const upsertResult = await index.upsert(ids, vectors);
+    const upsertResult = await index.upsert({ ids, vectors });
     expect(upsertResult.status).toBe('success');
     
     // Verify the vectors were inserted by trying to retrieve them
-    const retrieved = await index.get(['id-0', 'id-1', 'id-2']);
+    const retrieved = await index.get({ ids: ['id-0', 'id-1', 'id-2'] });
     expect(retrieved.length).toBe(3);
     expect(retrieved[0].id).toBe('id-0');
     expect(retrieved[1].id).toBe('id-1');
@@ -252,18 +252,17 @@ describe('CyborgDB Combined Integration Tests', () => {
       vector,
       metadata: { category: "training", index: i }
     }));
-    await index.upsert(vectors);
+    await index.upsert({ items: vectors });
     
-    // Query the untrained index using new signature: (queryVectors, queryContents, topK, nProbes, filters, include, greedy)
-    const response = await index.query(
-      testData[0],      // queryVectors (single vector)
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      {},              // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    // Query the untrained index
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    });
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
     expect(response.results.length).toBeGreaterThan(0);
@@ -288,19 +287,18 @@ describe('CyborgDB Combined Integration Tests', () => {
         category: i % 2 === 0 ? 'even' : 'odd'
       }
     }));
-    await index.upsert(vectors);
+    await index.upsert({ items: vectors });
     
-    // Test simple filter using new signature
+    // Test simple filter
     const filter = { "owner.name": "John" };
-    const response = await index.query(
-      testData[0],      // queryVectors
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      filter,          // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: filter,
+      include: ["metadata"],
+      greedy: false
+    });
     
     const results = response.results as QueryResultItem[];
     expect(results.length).toBeGreaterThan(0);
@@ -326,10 +324,10 @@ describe('CyborgDB Combined Integration Tests', () => {
       contents: Buffer.from(`test-content-${i}`).toString('base64'),  // <-- convert to base64 string
     }));
 
-    await index.upsert(vectors);
+    await index.upsert({ items: vectors });
 
     const ids = ['test-id-0', 'test-id-1', 'test-id-2'];
-    const retrieved = await index.get(ids, ['vector', 'metadata', 'contents']);
+    const retrieved = await index.get({ ids, include: ['vector', 'metadata', 'contents'] });
     expect(retrieved.length).toBe(ids.length);
 
     retrieved.forEach((item, idx) => {
@@ -380,14 +378,14 @@ describe('CyborgDB Combined Integration Tests', () => {
     // Upsert enough vectors for training using (ids, vectors) overload
     const vectors = trainData.slice(0, 100);
     const ids = vectors.map((_, i) => i.toString());
-    await index.upsert(ids, vectors);
+    await index.upsert({ ids, vectors });
     
     // Verify index is not trained initially
     const initialTrainedState = await index.isTrained();
     expect(initialTrainedState).toBe(false);
     
     // Train the index
-    const trainResult = await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+    const trainResult = await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
     expect(trainResult.status).toBe('success');
     
     // Verify index is now trained
@@ -403,24 +401,23 @@ describe('CyborgDB Combined Integration Tests', () => {
       vector,
       metadata: { category: "initial", index: i }
     }));
-    await index.upsert(initialVectors);
-    await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+    await index.upsert({ items: initialVectors });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
     
     // Add more vectors after training using (ids, vectors) overload
     const additionalVectorData = trainData.slice(50, 80);
     const additionalIds = additionalVectorData.map((_, i) => (i + 50).toString());
-    await index.upsert(additionalIds, additionalVectorData);
+    await index.upsert({ ids: additionalIds, vectors: additionalVectorData });
     
     // Query the trained index using new signature
-    const response = await index.query(
-      testData[0],      // queryVectors
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      {},              // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    });
     
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
@@ -447,8 +444,8 @@ describe('CyborgDB Combined Integration Tests', () => {
         number: i % 10
       }
     }));
-    await index.upsert(vectors);
-    await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+    await index.upsert({ items: vectors });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
     
     // Test complex filter using new signature
     const complexFilter = {
@@ -459,15 +456,14 @@ describe('CyborgDB Combined Integration Tests', () => {
       ]
     };
     
-    const response = await index.query(
-      testData[0],      // queryVectors
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      complexFilter,   // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: complexFilter,
+      include: ["metadata"],
+      greedy: false
+    });
     
     expect(response.results.length).toBeGreaterThan(0);
     
@@ -484,15 +480,14 @@ describe('CyborgDB Combined Integration Tests', () => {
       ]
     };
     
-    const nestedResponse = await index.query(
-      testData[0],      // queryVectors
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      nestedFilter,    // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    const nestedResponse = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: nestedFilter,
+      include: ["metadata"],
+      greedy: false
+    });
     
     expect(nestedResponse.results.length).toBeGreaterThan(0);
   });
@@ -502,19 +497,18 @@ describe('CyborgDB Combined Integration Tests', () => {
     // Setup vectors using (ids, vectors) overload
     const vectorData = trainData.slice(0, 50);
     const ids = vectorData.map((_, i) => i.toString());
-    await index.upsert(ids, vectorData);
+    await index.upsert({ ids, vectors: vectorData });
     
     // Batch query with multiple test vectors using new signature
     const batchTestVectors = testData.slice(0, 3);
-    const response: QueryResponse = await index.query(
-      batchTestVectors, // queryVectors (batch)
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      {},              // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    const response: QueryResponse = await index.query({
+      queryVectors: batchTestVectors,
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    });
     
     expect(response).toBeDefined();
     expect(response.results).toBeDefined();
@@ -534,18 +528,18 @@ describe('CyborgDB Combined Integration Tests', () => {
       vector,
       metadata: { batch: 1, index: i, type: 'vectorItem' }
     }));
-    const result1 = await index.upsert(vectorItems);
+    const result1 = await index.upsert({ items: vectorItems });
     expect(result1.status).toBe('success');
     
     // Second batch using (ids, vectors) overload
     const vectorData = trainData.slice(25, 50);
     const ids = vectorData.map((_, i) => `array-${i + 25}`);
-    const result2 = await index.upsert(ids, vectorData);
+    const result2 = await index.upsert({ ids, vectors: vectorData });
     expect(result2.status).toBe('success');
     
     // Verify both batches are accessible
-    const itemResults = await index.get(['item-0', 'item-1']);
-    const arrayResults = await index.get(['array-25', 'array-26']);
+    const itemResults = await index.get({ ids: ['item-0', 'item-1'] });
+    const arrayResults = await index.get({ ids: ['array-25', 'array-26'] });
     
     expect(itemResults.length).toBe(2);
     expect(arrayResults.length).toBe(2);
@@ -561,7 +555,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     }
     
     // Query should work with vectors from both batches
-    const response = await index.query(testData[0], undefined, 10);
+    const response = await index.query({ queryVectors: testData[0], topK: 10 });
     expect(response.results.length).toBe(10);
   });
 
@@ -573,16 +567,16 @@ describe('CyborgDB Combined Integration Tests', () => {
       vector,
       metadata: { test: true, index: i }
     }));
-    await index.upsert(vectors);
+    await index.upsert({ items: vectors });
     
     // Delete some vectors
     const idsToDelete = ['0', '1', '2'];
-    const deleteResult = await index.delete(idsToDelete);
+    const deleteResult = await index.delete({ ids: idsToDelete });
     expect(deleteResult.status).toBe('success');
     
     // Try to get the deleted vectors
     try {
-      const remaining = await index.get(idsToDelete);
+      const remaining = await index.get({ ids: idsToDelete });
       expect(remaining.length).toBeLessThan(idsToDelete.length);
     } catch (error) {
       // Expected if vectors were deleted
@@ -604,7 +598,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.deleteIndex();
     
     // Recreate with the same name
-    const recreatedIndex = await client.createIndex(indexName, indexKey, indexConfig);
+    const recreatedIndex = await client.createIndex({ indexName, indexKey, indexConfig });
     const recreatedIndexName = await recreatedIndex.getIndexName();
     const recreatedIndexType = await recreatedIndex.getIndexType();
     
@@ -615,7 +609,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     const vectorData = trainData.slice(0, 5);
     const ids = vectorData.map((_, i) => i.toString());
     
-    const upsertResult = await recreatedIndex.upsert(ids, vectorData);
+    const upsertResult = await recreatedIndex.upsert({ ids, vectors: vectorData });
     expect(upsertResult.status).toBe('success');
     
     // Update the index reference for cleanup
@@ -630,22 +624,21 @@ describe('CyborgDB Combined Integration Tests', () => {
       vector,
       metadata: { test: true, index: i }
     }));
-    await index.upsert(vectors);
+    await index.upsert({ items: vectors });
     
     // Delete some vectors
     const idsToDelete = Array.from({length: 10}, (_, i) => i.toString());
-    await index.delete(idsToDelete);
+    await index.delete({ ids: idsToDelete });
     
     // Query the index using new signature
-    const response = await index.query(
-      testData[0],      // queryVectors
-      undefined,        // queryContents
-      TOP_K,           // topK
-      N_PROBES,        // nProbes
-      {},              // filters
-      ["metadata"],    // include
-      false            // greedy
-    );
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    });
     
     const results = response.results as QueryResultItem[];
     
@@ -673,15 +666,15 @@ describe('CyborgDB Combined Integration Tests', () => {
         }
       }
     }));
-    await index.upsert(initialVectors);
+    await index.upsert({ items: initialVectors });
     
     // Train the index
-    await index.train(BATCH_SIZE, MAX_ITERS, TOLERANCE);
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
     
     // Add more vectors after training using (ids, vectors) overload
     const additionalVectorData = trainData.slice(50, 80);
     const additionalIds = additionalVectorData.map((_, i) => `trained-id-${i + 50}`);
-    await index.upsert(additionalIds, additionalVectorData);
+    await index.upsert({ ids: additionalIds, vectors: additionalVectorData });
     
     // Test getting vectors from both initial and additional sets
     const idsToGet = [
@@ -689,7 +682,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       'trained-id-50', 'trained-id-55', 'trained-id-70' // from additional set
     ];
     
-    const retrieved = await index.get(idsToGet);
+    const retrieved = await index.get({ ids: idsToGet });
     
     // Verify we got the expected number of results
     expect(retrieved.length).toBe(idsToGet.length);
@@ -764,24 +757,24 @@ describe('CyborgDB Combined Integration Tests', () => {
     const vectorsToKeepIds = vectorsToKeepData.map((_, i) => `keep-test-${i}`);
     
     // Upsert both sets using different overloads
-    await index.upsert(vectorsToDelete);
-    await index.upsert(vectorsToKeepIds, vectorsToKeepData);
+    await index.upsert({ items: vectorsToDelete });
+    await index.upsert({ ids: vectorsToKeepIds, vectors: vectorsToKeepData });
     
     // Verify all vectors exist before deletion
     const allIds = [
       ...vectorsToDelete.map(v => v.id),
       ...vectorsToKeepIds
     ];
-    const beforeDeletion = await index.get(allIds);
+    const beforeDeletion = await index.get({ ids: allIds });
     expect(beforeDeletion.length).toBe(allIds.length);
     
     // Delete specific vectors
     const idsToDelete = vectorsToDelete.map(v => v.id);
-    const deleteResult = await index.delete(idsToDelete);
+    const deleteResult = await index.delete({ ids: idsToDelete });
     expect(deleteResult.status).toBe('success');
     
     // Attempt to get the deleted vectors - should return empty or no results
-    const deletedResults = await index.get(idsToDelete);
+    const deletedResults = await index.get({ ids: idsToDelete });
     
     // The behavior might vary by implementation:
     // - Some implementations return empty array
@@ -796,7 +789,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     });
     
     // Verify that non-deleted vectors are still accessible
-    const keptResults = await index.get(vectorsToKeepIds);
+    const keptResults = await index.get({ ids: vectorsToKeepIds });
     expect(keptResults.length).toBe(vectorsToKeepIds.length);
     
     // Verify the kept vectors have correct data
@@ -812,7 +805,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       idsToDelete[0], idsToDelete[1],  // deleted
       vectorsToKeepIds[0], vectorsToKeepIds[1]           // existing
     ];
-    const mixedResults = await index.get(mixedIds);
+    const mixedResults = await index.get({ ids: mixedIds });
     
     // Should only get back the existing ones
     expect(mixedResults.length).toBe(2);
@@ -850,7 +843,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     const wrongKey = client.generateKey();
     
     try {
-      await client.loadIndex(indexName, wrongKey);
+      await client.loadIndex({ indexName, indexKey: wrongKey });
       // If we reach here, the test should fail because an error was expected
       expect(true).toBe(false);
     } catch (error) {
@@ -869,7 +862,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     }] as any[];
     
     try {
-      await index.upsert(invalidVectorItems);
+      await index.upsert({ items: invalidVectorItems });
       expect(true).toBe(false); // Should not reach here
     } catch (error: any) {
       expect(error.message).toBeDefined();
@@ -885,7 +878,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     }] as any[];
     
     try {
-      await index.upsert(invalidVectorType);
+      await index.upsert({ items: invalidVectorType });
       expect(true).toBe(false); // Should not reach here
     } catch (error: any) {
       expect(error.message).toContain("'vector' must be an array");
@@ -900,7 +893,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     }];
     
     try {
-      await index.upsert(emptyVector);
+      await index.upsert({ items: emptyVector });
       expect(true).toBe(false); // Should not reach here
     } catch (error: any) {
       expect(error.message).toContain("Vector array cannot be empty");
@@ -912,7 +905,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     const vectors = [trainData[0], trainData[1]]; // One less vector than IDs
     
     try {
-      await index.upsert(ids, vectors);
+      await index.upsert({ ids, vectors });
       expect(true).toBe(false); // Should not reach here
     } catch (error: any) {
       expect(error.message).toContain("Array length mismatch");
@@ -924,7 +917,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     const validVectors = [trainData[0], trainData[1]];
     
     try {
-      await index.upsert(invalidIds, validVectors);
+      await index.upsert({ ids: invalidIds, vectors: validVectors });
       expect(true).toBe(false); // Should not reach here
     } catch (error: any) {
       expect(error.message).toContain("IDs must be strings");
@@ -932,7 +925,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     }
     
     // Test case 6: Empty arrays should work (positive test)
-    const emptyUpsertResult = await index.upsert([]);
+    const emptyUpsertResult = await index.upsert({ items: [] });
     expect(emptyUpsertResult).toBeDefined();
     expect(emptyUpsertResult.status).toBe('success');
     expect(emptyUpsertResult.message).toContain('No items to upsert');
@@ -944,14 +937,14 @@ describe('CyborgDB Combined Integration Tests', () => {
       metadata: { test: true, index: i }
     }));
     
-    const validResult = await index.upsert(validVectorItems);
+    const validResult = await index.upsert({ items: validVectorItems });
     expect(validResult.status).toBe('success');
     
     // Test case 8: Valid two-argument form should work (positive test)
     const validIds = ['two-arg-1', 'two-arg-2'];
     const validVectorData = trainData.slice(2, 4);
     
-    const validTwoArgResult = await index.upsert(validIds, validVectorData);
+    const validTwoArgResult = await index.upsert({ ids: validIds, vectors: validVectorData });
     expect(validTwoArgResult.status).toBe('success');
   });
 
@@ -964,25 +957,25 @@ describe('CyborgDB Combined Integration Tests', () => {
       metadata: { batch: 'large1', index: i }
     }));
     
-    const result1 = await index.upsert(largeBatch1);
+    const result1 = await index.upsert({ items: largeBatch1 });
     expect(result1.status).toBe('success');
     
     // Large batch using (ids, vectors) overload
     const largeBatch2Vectors = trainData.slice(100, 200);
     const largeBatch2Ids = largeBatch2Vectors.map((_, i) => `large2-${i + 100}`);
     
-    const result2 = await index.upsert(largeBatch2Ids, largeBatch2Vectors);
+    const result2 = await index.upsert({ ids: largeBatch2Ids, vectors: largeBatch2Vectors });
     expect(result2.status).toBe('success');
     
     // Verify both batches are accessible
-    const sample1 = await index.get(['large1-0', 'large1-50', 'large1-99']);
-    const sample2 = await index.get(['large2-100', 'large2-150', 'large2-199']);
+    const sample1 = await index.get({ ids: ['large1-0', 'large1-50', 'large1-99'] });
+    const sample2 = await index.get({ ids: ['large2-100', 'large2-150', 'large2-199'] });
     
     expect(sample1.length).toBe(3);
     expect(sample2.length).toBe(3);
     
     // Test querying works with large dataset
-    const queryResponse = await index.query(testData[0], undefined, 20);
+    const queryResponse = await index.query({ queryVectors: testData[0], topK: 20 });
     expect(queryResponse.results.length).toBe(20);
   });
 
@@ -994,12 +987,12 @@ describe('CyborgDB Combined Integration Tests', () => {
     const contentIndexConfig = generateIndexConfig(testIndexType, 384); // all-MiniLM-L6-v2 produces 384-dimensional vectors
     
     // Create index with embedding model
-    const contentIndex = await client.createIndex(
-      contentIndexName, 
-      contentIndexKey, 
-      contentIndexConfig, 
-      "all-MiniLM-L6-v2"  // Specify the embedding model
-    );
+    const contentIndex = await client.createIndex({
+      indexName: contentIndexName,
+      indexKey: contentIndexKey,
+      indexConfig: contentIndexConfig,
+      embeddingModel: "all-MiniLM-L6-v2"  // Specify the embedding model
+    });
     
     try {
       // Upsert some documents with meaningful text content
@@ -1037,19 +1030,18 @@ describe('CyborgDB Combined Integration Tests', () => {
       ];
       
       // Upsert the documents
-      const upsertResult = await contentIndex.upsert(textDocuments);
+      const upsertResult = await contentIndex.upsert({ items: textDocuments });
       expect(upsertResult.status).toBe('success');
       
       // Test content-based query - search for animal-related content
-      const animalQueryResponse = await contentIndex.query(
-        undefined,                    // queryVectors (not provided - using content instead)
-        "animals and pets",          // queryContents - this will be embedded using all-MiniLM-L6-v2
-        3,                           // topK
-        N_PROBES,                    // nProbes
-        {},                          // filters
-        ["metadata", "contents"],    // include content and metadata in results
-        false                        // greedy
-      );
+      const animalQueryResponse = await contentIndex.query({
+        queryContents: "animals and pets",  // this will be embedded using all-MiniLM-L6-v2
+        topK: 3,
+        nProbes: N_PROBES,
+        filters: {},
+        include: ["metadata", "contents"],
+        greedy: false
+      });
       
       expect(animalQueryResponse).toBeDefined();
       expect(animalQueryResponse.results).toBeDefined();
@@ -1072,15 +1064,14 @@ describe('CyborgDB Combined Integration Tests', () => {
       expect(animalResults.length).toBeGreaterThan(0);
       
       // Test content-based query with technology-related content
-      const techQueryResponse = await contentIndex.query(
-        undefined,                      // queryVectors
-        "artificial intelligence and machine learning",  // queryContents
-        2,                             // topK
-        N_PROBES,                      // nProbes
-        { category: "technology" },    // filters - only technology documents
-        ["metadata", "contents"],      // include
-        false                          // greedy
-      );
+      const techQueryResponse = await contentIndex.query({
+        queryContents: "artificial intelligence and machine learning",
+        topK: 2,
+        nProbes: N_PROBES,
+        filters: { category: "technology" },
+        include: ["metadata", "contents"],
+        greedy: false
+      });
       
       expect(techQueryResponse.results.length).toBeGreaterThan(0);
       expect(techQueryResponse.results.length).toBeLessThanOrEqual(2);
@@ -1097,29 +1088,28 @@ describe('CyborgDB Combined Integration Tests', () => {
       });
       
       // Test error case: providing both queryVectors and queryContents should work (queryContents takes precedence)
-      const bothProvidedResponse = await contentIndex.query(
-        new Array(384).fill(0.1),     // queryVectors (should be ignored)
-        "flying birds",               // queryContents (should be used)
-        2,                            // topK
-        N_PROBES,                     // nProbes
-        {},                           // filters
-        ["metadata"],                 // include
-        false                         // greedy
-      );
+      const bothProvidedResponse = await contentIndex.query({
+        queryVectors: new Array(384).fill(0.1),  // should be ignored
+        queryContents: "flying birds",  // should be used
+        topK: 2,
+        nProbes: N_PROBES,
+        filters: {},
+        include: ["metadata"],
+        greedy: false
+      });
       
       expect(bothProvidedResponse.results.length).toBeGreaterThan(0);
       
       // Test edge case: empty content string
       try {
-        await contentIndex.query(
-          undefined,    // queryVectors
-          "",          // empty queryContents
-          1,           // topK
-          N_PROBES,    // nProbes
-          {},          // filters
-          ["metadata"], // include
-          false        // greedy
-        );
+        await contentIndex.query({
+          queryContents: "",  // empty queryContents
+          topK: 1,
+          nProbes: N_PROBES,
+          filters: {},
+          include: ["metadata"],
+          greedy: false
+        });
         // This might succeed or fail depending on implementation
         // We'll accept either outcome
       } catch (error) {
@@ -1128,15 +1118,14 @@ describe('CyborgDB Combined Integration Tests', () => {
       }
       
       // Verify that we can still use regular vector queries on the same index
-      const vectorQueryResponse = await contentIndex.query(
-        new Array(384).fill(0).map(() => Math.random()), // queryVectors
-        undefined,                     // queryContents
-        2,                            // topK
-        N_PROBES,                     // nProbes
-        {},                           // filters
-        ["metadata"],                 // include
-        false                         // greedy
-      );
+      const vectorQueryResponse = await contentIndex.query({
+        queryVectors: new Array(384).fill(0).map(() => Math.random()),
+        topK: 2,
+        nProbes: N_PROBES,
+        filters: {},
+        include: ["metadata"],
+        greedy: false
+      });
       
       expect(vectorQueryResponse.results.length).toBeGreaterThan(0);
       
