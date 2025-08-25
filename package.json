@@ -22,6 +22,7 @@
     "prepublishOnly": "npm run lint && npm run build",
     "test:ssl": "jest __tests__/ssl-verification.test.ts",
     "test:integration": "jest __tests__/integration.test.ts",
+    "test:lite": "jest __tests__/lite.test.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
