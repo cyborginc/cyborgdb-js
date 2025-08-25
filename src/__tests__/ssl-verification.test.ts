@@ -58,7 +58,7 @@ describe('CyborgDB SSL Verification', () => {
 
   describe('Constructor SSL Auto-Detection', () => {
     test('should auto-detect and disable SSL verification for HTTP localhost URLs', () => {
-      const client = new CyborgDB('http://localhost:8000', CYBORGDB_API_KEY);
+      const client = new CyborgDB({ baseUrl: 'http://localhost:8000', apiKey: CYBORGDB_API_KEY });
       
       expect(client).toBeDefined();
       // HTTP URLs automatically set verifySsl=false, which triggers the warning
@@ -74,7 +74,7 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should auto-detect and disable SSL verification for HTTPS localhost URLs', () => {
-      const client = new CyborgDB('https://localhost:8000', CYBORGDB_API_KEY);
+      const client = new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey: CYBORGDB_API_KEY });
       
       expect(client).toBeDefined();
       expect(originalConsoleInfo).toHaveBeenCalledWith(
@@ -83,7 +83,7 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should auto-detect and disable SSL verification for 127.0.0.1 URLs', () => {
-      const client = new CyborgDB('https://127.0.0.1:8000', CYBORGDB_API_KEY);
+      const client = new CyborgDB({ baseUrl: 'https://127.0.0.1:8000', apiKey: CYBORGDB_API_KEY });
       
       expect(client).toBeDefined();
       expect(originalConsoleInfo).toHaveBeenCalledWith(
@@ -92,7 +92,7 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should enable SSL verification by default for production URLs', () => {
-      const client = new CyborgDB(TEST_PRODUCTION_URL, CYBORGDB_API_KEY);
+      const client = new CyborgDB({ baseUrl: TEST_PRODUCTION_URL, apiKey: CYBORGDB_API_KEY });
       
       expect(client).toBeDefined();
       // Should not log any SSL-related messages for production URLs with default SSL
@@ -103,7 +103,7 @@ describe('CyborgDB SSL Verification', () => {
 
   describe('Explicit SSL Configuration', () => {
     test('should explicitly disable SSL verification when verifySsl=false', () => {
-      const client = new CyborgDB(TEST_PRODUCTION_URL, CYBORGDB_API_KEY, false);
+      const client = new CyborgDB({ baseUrl: TEST_PRODUCTION_URL, apiKey: CYBORGDB_API_KEY, verifySsl: false });
       
       expect(client).toBeDefined();
       expect(originalConsoleWarn).toHaveBeenCalledWith(
@@ -112,7 +112,7 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should explicitly enable SSL verification when verifySsl=true', () => {
-      const client = new CyborgDB('https://localhost:8000', CYBORGDB_API_KEY, true);
+      const client = new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey: CYBORGDB_API_KEY, verifySsl: true });
       
       expect(client).toBeDefined();
       // Should not log the localhost auto-detection message since SSL is explicitly enabled
@@ -123,7 +123,7 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should override auto-detection with explicit verifySsl=false for production URLs', () => {
-      const client = new CyborgDB(TEST_PRODUCTION_URL, CYBORGDB_API_KEY, false);
+      const client = new CyborgDB({ baseUrl: TEST_PRODUCTION_URL, apiKey: CYBORGDB_API_KEY, verifySsl: false });
       
       expect(client).toBeDefined();
       expect(originalConsoleWarn).toHaveBeenCalledWith(
@@ -132,7 +132,7 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should override auto-detection with explicit verifySsl=true for localhost URLs', () => {
-      const client = new CyborgDB('https://localhost:8000', CYBORGDB_API_KEY, true);
+      const client = new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey: CYBORGDB_API_KEY, verifySsl: true });
       
       expect(client).toBeDefined();
       // Should not show auto-detection message when explicitly enabled
@@ -151,7 +151,7 @@ describe('CyborgDB SSL Verification', () => {
         return;
       }
 
-      const client = new CyborgDB('https://localhost:8000', CYBORGDB_API_KEY, false);
+      const client = new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey: CYBORGDB_API_KEY, verifySsl: false });
       
       expect(client).toBeDefined();
       expect(originalConsoleWarn).toHaveBeenCalledWith(
@@ -174,7 +174,7 @@ describe('CyborgDB SSL Verification', () => {
         return;
       }
 
-      const client = new CyborgDB(TEST_PRODUCTION_URL, CYBORGDB_API_KEY, true);
+      const client = new CyborgDB({ baseUrl: TEST_PRODUCTION_URL, apiKey: CYBORGDB_API_KEY, verifySsl: true });
       
       expect(client).toBeDefined();
       expect(originalConsoleWarn).not.toHaveBeenCalledWith(
@@ -242,7 +242,7 @@ describe('CyborgDB SSL Verification', () => {
     ];
 
     test.each(testCases)('$description', ({ url, shouldDisableSSL, expectedLog }) => {
-      const client = new CyborgDB(url, CYBORGDB_API_KEY);
+      const client = new CyborgDB({ baseUrl: url, apiKey: CYBORGDB_API_KEY });
       
       expect(client).toBeDefined();
       
@@ -322,7 +322,7 @@ describe('CyborgDB SSL Verification', () => {
     test.each(combinations)(
       'URL: $url, verifySsl: $verifySsl should log $expectedLogType',
       ({ url, verifySsl, expectedLogType, expectedMessage }) => {
-        const client = new CyborgDB(url, CYBORGDB_API_KEY, verifySsl);
+        const client = new CyborgDB({ baseUrl: url, apiKey: CYBORGDB_API_KEY, verifySsl });
         
         expect(client).toBeDefined();
         
@@ -341,7 +341,7 @@ describe('CyborgDB SSL Verification', () => {
   describe('Functionality Preservation', () => {
     test('should preserve API key and other settings when configuring SSL', () => {
       const testApiKey = 'test-api-key-12345';
-      const client = new CyborgDB('https://localhost:8000', testApiKey, false);
+      const client = new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey: testApiKey, verifySsl: false });
       
       expect(client).toBeDefined();
       
@@ -354,8 +354,8 @@ describe('CyborgDB SSL Verification', () => {
     });
 
     test('should generate cryptographically secure keys regardless of SSL settings', () => {
-      const sslEnabledClient = new CyborgDB(TEST_PRODUCTION_URL, CYBORGDB_API_KEY, true);
-      const sslDisabledClient = new CyborgDB('https://localhost:8000', CYBORGDB_API_KEY, false);
+      const sslEnabledClient = new CyborgDB({ baseUrl: TEST_PRODUCTION_URL, apiKey: CYBORGDB_API_KEY, verifySsl: true });
+      const sslDisabledClient = new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey: CYBORGDB_API_KEY, verifySsl: false });
       
       const key1 = sslEnabledClient.generateKey();
       const key2 = sslDisabledClient.generateKey();
@@ -380,7 +380,7 @@ describe('CyborgDB SSL Verification', () => {
 
       testCases.forEach(({ apiKey, ssl }) => {
         expect(() => {
-          new CyborgDB('https://localhost:8000', apiKey, ssl);
+          new CyborgDB({ baseUrl: 'https://localhost:8000', apiKey, verifySsl: ssl });
         }).not.toThrow();
       });
     });
@@ -396,7 +396,7 @@ describe('CyborgDB SSL Verification', () => {
         return;
       }
 
-      const client = new CyborgDB(TEST_LOCALHOST_URL, process.env.CYBORGDB_API_KEY, false);
+      const client = new CyborgDB({ baseUrl: TEST_LOCALHOST_URL, apiKey: process.env.CYBORGDB_API_KEY, verifySsl: false });
       
       try {
         const health = await client.getHealth();
@@ -423,8 +423,8 @@ describe('CyborgDB SSL Verification', () => {
     test('should handle network errors gracefully with different SSL settings', async () => {
       const invalidUrl = 'https://non-existent-cyborgdb-server.invalid';
       
-      const sslEnabledClient = new CyborgDB(invalidUrl, 'fake-key', true);
-      const sslDisabledClient = new CyborgDB(invalidUrl, 'fake-key', false);
+      const sslEnabledClient = new CyborgDB({ baseUrl: invalidUrl, apiKey: 'fake-key', verifySsl: true });
+      const sslDisabledClient = new CyborgDB({ baseUrl: invalidUrl, apiKey: 'fake-key', verifySsl: false });
       
       // Both should fail with network errors, not SSL errors
       for (const client of [sslEnabledClient, sslDisabledClient]) {

@@ -18,16 +18,22 @@ import { IndexInfoResponseModel } from './model/indexInfoResponseModel';
  */
 export class CyborgDB {
   private api: DefaultApi;
-  private interceptorId?: number;
 
   /**
    * Create a new CyborgDB client
    * @param baseUrl Base URL of the CyborgDB service  
    * @param apiKey API key for authentication
-
    * @param verifySsl Optional SSL verification setting. If not provided, auto-detects based on URL
    */
-  constructor(baseUrl: string, apiKey?: string, verifySsl?: boolean) {
+  constructor({
+    baseUrl,
+    apiKey,
+    verifySsl
+  }: {
+    baseUrl: string;
+    apiKey?: string;
+    verifySsl?: boolean;
+  }) {
     // If baseUrl is http, disable SSL verification
     if (baseUrl.startsWith('http://')) {
       verifySsl = false;
@@ -77,9 +83,8 @@ export class CyborgDB {
    * Clean up interceptors when done
    */
   public cleanup() {
-    if (this.interceptorId !== undefined) {
-      axios.interceptors.request.eject(this.interceptorId);
-    }
+    // Interceptor cleanup not currently needed
+    // This method is kept for API compatibility
   }
 
   private handleApiError(error: any): never {
@@ -129,40 +134,56 @@ export class CyborgDB {
    * @param indexName Name of the index
    * @param indexKey 32-byte encryption key
    * @param indexConfig Configuration for the index
+   * @param metric Distance metric for the index
    * @param embeddingModel Optional name of embedding model
    * @returns Promise with the created index
    */
-  async createIndex(
-    indexName: string, 
-    indexKey: Uint8Array, 
-    indexConfig: IndexIVFPQ | IndexIVFFlat | IndexIVF,
-    embeddingModel?: string
-  ) {
+  async createIndex({
+    indexName,
+    indexKey,
+    indexConfig,
+    metric,
+    embeddingModel
+  }: {
+    indexName: string;
+    indexKey: Uint8Array;
+    indexConfig?: IndexIVFPQ | IndexIVFFlat | IndexIVF;
+    metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
+    embeddingModel?: string;
+  }) {
     try {
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(indexKey).toString('hex');
 
       // Create the request using the proper snake_case property names
+      // Use default IndexIVFFlat if no config provided
+      const finalConfig = indexConfig || new IndexIVFFlat();
+      
+      // Apply metric if provided
+      if (metric) {
+        finalConfig.metric = metric;
+      }
+      
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
         indexKey: keyHex,
         indexConfig: {
-          dimension: indexConfig.dimension || undefined,
-          metric: indexConfig.metric || undefined,
-          indexType: indexConfig.type || undefined,
-          nLists: indexConfig.nLists || undefined,
+          dimension: finalConfig.dimension || undefined,
+          metric: finalConfig.metric || undefined,
+          indexType: finalConfig.type || undefined,
+          nLists: finalConfig.nLists || undefined,
           // For IVFPQ, add additional properties
-          ...(indexConfig.type === 'ivfpq' ? {
-            pqDim: (indexConfig as IndexIVFPQ).pqDim || undefined,
-            pqBits: (indexConfig as IndexIVFPQ).pqBits ||undefined
+          ...(finalConfig.type === 'ivfpq' ? {
+            pqDim: (finalConfig as IndexIVFPQ).pqDim || undefined,
+            pqBits: (finalConfig as IndexIVFPQ).pqBits ||undefined
           } : {})
         },
         embeddingModel: embeddingModel
       };
       
-      if (indexConfig.type === 'ivfpq') {
-        (createRequest.indexConfig as any).pq_dim = (indexConfig as IndexIVFPQ).pqDim;
-        (createRequest.indexConfig as any).pq_bits = (indexConfig as IndexIVFPQ).pqBits;
+      if (finalConfig.type === 'ivfpq') {
+        (createRequest.indexConfig as any).pq_dim = (finalConfig as IndexIVFPQ).pqDim;
+        (createRequest.indexConfig as any).pq_bits = (finalConfig as IndexIVFPQ).pqBits;
       }
       
       await this.api.createIndexV1IndexesCreatePost(createRequest);
@@ -254,10 +275,13 @@ export class CyborgDB {
    * @returns Promise resolving to EncryptedIndex instance ready for vector operations
    * @throws Error if index doesn't exist, key is incorrect, or connection fails
    */
-  async loadIndex(
-    indexName: string,
-    indexKey: Uint8Array
-  ) : Promise<EncryptedIndex> {
+  async loadIndex({
+    indexName,
+    indexKey
+  }: {
+    indexName: string;
+    indexKey: Uint8Array;
+  }) : Promise<EncryptedIndex> {
     try {
       // Retrieve comprehensive index information and validate access
       const response = await this.describeIndex(indexName, indexKey);
