@@ -30,6 +30,5 @@ module.exports = {
     '*.js',
     'src/api/**/*',        // Ignore generated API code
     'src/model/**/*',      // Ignore generated model code
-    'src/__tests__/**/*'   // Ignore test files
   ],
 };
