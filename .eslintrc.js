@@ -24,6 +24,15 @@ module.exports = {
     }],
     '@typescript-eslint/no-explicit-any': 'off', // Turn off for generated API code
   },
+  overrides: [
+    {
+      files: ['**/__tests__/**/*.ts', '**/*.test.ts'],
+      rules: {
+        '@typescript-eslint/no-unused-vars': 'off',
+        'no-unused-vars': 'off'
+      }
+    }
+  ],
   ignorePatterns: [
     'dist/', 
     'node_modules/', 

@@ -51,6 +51,7 @@ export class EncryptedIndex {
       throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
     constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, _embeddingModel?: string) {
     this.indexName = indexName;
     this.indexKey = indexKey;
