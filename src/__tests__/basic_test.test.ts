@@ -1,4 +1,4 @@
-import { Client, IndexIVFPQ} from '../../dist';
+import { Client, IndexIVFPQ} from '../index';
 
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
@@ -24,7 +24,7 @@ dotenv.config();
 
 // Constants
 const API_URL = 'http://localhost:8000';
-const CYBORGDB_API_KEY = "cyborg_e9n8t7e6r5p4r3i2s1e0987654321abc"
+const CYBORGDB_API_KEY = process.env.CYBORGDB_API_KEY
 
 if (!CYBORGDB_API_KEY) {
   throw new Error("CYBORGDB_API_KEY environment variable is not set");
@@ -121,7 +121,7 @@ beforeAll(async () => {
 
 // ===== IVFPQ TESTS =====
 describe('IVFPQBasicIntegrationTest', () => {
-  const client = new Client(API_URL, CYBORGDB_API_KEY,false);
+  const client = new Client({ baseUrl: API_URL, apiKey: CYBORGDB_API_KEY, verifySsl: false });
   let indexName: string;
   let indexKey: Uint8Array;
   let dimension: number;
@@ -157,7 +157,7 @@ describe('IVFPQBasicIntegrationTest', () => {
     console.log(`IVFPQ config: nLists=${N_LISTS}, pqDim=${PQ_DIM}, pqBits=${PQ_BITS}`);
     
     // This should succeed - if it fails, the test should fail
-    index = await client.createIndex(indexName, indexKey, indexConfig);
+    index = await client.createIndex({ indexName, indexKey, indexConfig });
     console.log(`✓ IVFPQ index created successfully: ${indexName}`);
   }, 30000);
   
@@ -175,8 +175,8 @@ describe('IVFPQBasicIntegrationTest', () => {
 
   test('should create IVFPQ index successfully', async () => {
     expect(index).toBeDefined();
-    expect(index.getIndexName()).toBe(indexName);
-    expect(index.getIndexType()).toBe("ivfpq");
+    expect(await index.getIndexName()).toBe(indexName);
+    expect(await index.getIndexType()).toBe("ivfpq");
   });
 
 

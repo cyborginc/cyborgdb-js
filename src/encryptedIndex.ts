@@ -22,8 +22,6 @@ export class EncryptedIndex {
     private indexName: string = "";
     private indexKey: Uint8Array;
     private indexConfig: IndexConfig;
-    private embeddingModel?: string = "";
-    private trained: boolean = false;
     private api: DefaultApi;
 
     private handleApiError(error: any): never {
@@ -53,10 +51,9 @@ export class EncryptedIndex {
       throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
     }
 
-    constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, embeddingModel?: string) {
+    constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, _embeddingModel?: string) {
     this.indexName = indexName;
     this.indexKey = indexKey;
-    this.embeddingModel = embeddingModel;
     this.api = api;
 
     // Normalize camelCase keys from potential snake_case input
@@ -152,10 +149,13 @@ export class EncryptedIndex {
        * @param include Fields to include in results
        * @returns Promise with the retrieved vectors
        */
-      async get(
-        ids: string[],
-        include: string[] = ["vector", "contents", "metadata"]
-      ) {
+      async get({
+        ids,
+        include = ["vector", "contents", "metadata"]
+      }: {
+        ids: string[];
+        include?: string[];
+      }) {
         try {
           // Convert indexKey to hex string for transmission - matching other methods
           const keyHex = Buffer.from(this.indexKey).toString('hex');
@@ -213,11 +213,15 @@ export class EncryptedIndex {
    * @param tolerance Convergence tolerance
    * @returns Promise with the result of the operation
    */
-  async train(
-    batchSize: number = 2048,
-    maxIters: number = 100,
-    tolerance: number = 1e-6
-  ) {
+  async train({
+    batchSize = 2048,
+    maxIters = 100,
+    tolerance = 1e-6
+  }: {
+    batchSize?: number;
+    maxIters?: number;
+    tolerance?: number;
+  } = {}) {
     try {
       // Convert indexKey to hex string to match other methods
       const keyHex = Buffer.from(this.indexKey).toString('hex');
@@ -240,74 +244,43 @@ export class EncryptedIndex {
   /**
    * Add or update vectors in the index
    * 
-   * This method provides two distinct overloads for maximum flexibility:
-   * 
-   * **Overload 1: VectorItem[] - Complete vector objects**
-   * - Use when you have rich data with metadata, contents, or mixed data types
-   * - Each item must contain: id (string), vector (number[])
-   * - Optional fields: contents (string|Buffer), metadata (object)
-   * - Example: `await index.upsert([{id: "doc1", vector: [0.1, 0.2], metadata: {title: "Document 1"}}])`
-   * 
-   * **Overload 2: (ids[], vectors[][]) - Parallel arrays**
-   * - Use for bulk operations with just IDs and vectors (no metadata/contents)
-   * - More efficient for large batches of uniform data
-   * - Arrays must be same length and aligned by index
-   * - Example: `await index.upsert(["id1", "id2"], [[0.1, 0.2], [0.3, 0.4]])`
+   * This method accepts either items (VectorItem[]) or parallel arrays (ids + vectors)
    * 
    * @param items Array of VectorItems containing id, vector, and optional metadata/contents
+   * @param ids Array of ID strings for each vector (used with vectors parameter)
+   * @param vectors Array of vector embeddings corresponding to each ID (used with ids parameter)
    * @returns Promise resolving to operation result with status and details
    * @throws Error with detailed validation information for invalid inputs
    */
-  /* eslint-disable no-dupe-class-members */
-  async upsert(items: VectorItem[]): Promise<any>;
-
-  /**
-   * Add or update vectors in the index using parallel arrays
-   * 
-   * @param ids Array of ID strings for each vector
-   * @param vectors Array of vector embeddings corresponding to each ID
-   * @returns Promise resolving to operation result with status and details
-   * @throws Error with detailed validation information for invalid inputs
-   */
-  async upsert(ids: string[], vectors: number[][]): Promise<any>;
-
-  /**
-   * Implementation signature - handles both overloads
-   * @internal
-   */
-  async upsert(
-    arg1: VectorItem[] | string[],
-    arg2?: number[][]
-  ): Promise<any> {
+  async upsert({
+    items,
+    ids,
+    vectors
+  }: {
+    items?: VectorItem[];
+    ids?: string[];
+    vectors?: number[][];
+  }): Promise<any> {
     try {
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(this.indexKey).toString('hex');
       
-      let items: VectorItem[] = [];
+      let finalItems: VectorItem[] = [];
 
-      // Case 1: arg1 is an array of VectorItems (dictionaries)
-      if (arg2 === undefined) {
-        if (!Array.isArray(arg1)) {
-          throw new Error("Invalid upsert call: First argument must be an array when using single-argument form");
+      // Case 1: items provided
+      if (items !== undefined) {
+        if (!Array.isArray(items)) {
+          throw new Error("Invalid upsert call: items must be an array");
         }
 
-        if (arg1.length === 0) {
+        if (items.length === 0) {
           // Empty array is valid - just return early success
           return { status: 'success', message: 'No items to upsert' };
         }
 
-        // Type guard to check if it's VectorItem[]
-        const isVectorItemArray = (arr: VectorItem[] | string[]): arr is VectorItem[] => {
-          return arr.length === 0 || (typeof arr[0] === 'object' && arr[0] !== null);
-        };
-
-        if (!isVectorItemArray(arg1)) {
-          throw new Error("Invalid upsert call: When using single argument, it must be an array of VectorItem objects, not strings");
-        }
-
         // Validate each VectorItem in detail
-        for (let i = 0; i < arg1.length; i++) {
-          const item = arg1[i];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
           
           if (!item || typeof item !== 'object') {
             throw new Error(`Invalid VectorItem at index ${i}: Item must be an object, got ${typeof item}`);
@@ -346,21 +319,18 @@ export class EncryptedIndex {
           }
         }
 
-        items = arg1;
+        finalItems = items;
       }
       
-      // Case 2: arg1 is an array of IDs, arg2 is an array of vectors
-      else {
-        if (!Array.isArray(arg1)) {
-          throw new Error("Invalid upsert call: First argument must be an array of ID strings when using two-argument form");
+      // Case 2: ids and vectors provided
+      else if (ids !== undefined && vectors !== undefined) {
+        if (!Array.isArray(ids)) {
+          throw new Error("Invalid upsert call: ids must be an array of strings");
         }
         
-        if (!Array.isArray(arg2)) {
-          throw new Error("Invalid upsert call: Second argument must be an array of vectors when using two-argument form");
+        if (!Array.isArray(vectors)) {
+          throw new Error("Invalid upsert call: vectors must be an array of number arrays");
         }
-
-        const ids = arg1 as string[];
-        const vectors = arg2;
 
         if (ids.length !== vectors.length) {
           throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${vectors.length} vectors provided. The number of IDs must match the number of vectors.`);
@@ -400,16 +370,18 @@ export class EncryptedIndex {
         }
 
         // Create VectorItems from IDs and vectors
-        items = ids.map((id, index) => ({
+        finalItems = ids.map((id, index) => ({
           id: id.toString(),
           vector: vectors[index],
           contents: undefined,
           metadata: undefined
         }));
+      } else {
+        throw new Error("Invalid upsert call: Must provide either 'items' or both 'ids' and 'vectors'");
       }
       
       // Convert items to the format expected by the API
-      const processedItems: VectorItem[] = items.map((item, index) => {
+      const processedItems: VectorItem[] = finalItems.map((item, index) => {
         let contentValue: string | undefined = undefined;
         
         if (item.contents) {
@@ -462,22 +434,30 @@ export class EncryptedIndex {
    * @param queryVectors Single vector [0.1, 0.2] or batch [[0.1, 0.2], [0.3, 0.4]]
    * @param queryContents Optional text content to embed and search (alternative to queryVectors)
    * @param topK Maximum number of results to return per query (default: 100)
-   * @param nProbes Number of cluster centers to search (default: 1)
+   * @param nProbes Number of cluster centers to search (default: 0 for auto)
    * @param filters Metadata filters (MongoDB-style queries supported)
    * @param include Fields to include in results (default: ["distance", "metadata"])
    * @param greedy Use faster approximate search (default: false)
    * @returns Promise resolving to QueryResponse
    * @throws Error if neither queryVectors nor queryContents provided
    */
-  async query(
-    queryVectors?: number[] | number[][],
-    queryContents?: string,
-    topK: number = 100,
-    nProbes: number = 1,
-    filters: object = {},
-    include: string[] = ["distance", "metadata"],
-    greedy: boolean = false
-  ): Promise<QueryResponse> {
+  async query({
+    queryVectors,
+    queryContents,
+    topK = 100,
+    nProbes = 0,
+    filters = {},
+    include = ["distance", "metadata"],
+    greedy = false
+  }: {
+    queryVectors?: number[] | number[][];
+    queryContents?: string;
+    topK?: number;
+    nProbes?: number;
+    filters?: object;
+    include?: string[];
+    greedy?: boolean;
+  }): Promise<QueryResponse> {
     const keyHex = Buffer.from(this.indexKey).toString('hex');
     let isSingleQuery = false;
 
@@ -541,7 +521,11 @@ export class EncryptedIndex {
        * @param ids IDs of vectors to delete
        * @returns Promise with the result of the operation
        */
-      async delete(ids: string[]) {
+      async delete({
+        ids
+      }: {
+        ids: string[];
+      }) {
           try {
           // Convert indexKey to hex string to match other methods
           const keyHex = Buffer.from(this.indexKey).toString('hex');
