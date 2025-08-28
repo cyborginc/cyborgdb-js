@@ -85,8 +85,6 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
   if (testIndexType === "ivfpq") {
     const indexConfig = new IndexIVFPQ();
     indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
     
     // Set the IVFPQ-specific properties (these exist in the class definition)
     indexConfig.pqDim = PQ_DIM;
@@ -97,15 +95,11 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
   } else if (testIndexType === "ivfflat") {
     const indexConfig = new IndexIVFFlat();
     indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
     indexConfig.type = 'ivfflat';
     return indexConfig;
   } else {
     const indexConfig = new IndexIVF();
     indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
     indexConfig.type = 'ivf';
     return indexConfig;
   }
@@ -155,7 +149,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     indexName = generateIndexName();
     indexKey = client.generateKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
-    index = await client.createIndex({ indexName, indexKey, indexConfig });
+    index = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
   }, 30000);
   
   // Clean up after each test
@@ -385,7 +379,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(initialTrainedState).toBe(false);
     
     // Train the index
-    const trainResult = await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
+    const trainResult = await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
     expect(trainResult.status).toBe('success');
     
     // Verify index is now trained
@@ -402,7 +396,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       metadata: { category: "initial", index: i }
     }));
     await index.upsert({ items: initialVectors });
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
     
     // Add more vectors after training using (ids, vectors) overload
     const additionalVectorData = trainData.slice(50, 80);
@@ -445,7 +439,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       }
     }));
     await index.upsert({ items: vectors });
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
     
     // Test complex filter using new signature
     const complexFilter = {
@@ -598,7 +592,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.deleteIndex();
     
     // Recreate with the same name
-    const recreatedIndex = await client.createIndex({ indexName, indexKey, indexConfig });
+    const recreatedIndex = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
     const recreatedIndexName = await recreatedIndex.getIndexName();
     const recreatedIndexType = await recreatedIndex.getIndexType();
     
@@ -669,7 +663,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.upsert({ items: initialVectors });
     
     // Train the index
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
     
     // Add more vectors after training using (ids, vectors) overload
     const additionalVectorData = trainData.slice(50, 80);
@@ -821,11 +815,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     expect(indexConfig).toBeDefined();
     expect(indexConfig.dimension).toBe(dimension);
-    expect(indexConfig.metric).toBe(METRIC);
-    
-    // The property name might be nLists or n_lists depending on the API response
-    const nLists = indexConfig.nLists ?? (indexConfig as any).n_lists;
-    expect(nLists).toBe(N_LISTS);
+    // Note: metric and nLists are no longer part of IndexConfig
     
     if (testIndexType === "ivfpq") {
       const ivfpqConfig = indexConfig as IndexIVFPQ;
@@ -991,6 +981,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       indexName: contentIndexName,
       indexKey: contentIndexKey,
       indexConfig: contentIndexConfig,
+      metric: METRIC,
       embeddingModel: "all-MiniLM-L6-v2"  // Specify the embedding model
     });
     
