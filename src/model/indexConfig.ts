@@ -12,8 +12,6 @@
 
 export class IndexConfig {
     'dimension'?: number;
-    'nLists'?: number;
-    'metric'?: string;
     'indexType'?: string = 'ivfflat';
     'pqDim'?: number;
     'pqBits'?: number;
@@ -25,16 +23,6 @@ export class IndexConfig {
             "name": "dimension",
             "baseName": "dimension",
             "type": "number"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
-        },
-        {
-            "name": "metric",
-            "baseName": "metric",
-            "type": "string"
         },
         {
             "name": "indexType",

@@ -15,8 +15,6 @@
 */
 export class IndexIVFPQModel {
     'dimension'?: number | null;
-    'nLists': number;
-    'metric'?: string | null;
     'type'?: string = 'ivfpq';
     'pqDim': number;
     'pqBits': number;
@@ -28,16 +26,6 @@ export class IndexIVFPQModel {
             "name": "dimension",
             "baseName": "dimension",
             "type": "number"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
-        },
-        {
-            "name": "metric",
-            "baseName": "metric",
-            "type": "string"
         },
         {
             "name": "type",

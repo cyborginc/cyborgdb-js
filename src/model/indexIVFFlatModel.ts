@@ -15,8 +15,6 @@
 */
 export class IndexIVFFlatModel {
     'dimension'?: number | null;
-    'nLists': number;
-    'metric'?: string | null;
     'type'?: string = 'ivfflat';
 
     static discriminator: string | undefined = undefined;
@@ -26,16 +24,6 @@ export class IndexIVFFlatModel {
             "name": "dimension",
             "baseName": "dimension",
             "type": "number"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
-        },
-        {
-            "name": "metric",
-            "baseName": "metric",
-            "type": "string"
         },
         {
             "name": "type",

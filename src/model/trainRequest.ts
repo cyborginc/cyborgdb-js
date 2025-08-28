@@ -26,6 +26,7 @@ export class TrainRequest {
     'maxIters'?: number = 100;
     'tolerance'?: number = 1.0E-6;
     'maxMemory'?: number = 0;
+    'nLists'?: number;
 
     static discriminator: string | undefined = undefined;
 
@@ -58,6 +59,11 @@ export class TrainRequest {
         {
             "name": "maxMemory",
             "baseName": "max_memory",
+            "type": "number"
+        },
+        {
+            "name": "nLists",
+            "baseName": "n_lists",
             "type": "number"
         }    ];
 

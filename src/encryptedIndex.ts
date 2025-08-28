@@ -212,16 +212,19 @@ export class EncryptedIndex {
    * @param batchSize Size of batches for training
    * @param maxIters Maximum number of iterations
    * @param tolerance Convergence tolerance
+   * @param nLists Number of Voronoi cells/clusters for IVF indexes
    * @returns Promise with the result of the operation
    */
   async train({
     batchSize = 2048,
     maxIters = 100,
-    tolerance = 1e-6
+    tolerance = 1e-6,
+    nLists
   }: {
     batchSize?: number;
     maxIters?: number;
     tolerance?: number;
+    nLists?: number;
   } = {}) {
     try {
       // Convert indexKey to hex string to match other methods
@@ -234,6 +237,11 @@ export class EncryptedIndex {
         maxIters: maxIters,
         tolerance: tolerance
       };
+
+      // Add n_lists to request if provided
+      if (nLists !== undefined) {
+        (trainRequest as any).nLists = nLists;
+      }
       
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
       return response.body;
@@ -542,5 +550,23 @@ export class EncryptedIndex {
           } catch (error: any) {
           this.handleApiError(error);
           }
+      }
+
+      /**
+       * List all vector IDs in the index
+       * NOTE: This method is planned but not yet implemented in the API
+       * @param limit Maximum number of IDs to return (optional)
+       * @param offset Starting offset for pagination (optional)
+       * @returns Promise with array of vector IDs
+       */
+      async list_ids({
+        limit,
+        offset
+      }: {
+        limit?: number;
+        offset?: number;
+      } = {}): Promise<string[]> {
+        // TODO: Implement when API endpoint becomes available
+        throw new Error("list_ids() is not yet implemented. This functionality will be added in a future API version.");
       }
   }

@@ -133,8 +133,8 @@ export class CyborgDB {
    * Create a new encrypted index
    * @param indexName Name of the index
    * @param indexKey 32-byte encryption key
-   * @param indexConfig Configuration for the index
-   * @param metric Distance metric for the index
+   * @param indexConfig Configuration for the index (optional)
+   * @param metric Distance metric for the index (optional)
    * @param embeddingModel Optional name of embedding model
    * @returns Promise with the created index
    */
@@ -159,19 +159,12 @@ export class CyborgDB {
       // Use default IndexIVFFlat if no config provided
       const finalConfig = indexConfig || new IndexIVFFlat();
       
-      // Apply metric if provided
-      if (metric) {
-        finalConfig.metric = metric;
-      }
-      
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
         indexKey: keyHex,
         indexConfig: {
           dimension: finalConfig.dimension || undefined,
-          metric: finalConfig.metric || undefined,
           indexType: finalConfig.type || undefined,
-          nLists: finalConfig.nLists || undefined,
           // For IVFPQ, add additional properties
           ...(finalConfig.type === 'ivfpq' ? {
             pqDim: (finalConfig as IndexIVFPQ).pqDim || undefined,
@@ -180,6 +173,11 @@ export class CyborgDB {
         },
         embeddingModel: embeddingModel
       };
+
+      // Add metric to the config if provided
+      if (metric) {
+        (createRequest.indexConfig as any).metric = metric;
+      }
       
       if (finalConfig.type === 'ivfpq') {
         (createRequest.indexConfig as any).pq_dim = (finalConfig as IndexIVFPQ).pqDim;
