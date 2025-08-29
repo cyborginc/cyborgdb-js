@@ -1,23 +1,37 @@
 # CyborgDB JavaScript/TypeScript SDK
 
-The **CyborgDB JavaScript/TypeScript SDK** provides a comprehensive client library for interacting with [CyborgDB](https://www.cyborg.co), the first Confidential Vector Database. This SDK enables you to perform encrypted vector operations including ingestion, search, and retrieval while maintaining end-to-end encryption of your vector embeddings. Built with TypeScript, it offers full type safety and seamless integration into modern JavaScript and TypeScript applications.
+![NPM Version](https://img.shields.io/npm/v/cyborgdb)
+![NPM License](https://img.shields.io/npm/l/cyborgdb)
+![Node Current](https://img.shields.io/node/v/cyborgdb)
 
-This SDK provides an interface to `cyborgdb-service` which you will need to separately install and run in order to use the SDK. For more info, please see our [docs](https://docs.cyborg.co)
+The **CyborgDB JavaScript/TypeScript SDK** provides a comprehensive client library for interacting with [CyborgDB](https://docs.cyborg.co), the first Confidential Vector Database. This SDK enables you to perform encrypted vector operations including ingestion, search, and retrieval while maintaining end-to-end encryption of your vector embeddings. Built with TypeScript, it offers full type safety and seamless integration into modern JavaScript and TypeScript applications.
 
-**Why CyborgDB?**
+This SDK provides an interface to [`cyborgdb-service`](https://pypi.org/project/cyborgdb-service/) which you will need to separately install and run in order to use the SDK. For more info, please see our [docs](https://docs.cyborg.co)
 
-Vector Search powers critical AI applications like RAG systems, recommendation engines, and semantic search. The CyborgDB JS/TS SDK brings confidential computing to your web applications and Node.js services, ensuring vector embeddings remain encrypted throughout their entire lifecycle while providing fast, accurate search capabilities.
 
-**Key Features**
+## Key Features
 
 * **End-to-End Encryption**: All vector operations maintain encryption with client-side keys
+- **Zero-Trust Design**: Novel architecture keeps confidential inference data secure
 * **Full TypeScript Support**: Complete type definitions and IntelliSense support
 * **Batch Operations**: Efficient batch queries and upserts for high-throughput applications
 * **Flexible Indexing**: Support for multiple index types (IVFFlat, IVFPQ, etc.) with customizable parameters
 
-**Installation**
+## Getting Started
+
+To get started in minutes, check out our [Quickstart Guide](https://docs.cyborg.co/quickstart).
+
+
+### Installation
 
 1. Install `cyborgdb-service`
+```bash
+# Install the CyborgDB Service
+pip install cyborgdb-service
+
+# Or via Docker
+docker pull cyborginc/cyborgdb-service
+```
 
 2. Install `cyborgdb` SDK:
 
@@ -26,7 +40,7 @@ Vector Search powers critical AI applications like RAG systems, recommendation e
 npm install cyborgdb
 ```
 
-**Usage**
+### Usage
 
 ```typescript
 import { Client, IndexIVFFlat } from 'cyborgdb';
@@ -69,9 +83,9 @@ results.results.forEach(result => {
 });
 ```
 
-**Advanced Usage**
+### Advanced Usage
 
-**Batch Queries**
+#### Batch Queries
 
 ```typescript
 // Search with multiple query vectors simultaneously
@@ -83,7 +97,7 @@ const queryVectors = [
 const batchResults = await index.query(queryVectors, 5);
 ```
 
-**Metadata Filtering**
+#### Metadata Filtering
 
 ```typescript
 // Search with metadata filters
@@ -97,24 +111,10 @@ const results = await index.query(
 );
 ```
 
-**Index Training**
+## Documentation
 
-```typescript
-// Train the index for better query performance (recommended for IVF indexes)
-await index.train(2048, 100, 1e-6);
-```
+For more information on CyborgDB, see the [Cyborg Docs](https://docs.cyborg.co).
 
-**Documentation**
+## License
 
-For more detailed documentation, visit:
-* [CyborgDB Documentation](https://docs.cyborg.co/)
-
-**License**
-
-The CyborgDB JavaScript/TypeScript SDK is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
-
-**About CyborgDB**
-
-CyborgDB is dedicated to making AI safe and secure through confidential computing. We develop solutions that enable organizations to leverage AI while maintaining the confidentiality and privacy of their data.
-
-[Visit our website](https://www.cyborg.co/) | [Contact Us](mailto:hello@cyborg.co)
+The CyborgDB JavaScript/TypeScript SDK is licensed under the MIT License.
