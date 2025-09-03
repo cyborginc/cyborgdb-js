@@ -558,7 +558,7 @@ export class EncryptedIndex {
        * List all vector IDs in the index
        * @returns Promise with object containing array of vector IDs and count
        */
-      async list_ids(): Promise<{ ids: string[]; count: number }> {
+      async listIds(): Promise<{ ids: string[]; count: number }> {
         try {
           // Convert indexKey to hex string for transmission
           const keyHex = Buffer.from(this.indexKey).toString('hex');

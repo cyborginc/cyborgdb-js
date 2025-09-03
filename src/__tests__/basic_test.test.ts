@@ -191,8 +191,8 @@ describe('IVFPQBasicIntegrationTest', () => {
     
     console.log('✓ Added 5 vectors to the index');
     
-    // Now test list_ids
-    const result = await index.list_ids();
+    // Now test listIds
+    const result = await index.listIds();
     
     expect(result).toBeDefined();
     expect(result.ids).toBeDefined();
@@ -206,12 +206,12 @@ describe('IVFPQBasicIntegrationTest', () => {
       expect(result.ids).toContain(id);
     }
     
-    console.log(`✓ list_ids returned ${result.count} IDs: ${result.ids.join(', ')}`);
+    console.log(`✓ listIds returned ${result.count} IDs: ${result.ids.join(', ')}`);
   });
 
   test('should return empty list for empty index', async () => {
-    // Test list_ids on an empty index
-    const result = await index.list_ids();
+    // Test listIds on an empty index
+    const result = await index.listIds();
     
     expect(result).toBeDefined();
     expect(result.ids).toBeDefined();
@@ -220,7 +220,7 @@ describe('IVFPQBasicIntegrationTest', () => {
     expect(result.count).toBe(0);
     expect(result.ids.length).toBe(0);
     
-    console.log('✓ list_ids correctly returned empty list for empty index');
+    console.log('✓ listIds correctly returned empty list for empty index');
   });
 
   test('should update list after deletions', async () => {
@@ -234,15 +234,15 @@ describe('IVFPQBasicIntegrationTest', () => {
     });
     
     // Verify all are present
-    let result = await index.list_ids();
+    let result = await index.listIds();
     expect(result.count).toBe(5);
     
     // Delete some vectors
     await index.delete({ ids: ['del1', 'del2', 'del3'] });
     console.log('✓ Deleted 3 vectors from the index');
     
-    // Check list_ids after deletion
-    result = await index.list_ids();
+    // Check listIds after deletion
+    result = await index.listIds();
     
     expect(result.count).toBe(2);
     expect(result.ids.length).toBe(2);
@@ -252,7 +252,7 @@ describe('IVFPQBasicIntegrationTest', () => {
     expect(result.ids).not.toContain('del2');
     expect(result.ids).not.toContain('del3');
     
-    console.log(`✓ list_ids correctly updated after deletion: ${result.ids.join(', ')}`);
+    console.log(`✓ listIds correctly updated after deletion: ${result.ids.join(', ')}`);
   });
 
 
