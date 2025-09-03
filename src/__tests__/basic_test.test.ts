@@ -178,6 +178,83 @@ describe('IVFPQBasicIntegrationTest', () => {
     expect(await index.getIndexType()).toBe("ivfpq");
   });
 
+  test('should list IDs from the index', async () => {
+    // First, add some vectors to the index
+    const testIds = ['vec1', 'vec2', 'vec3', 'vec4', 'vec5'];
+    const vectors = trainData.slice(0, 5);
+    
+    // Upsert vectors with specific IDs
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+    
+    console.log('✓ Added 5 vectors to the index');
+    
+    // Now test list_ids
+    const result = await index.list_ids();
+    
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(5);
+    expect(result.ids.length).toBe(5);
+    
+    // Check that all our IDs are in the result
+    for (const id of testIds) {
+      expect(result.ids).toContain(id);
+    }
+    
+    console.log(`✓ list_ids returned ${result.count} IDs: ${result.ids.join(', ')}`);
+  });
+
+  test('should return empty list for empty index', async () => {
+    // Test list_ids on an empty index
+    const result = await index.list_ids();
+    
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(0);
+    expect(result.ids.length).toBe(0);
+    
+    console.log('✓ list_ids correctly returned empty list for empty index');
+  });
+
+  test('should update list after deletions', async () => {
+    // Add vectors
+    const testIds = ['del1', 'del2', 'del3', 'keep1', 'keep2'];
+    const vectors = trainData.slice(0, 5);
+    
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+    
+    // Verify all are present
+    let result = await index.list_ids();
+    expect(result.count).toBe(5);
+    
+    // Delete some vectors
+    await index.delete({ ids: ['del1', 'del2', 'del3'] });
+    console.log('✓ Deleted 3 vectors from the index');
+    
+    // Check list_ids after deletion
+    result = await index.list_ids();
+    
+    expect(result.count).toBe(2);
+    expect(result.ids.length).toBe(2);
+    expect(result.ids).toContain('keep1');
+    expect(result.ids).toContain('keep2');
+    expect(result.ids).not.toContain('del1');
+    expect(result.ids).not.toContain('del2');
+    expect(result.ids).not.toContain('del3');
+    
+    console.log(`✓ list_ids correctly updated after deletion: ${result.ids.join(', ')}`);
+  });
+
 
 });
 
