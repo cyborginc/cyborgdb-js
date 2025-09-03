@@ -23,6 +23,8 @@ import { GetResponseModel } from '../model/getResponseModel';
 import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexListResponseModel } from '../model/indexListResponseModel';
 import { IndexOperationRequest } from '../model/indexOperationRequest';
+import { ListIDsRequest } from '../model/listIDsRequest';
+import { ListIDsResponse } from '../model/listIDsResponse';
 import { QueryResponse } from '../model/queryResponse';
 import { Request } from '../model/request';
 import { TrainRequest } from '../model/trainRequest';
@@ -261,6 +263,63 @@ export class DefaultApi {
             try {
                 const response = await axios(localVarRequestOptions);
                 const body = ObjectSerializer.deserialize(response.data, "CyborgdbServiceApiSchemasVectorsSuccessResponseModel");
+                return { response: response, body: body };
+            } catch (error: any) {
+                if (error.response) {
+                    throw new HttpError(error.response, error.response.data, error.response.status);
+                }
+                throw error;
+            }
+        });
+    }
+
+    /**
+     * List all IDs currently stored in the index.
+     * @summary List all IDs in an index
+     * @param listIDsRequest 
+     */
+    public async listIDsV1VectorsListIdsPost (listIDsRequest: ListIDsRequest, options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: AxiosResponse; body: ListIDsResponse;  }> {
+        const localVarPath = this.basePath + '/v1/vectors/list_ids';
+        let localVarQueryParameters: any = {};
+        let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
+        const produces = ['application/json'];
+        // give precedence to 'application/json'
+        if (produces.indexOf('application/json') >= 0) {
+            localVarHeaderParams.Accept = 'application/json';
+        } else {
+            localVarHeaderParams.Accept = produces.join(',');
+        }
+
+        // verify required parameter 'listIDsRequest' is not null or undefined
+        if (listIDsRequest === null || listIDsRequest === undefined) {
+            throw new Error('Required parameter listIDsRequest was null or undefined when calling listIDsV1VectorsListIdsPost.');
+        }
+
+        (<any>Object).assign(localVarHeaderParams, options.headers);
+
+        let localVarRequestOptions: AxiosRequestConfig = {
+            method: 'POST',
+            params: localVarQueryParameters,
+            headers: localVarHeaderParams,
+            url: localVarPath,
+            data: ObjectSerializer.serialize(listIDsRequest, "ListIDsRequest")
+        };
+
+        let authenticationPromise = Promise.resolve();
+        if (this.authentications.APIKeyHeader.apiKey) {
+            authenticationPromise = authenticationPromise.then(() => this.authentications.APIKeyHeader.applyToRequest(localVarRequestOptions));
+        }
+        authenticationPromise = authenticationPromise.then(() => this.authentications.default.applyToRequest(localVarRequestOptions));
+
+        let interceptorPromise = authenticationPromise;
+        for (const interceptor of this.interceptors) {
+            interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
+        }
+
+        return interceptorPromise.then(async () => {
+            try {
+                const response = await axios(localVarRequestOptions);
+                const body = ObjectSerializer.deserialize(response.data, "ListIDsResponse");
                 return { response: response, body: body };
             } catch (error: any) {
                 if (error.response) {

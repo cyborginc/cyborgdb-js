@@ -16,6 +16,8 @@ import {
     IndexIVFPQModel,
     IndexInfoResponseModel,
     Request,
+    ListIDsRequest,
+    ListIDsResponse,
   } from './model/models';
 
 export class EncryptedIndex {
@@ -554,19 +556,27 @@ export class EncryptedIndex {
 
       /**
        * List all vector IDs in the index
-       * NOTE: This method is planned but not yet implemented in the API
-       * @param limit Maximum number of IDs to return (optional)
-       * @param offset Starting offset for pagination (optional)
-       * @returns Promise with array of vector IDs
+       * @returns Promise with object containing array of vector IDs and count
        */
-      async list_ids({
-        limit,
-        offset
-      }: {
-        limit?: number;
-        offset?: number;
-      } = {}): Promise<string[]> {
-        // TODO: Implement when API endpoint becomes available
-        throw new Error("list_ids() is not yet implemented. This functionality will be added in a future API version.");
+      async list_ids(): Promise<{ ids: string[]; count: number }> {
+        try {
+          // Convert indexKey to hex string for transmission
+          const keyHex = Buffer.from(this.indexKey).toString('hex');
+          
+          const listIDsRequest: ListIDsRequest = {
+            indexName: this.indexName,
+            indexKey: keyHex
+          };
+          
+          const response = await this.api.listIDsV1VectorsListIdsPost(listIDsRequest);
+          const responseBody: ListIDsResponse = response.body;
+          
+          return {
+            ids: responseBody.ids,
+            count: responseBody.count
+          };
+        } catch (error: any) {
+          this.handleApiError(error);
+        }
       }
   }

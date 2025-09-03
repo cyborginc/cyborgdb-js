@@ -17,6 +17,8 @@ export * from './indexIVFPQModel';
 export * from './indexInfoResponseModel';
 export * from './indexListResponseModel';
 export * from './indexOperationRequest';
+export * from './listIDsRequest';
+export * from './listIDsResponse';
 export * from './queryRequest';
 export * from './queryResponse';
 export * from './queryResultItem';
@@ -57,6 +59,8 @@ import { IndexIVFPQModel } from './indexIVFPQModel';
 import { IndexInfoResponseModel } from './indexInfoResponseModel';
 import { IndexListResponseModel } from './indexListResponseModel';
 import { IndexOperationRequest } from './indexOperationRequest';
+import { ListIDsRequest } from './listIDsRequest';
+import { ListIDsResponse } from './listIDsResponse';
 import { QueryRequest } from './queryRequest';
 import { QueryResponse } from './queryResponse';
 import { QueryResultItem } from './queryResultItem';
@@ -100,6 +104,8 @@ let typeMap: {[index: string]: any} = {
     "IndexInfoResponseModel": IndexInfoResponseModel,
     "IndexListResponseModel": IndexListResponseModel,
     "IndexOperationRequest": IndexOperationRequest,
+    "ListIDsRequest": ListIDsRequest,
+    "ListIDsResponse": ListIDsResponse,
     "QueryRequest": QueryRequest,
     "QueryResponse": QueryResponse,
     "QueryResultItem": QueryResultItem,
