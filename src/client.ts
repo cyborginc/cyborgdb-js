@@ -8,6 +8,7 @@ import {
 } from './index';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
+import { IndexConfig } from './model/indexConfig';
 import { EncryptedIndex } from './encryptedIndex';
 import { randomBytes } from 'crypto';
 import { IndexInfoResponseModel } from './model/indexInfoResponseModel';
@@ -88,32 +89,51 @@ export class CyborgDB {
   }
 
   private handleApiError(error: any): never {
+    console.error("Full error object:", JSON.stringify(error, null, 2));
+    
+    // Handle different error formats from typescript-node generator
     if (error.response) {
-      console.error("HTTP Status Code:", error.response.status);
+      console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
       console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-      console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); // CHANGED: .body to .data
+      console.error("Response Body:", error.body || error.response.body || error.response.data);
+    } else if (error.body) {
+      console.error("Error Body:", error.body);
     } else {
       console.error("No response from server");
       console.error("Error message:", error.message);
     }
     
-    // Check error.response.data instead of error.response.body
-    if (error.response?.data) { // CHANGED: .body to .data
+    // Try to extract error details from different possible locations
+    let errorBody = error.body || error.response?.body || error.response?.data;
+    if (typeof errorBody === 'string') {
       try {
-        const errBody = error.response.data; // CHANGED: .body to .data
-        if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
-          const err = errBody as ErrorResponseModel;
-          throw new Error(`${err.statusCode} - ${err.detail}`);
-        }
-        if ('detail' in errBody && Array.isArray(errBody.detail)) {
-          const err = errBody as HTTPValidationError;
-          throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-        }
+        errorBody = JSON.parse(errorBody);
       } catch (e) {
-        throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); // CHANGED: .body to .data
+        // Keep as string if not valid JSON
       }
     }
-    throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
+    
+    if (errorBody) {
+      try {
+        if (typeof errorBody === 'object' && 'detail' in errorBody) {
+          if (Array.isArray(errorBody.detail)) {
+            const err = errorBody as HTTPValidationError;
+            throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
+          } else {
+            const err = errorBody as ErrorResponseModel;
+            throw new Error(`${err.statusCode || error.response?.statusCode || 'Unknown status'} - ${err.detail}`);
+          }
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('Validation failed')) {
+          throw e;
+        }
+        throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
+      }
+    }
+    
+    const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
+    throw new Error(`HTTP error ${statusCode}: ${error.message || 'Unknown error'}`);
   }
 
   /**
@@ -164,11 +184,12 @@ export class CyborgDB {
         indexKey: keyHex,
         indexConfig: {
           dimension: finalConfig.dimension || undefined,
-          indexType: finalConfig.type || undefined,
+          type: finalConfig.type || undefined,
+          pqDim: (finalConfig as IndexIVFPQ).pqDim || 8,
+          pqBits: (finalConfig as IndexIVFPQ).pqBits || 8,
           // For IVFPQ, add additional properties
           ...(finalConfig.type === 'ivfpq' ? {
-            pqDim: (finalConfig as IndexIVFPQ).pqDim || undefined,
-            pqBits: (finalConfig as IndexIVFPQ).pqBits ||undefined
+            nLists: (finalConfig as any).nLists || undefined
           } : {})
         },
         embeddingModel: embeddingModel
@@ -184,9 +205,18 @@ export class CyborgDB {
         (createRequest.indexConfig as any).pq_bits = (finalConfig as IndexIVFPQ).pqBits;
       }
       
-      await this.api.createIndexV1IndexesCreatePost(createRequest);
+      // Transform camelCase to snake_case for API compatibility
+      const transformedRequest = {
+        index_name: createRequest.indexName,
+        index_key: keyHex,
+        index_config: createRequest.indexConfig,
+        embedding_model: createRequest.embeddingModel,
+        metric: createRequest.metric
+      };
+      
+      await this.api.createIndexV1IndexesCreatePost(transformedRequest as any);
       return new EncryptedIndex(
-        indexName, indexKey, createRequest.indexConfig, this.api, embeddingModel)
+        indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
     } catch (error: any) {
       this.handleApiError(error);
     }
@@ -285,7 +315,7 @@ export class CyborgDB {
       const response = await this.describeIndex(indexName, indexKey);
       
       // Extract index configuration for initialization
-      const indexConfig = response.indexConfig;
+      const indexConfig = response.indexConfig as any as IndexConfig;
       
       // Create and return fully initialized EncryptedIndex instance
       // This object provides all vector database operations (query, upsert, delete, etc.)
