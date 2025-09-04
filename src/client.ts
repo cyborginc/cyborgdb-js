@@ -179,42 +179,34 @@ export class CyborgDB {
       // Use default IndexIVFFlat if no config provided
       const finalConfig = indexConfig || new IndexIVFFlat();
       
+      // Create proper IndexConfig object
+      const indexConfigObj = new IndexConfig();
+      indexConfigObj.dimension = finalConfig.dimension || undefined;
+      indexConfigObj.type = finalConfig.type || 'ivfflat';
+      
+      if (finalConfig.type === 'ivfpq') {
+        indexConfigObj.pqDim = (finalConfig as IndexIVFPQ).pqDim || 32;
+        indexConfigObj.pqBits = (finalConfig as IndexIVFPQ).pqBits || 8;
+        indexConfigObj.nLists = (finalConfig as any).nLists;
+      }
+      
+      // Add metric to the config if provided  
+      if (metric) {
+        (indexConfigObj as any).metric = metric;
+      }
+      
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
         indexKey: keyHex,
-        indexConfig: {
-          dimension: finalConfig.dimension || undefined,
-          type: finalConfig.type || undefined,
-          pqDim: (finalConfig as IndexIVFPQ).pqDim || 8,
-          pqBits: (finalConfig as IndexIVFPQ).pqBits || 8,
-          // For IVFPQ, add additional properties
-          ...(finalConfig.type === 'ivfpq' ? {
-            nLists: (finalConfig as any).nLists || undefined
-          } : {})
-        },
-        embeddingModel: embeddingModel
-      };
-
-      // Add metric to the config if provided
-      if (metric) {
-        (createRequest.indexConfig as any).metric = metric;
-      }
-      
-      if (finalConfig.type === 'ivfpq') {
-        (createRequest.indexConfig as any).pq_dim = (finalConfig as IndexIVFPQ).pqDim;
-        (createRequest.indexConfig as any).pq_bits = (finalConfig as IndexIVFPQ).pqBits;
-      }
-      
-      // Transform camelCase to snake_case for API compatibility
-      const transformedRequest = {
-        index_name: createRequest.indexName,
-        index_key: keyHex,
-        index_config: createRequest.indexConfig,
-        embedding_model: createRequest.embeddingModel,
-        metric: createRequest.metric
+        indexConfig: indexConfigObj,
+        embeddingModel: embeddingModel,
+        metric: metric
       };
       
-      await this.api.createIndexV1IndexesCreatePost(transformedRequest as any);
+      // Debug: log what we're sending
+      console.log('Sending createRequest:', JSON.stringify(createRequest, null, 2));
+      
+      await this.api.createIndexV1IndexesCreatePost(createRequest);
       return new EncryptedIndex(
         indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
     } catch (error: any) {
