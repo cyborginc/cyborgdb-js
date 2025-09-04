@@ -258,13 +258,10 @@ export class EncryptedIndex {
         indexKey: keyHex,
         batchSize: batchSize,
         maxIters: maxIters,
-        tolerance: tolerance
+        tolerance: tolerance,
+        nLists: nLists || undefined,
+        maxMemory: 0  // Set to 0 (no limit) instead of undefined/null
       };
-
-      // Add n_lists to request if provided
-      if (nLists !== undefined) {
-        (trainRequest as any).nLists = nLists;
-      }
       
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
       return response.body;

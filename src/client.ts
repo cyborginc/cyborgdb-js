@@ -203,9 +203,6 @@ export class CyborgDB {
         metric: metric
       };
       
-      // Debug: log what we're sending
-      console.log('Sending createRequest:', JSON.stringify(createRequest, null, 2));
-      
       await this.api.createIndexV1IndexesCreatePost(createRequest);
       return new EncryptedIndex(
         indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
