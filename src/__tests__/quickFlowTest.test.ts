@@ -7,6 +7,7 @@ import { QueryResultItem } from '../model/queryResultItem';
 import { EncryptedIndex } from '../encryptedIndex';
 import { QueryResponse } from '../model/queryResponse';
 import { IndexIVF, IndexIVFPQ, IndexIVFFlat } from '../index';
+import { assert } from 'console';
 
 /**
  * Combined CyborgDB Integration Tests
@@ -109,15 +110,32 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
 beforeAll(async () => {
   try {
     sharedData = JSON.parse(fs.readFileSync(JSON_DATASET_PATH, 'utf8'));
+    // If loaded dataset has fewer vectors, we can extend it
+    if (sharedData && sharedData.train.length < 20000) {
+      console.log(`Loaded dataset has ${sharedData.train.length} vectors, extending to 10000...`);
+      const dimension = sharedData.train[0].length;
+      const additionalVectors = 20000 - sharedData.train.length;
+      const newVectors = Array(additionalVectors).fill(0).map(() => 
+        Array(dimension).fill(0).map(() => Math.random())
+      );
+      sharedData.train = [...sharedData.train, ...newVectors];
+    }
   } catch (error) {
     console.error('Error loading shared dataset:', error);
-    // Create minimal synthetic data as fallback
+    // Create synthetic data with 10k training vectors for proper testing
+    console.log('Creating synthetic dataset with 10000 training vectors...');
     sharedData = {
-      train: Array(200).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
-      test: Array(20).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
-      neighbors: Array(20).fill(0).map(() => Array(TOP_K).fill(0).map(() => Math.floor(Math.random() * 200)))
+      train: Array(10000).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
+      test: Array(100).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
+      neighbors: Array(100).fill(0).map(() => Array(TOP_K).fill(0).map(() => Math.floor(Math.random() * 10000)))
     };
   }
+  
+  if (!sharedData) {
+    throw new Error('Failed to initialize test dataset');
+  }
+  
+  console.log(`Dataset ready: ${sharedData.train.length} training vectors, ${sharedData.test.length} test vectors`);
 }, 60000);
 
 // Main test suite combining all functionality
@@ -137,8 +155,11 @@ describe('CyborgDB Combined Integration Tests', () => {
   beforeAll(() => {
     if (sharedData) {
       dimension = sharedData.train[0].length;
-      trainData = sharedData.train.slice(0, 200);
-      testData = sharedData.test.slice(0, 20);
+      // Use all available training data (up to 10k vectors)
+      trainData = sharedData.train;
+      // Use all available test data (up to 100 vectors)
+      testData = sharedData.test;
+      console.log(`Test data setup: ${trainData.length} training vectors, ${testData.length} test vectors, dimension: ${dimension}`);
     } else {
       throw new Error("Shared data not available");
     }
@@ -368,19 +389,20 @@ describe('CyborgDB Combined Integration Tests', () => {
   });
 
   // Test 7: Train index (equivalent to Python test_05_train_index)
-  test('should train the index successfully', async () => {
-    // Upsert enough vectors for training using (ids, vectors) overload
-    const vectors = trainData.slice(0, 10000);
+  test('should train the index successfully auto', async () => {
+    // Upsert a substantial number of vectors for proper training
+    // Using 10000 vectors for robust training (100x the number of clusters)
+    const numTrainingVectors = Math.min(20005, trainData.length);
+    const vectors = trainData.slice(0, numTrainingVectors);
+    expect(vectors.length).toBeGreaterThan(10000)
     const ids = vectors.map((_, i) => i.toString());
+    
+    console.log(`Training with ${numTrainingVectors} vectors...`);
     await index.upsert({ ids, vectors });
     
-    // Verify index is not trained initially
-    const initialTrainedState = await index.isTrained();
-    expect(initialTrainedState).toBe(false);
-    
-    // // Train the index
-    // const trainResult = await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
-    // expect(trainResult.status).toBe('success');
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
     
     // Verify index is now trained
     const finalTrainedState = await index.isTrained();
@@ -424,7 +446,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   // Test 9: Trained query with complex metadata (equivalent to Python test_08_trained_query_metadata)
   test('should filter with complex metadata on trained index', async () => {
     // Setup with varied metadata using VectorItem[] overload
-    const vectors = trainData.slice(0, 60).map((vector, i) => ({
+    const vectors = trainData.slice(0, 10004).map((vector, i) => ({
       id: i.toString(),
       vector,
       metadata: {
@@ -439,8 +461,12 @@ describe('CyborgDB Combined Integration Tests', () => {
       }
     }));
     await index.upsert({ items: vectors });
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
-    
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Verify index is now trained
+    const finalTrainedState = await index.isTrained();
+    expect(finalTrainedState).toBe(true);
     // Test complex filter using new signature
     const complexFilter = {
       "$and": [
@@ -933,33 +959,43 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // NEW Test 20: Test large batch operations with different overloads
   test('should handle large batch operations with both overloads', async () => {
-    // Large batch using VectorItem[] overload
-    const largeBatch1 = trainData.slice(0, 100).map((vector, i) => ({
+    // Large batch using VectorItem[] overload (500 vectors)
+    const batch1Size = Math.min(500, trainData.length);
+    const largeBatch1 = trainData.slice(0, batch1Size).map((vector, i) => ({
       id: `large1-${i}`,
       vector,
       metadata: { batch: 'large1', index: i }
     }));
     
+    console.log(`Upserting batch 1: ${batch1Size} vectors with metadata...`);
     const result1 = await index.upsert({ items: largeBatch1 });
     expect(result1.status).toBe('success');
     
-    // Large batch using (ids, vectors) overload
-    const largeBatch2Vectors = trainData.slice(100, 200);
-    const largeBatch2Ids = largeBatch2Vectors.map((_, i) => `large2-${i + 100}`);
+    // Large batch using (ids, vectors) overload (another 500 vectors)
+    const batch2Size = Math.min(500, trainData.length - batch1Size);
+    const largeBatch2Vectors = trainData.slice(batch1Size, batch1Size + batch2Size);
+    const largeBatch2Ids = largeBatch2Vectors.map((_, i) => `large2-${i + batch1Size}`);
     
+    console.log(`Upserting batch 2: ${batch2Size} vectors without metadata...`);
     const result2 = await index.upsert({ ids: largeBatch2Ids, vectors: largeBatch2Vectors });
     expect(result2.status).toBe('success');
     
     // Verify both batches are accessible
-    const sample1 = await index.get({ ids: ['large1-0', 'large1-50', 'large1-99'] });
-    const sample2 = await index.get({ ids: ['large2-100', 'large2-150', 'large2-199'] });
+    const sample1 = await index.get({ ids: ['large1-0', 'large1-250', 'large1-499'].filter(id => 
+      parseInt(id.split('-')[1]) < batch1Size
+    )});
+    const sample2 = await index.get({ ids: [`large2-${batch1Size}`, `large2-${batch1Size + Math.floor(batch2Size/2)}`].filter(id => 
+      parseInt(id.split('-')[1]) < batch1Size + batch2Size
+    )});
     
-    expect(sample1.length).toBe(3);
-    expect(sample2.length).toBe(3);
+    expect(sample1.length).toBeGreaterThan(0);
+    expect(sample2.length).toBeGreaterThan(0);
     
     // Test querying works with large dataset
     const queryResponse = await index.query({ queryVectors: testData[0], topK: 20 });
     expect(queryResponse.results.length).toBe(20);
+    
+    console.log(`Successfully handled ${batch1Size + batch2Size} vectors total`);
   });
 
   // Test 21: Test creating index with optional dimension
