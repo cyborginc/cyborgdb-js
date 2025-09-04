@@ -55,7 +55,7 @@ import { QueryRequest } from './queryRequest';
 import { QueryResponse } from './queryResponse';
 import { QueryResultItem } from './queryResultItem';
 import { Request } from './request';
-import { Results } from './results';
+// Results is now a type alias, not a class
 import { TrainRequest } from './trainRequest';
 import { UpsertRequest } from './upsertRequest';
 import { ValidationError } from './validationError';
@@ -88,7 +88,6 @@ const models: { [key: string]: any } = {
     QueryResponse,
     QueryResultItem,
     Request,
-    Results,
     TrainRequest,
     UpsertRequest,
     ValidationError,
