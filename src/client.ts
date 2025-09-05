@@ -80,14 +80,6 @@ export class CyborgDB {
     }
   }
 
-  /**
-   * Clean up interceptors when done
-   */
-  public cleanup() {
-    // Interceptor cleanup not currently needed
-    // This method is kept for API compatibility
-  }
-
   private handleApiError(error: any): never {
     console.error("Full error object:", JSON.stringify(error, null, 2));
     
