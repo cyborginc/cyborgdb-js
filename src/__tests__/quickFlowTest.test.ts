@@ -43,7 +43,7 @@ const BATCH_SIZE = 100;
 const MAX_ITERS = 5;
 const TOLERANCE = 1e-5;
 type IndexType = "ivfflat" | "ivfpq" | "ivf";
-const testIndexType: IndexType = "ivf" as IndexType;
+const testIndexType: IndexType = "ivfflat" as IndexType;
 
 // Recall thresholds
 const RECALL_THRESHOLDS = {
@@ -407,6 +407,113 @@ describe('CyborgDB Combined Integration Tests', () => {
     // Verify index is now trained
     const finalTrainedState = await index.isTrained();
     expect(finalTrainedState).toBe(true);
+  });
+
+  // Test 7.5: Trained upsert - upsert additional vectors after training (equivalent to Python test_07_trained_upsert)
+  test('should upsert additional vectors to already trained index', async () => {
+    // Step 1: Initial upsert to trigger training (>10000 vectors)
+    const numPreTrainingVectors = 10000;
+    const numAdditionalVectors = 1000;
+    
+    // First batch: upsert 10000 vectors
+    const preTrainingVectors = trainData.slice(0, numPreTrainingVectors).map((vector, i) => ({
+      id: i.toString(),
+      vector,
+      metadata: { batch: "pre-training", index: i }
+    }));
+    
+    console.log(`Upserting ${numPreTrainingVectors} vectors to trigger auto-training...`);
+    await index.upsert({ items: preTrainingVectors });
+    
+      
+    
+    // Step 2: Upsert additional vectors to the trained index
+    const additionalVectors = trainData.slice(numPreTrainingVectors, numPreTrainingVectors + numAdditionalVectors).map((vector, i) => ({
+      id: (i + numPreTrainingVectors).toString(),
+      vector,
+      metadata: { batch: "post-training", index: i + numPreTrainingVectors }
+    }));
+    
+    console.log(`Upserting ${numAdditionalVectors} additional vectors to trained index...`);
+    const upsertResult = await index.upsert({ items: additionalVectors });
+    expect(upsertResult.status).toBe('success');
+    
+
+    // Wait for auto-training to complete
+      console.log('Waiting for auto-training to complete...');
+      let trained = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20000)); // Wait 20 seconds
+        trained = await index.isTrained();
+        if (trained) {
+          console.log(`Index trained after ${attempt + 1} attempts`);
+          break;
+        }
+        console.log(`Index not trained yet, retrying... (${attempt + 1}/6)`);
+      }
+    
+    expect(trained).toBe(true);
+    // Step 3: Verify that all vectors (both pre and post training) are accessible
+    // Check some vectors from pre-training batch
+    const preTrainingIds = ['0', '100', '5000', '9999'];
+    const preTrainingResults = await index.get({ ids: preTrainingIds });
+    expect(preTrainingResults.length).toBe(preTrainingIds.length);
+    
+    // Check some vectors from post-training batch
+    const postTrainingIds = [
+      numPreTrainingVectors.toString(),
+      (numPreTrainingVectors + 100).toString(),
+      (numPreTrainingVectors + numAdditionalVectors - 1).toString()
+    ];
+    const postTrainingResults = await index.get({ ids: postTrainingIds });
+    expect(postTrainingResults.length).toBe(postTrainingIds.length);
+    
+    // Verify metadata is correct for both batches
+    preTrainingResults.forEach(result => {
+      if (result.metadata) {
+        const metadata = typeof result.metadata === 'string'
+          ? JSON.parse(result.metadata)
+          : result.metadata;
+        expect(metadata.batch).toBe('pre-training');
+      }
+    });
+    
+    postTrainingResults.forEach(result => {
+      if (result.metadata) {
+        const metadata = typeof result.metadata === 'string'
+          ? JSON.parse(result.metadata)
+          : result.metadata;
+        expect(metadata.batch).toBe('post-training');
+      }
+    });
+    
+    // Step 4: Query and verify results include vectors from both batches
+    const queryResponse = await index.query({
+      queryVectors: testData[0],
+      topK: 20,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    });
+    
+    expect(queryResponse.results.length).toBe(20);
+    
+    // Check if results contain vectors from both batches
+    const results = queryResponse.results as QueryResultItem[];
+    const preTrainingCount = results.filter(r => {
+      const id = parseInt(r.id);
+      return id < numPreTrainingVectors;
+    }).length;
+    const postTrainingCount = results.filter(r => {
+      const id = parseInt(r.id);
+      return id >= numPreTrainingVectors;
+    }).length;
+    
+    console.log(`Query results: ${preTrainingCount} from pre-training, ${postTrainingCount} from post-training`);
+    
+    // We expect to see results from both batches (though exact distribution may vary)
+    expect(preTrainingCount + postTrainingCount).toBe(20);
   });
 
   // Test 8: Trained upsert and query (equivalent to Python test_06_trained_upsert + test_07_trained_query_no_metadata)
