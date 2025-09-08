@@ -43,7 +43,7 @@ const BATCH_SIZE = 100;
 const MAX_ITERS = 5;
 const TOLERANCE = 1e-5;
 type IndexType = "ivfflat" | "ivfpq" | "ivf";
-const testIndexType: IndexType = "ivfpq" as IndexType;
+const testIndexType: IndexType = "ivf" as IndexType;
 
 // Recall thresholds
 const RECALL_THRESHOLDS = {
@@ -487,6 +487,81 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     expect(response.results.length).toBeGreaterThan(0);
     
+    // Test nested filter
+    const nestedFilter = {
+      "$or": [
+        { "owner.pets_owned": { "$gt": 1 } },
+        {
+          "$and": [
+            { "age": { "$gt": 30 } },
+            { "owner.name": "John" }
+          ]
+        }
+      ]
+    };
+    
+    const nestedResponse = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: nestedFilter,
+      include: ["metadata"],
+      greedy: false
+    });
+    
+    expect(nestedResponse.results.length).toBeGreaterThan(0);
+  });
+
+  test('should filter with complex metadata on trained index training twice', async () => {
+    // Setup with varied metadata using VectorItem[] overload
+    const vectors = trainData.slice(0, 10004).map((vector, i) => ({
+      id: i.toString(),
+      vector,
+      metadata: {
+        owner: {
+          name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
+          pets_owned: i % 3 + 1
+        },
+        age: 35 + (i % 20),
+        tags: i % 2 === 0 ? ["pet", "cute"] : ["animal", "friendly"],
+        category: i % 2 === 0 ? 'even' : 'odd',
+        number: i % 10
+      }
+    }));
+    await index.upsert({ items: vectors });
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Verify index is now trained
+    const finalTrainedState = await index.isTrained();
+    expect(finalTrainedState).toBe(true);
+
+    await index.upsert({ items: vectors });
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Test complex filter using new signature
+    const complexFilter = {
+      "$and": [
+        { "owner.name": "John" },
+        { "age": { "$gt": 30 } },
+        { "tags": { "$in": ["pet"] } }
+      ]
+    };
+    
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: complexFilter,
+      include: ["metadata"],
+      greedy: false
+    });
+    
+    expect(response.results.length).toBeGreaterThan(0);
+    console.log("TEST TEST TEST - Number of results:", response.results.length);
+    console.log("TEST TEST TEST - First result:", response.results[0]);
+    console.log("TEST TEST TEST - All results:", JSON.stringify(response.results, null, 2));
     // Test nested filter
     const nestedFilter = {
       "$or": [
