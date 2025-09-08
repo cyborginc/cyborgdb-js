@@ -6,16 +6,15 @@
 
 The **CyborgDB JavaScript/TypeScript SDK** provides a comprehensive client library for interacting with [CyborgDB](https://docs.cyborg.co), the first Confidential Vector Database. This SDK enables you to perform encrypted vector operations including ingestion, search, and retrieval while maintaining end-to-end encryption of your vector embeddings. Built with TypeScript, it offers full type safety and seamless integration into modern JavaScript and TypeScript applications.
 
-This SDK provides an interface to [`cyborgdb-service`](https://pypi.org/project/cyborgdb-service/) which you will need to separately install and run in order to use the SDK. For more info, please see our [docs](https://docs.cyborg.co)
-
+This SDK provides an interface to [`cyborgdb-service`](https://pypi.org/project/cyborgdb-service/) which you will need to separately install and run in order to use the SDK. For more info, please see our [docs](https://docs.cyborg.co).
 
 ## Key Features
 
-* **End-to-End Encryption**: All vector operations maintain encryption with client-side keys
+- **End-to-End Encryption**: All vector operations maintain encryption with client-side keys
 - **Zero-Trust Design**: Novel architecture keeps confidential inference data secure
-* **Full TypeScript Support**: Complete type definitions and IntelliSense support
-* **Batch Operations**: Efficient batch queries and upserts for high-throughput applications
-* **Flexible Indexing**: Support for multiple index types (IVFFlat, IVFPQ, etc.) with customizable parameters
+- **Full TypeScript Support**: Complete type definitions and IntelliSense support
+- **Batch Operations**: Efficient batch queries and upserts for high-throughput applications
+- **Flexible Indexing**: Support for multiple index types (IVFFlat, IVFPQ, etc.) with customizable parameters
 
 ## Getting Started
 
@@ -25,6 +24,7 @@ To get started in minutes, check out our [Quickstart Guide](https://docs.cyborg.
 ### Installation
 
 1. Install `cyborgdb-service`
+
 ```bash
 # Install the CyborgDB Service
 pip install cyborgdb-service
@@ -43,17 +43,19 @@ npm install cyborgdb
 ### Usage
 
 ```typescript
-import { Client, IndexIVFFlat } from 'cyborgdb';
+import { Client } from 'cyborgdb';
 
 // Initialize the client
 const client = new Client('https://localhost:8000', 'your-api-key');
 
 // Generate a 32-byte encryption key
-const indexKey = new Uint8Array(32);
-crypto.getRandomValues(indexKey);
+const indexKey = Client.generateKey()
 
 // Create an encrypted index
-const index = await client.createIndex('my-index', indexKey, IndexIVFFlat(128, 1024));
+const index = await client.createIndex({
+  indexName: "my_index", 
+  indexKey: indexKey
+});
 
 // Add encrypted vector items
 const items = [
