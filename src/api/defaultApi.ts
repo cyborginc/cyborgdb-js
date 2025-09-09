@@ -26,6 +26,7 @@ import { HTTPValidationError } from '../model/hTTPValidationError';
 import { IndexInfoResponseModel } from '../model/indexInfoResponseModel';
 import { IndexListResponseModel } from '../model/indexListResponseModel';
 import { IndexOperationRequest } from '../model/indexOperationRequest';
+import { IndexTrainingStatusResponseModel } from '../model/indexTrainingStatusResponseModel';
 import { ListIDsRequest } from '../model/listIDsRequest';
 import { ListIDsResponse } from '../model/listIDsResponse';
 import { QueryResponse } from '../model/queryResponse';
@@ -469,7 +470,7 @@ export class DefaultApi {
      * Get the current training status including indexes being trained and the retrain threshold configuration.  Returns:     dict: Training status information including:         - training_indexes: List of index names currently being trained         - retrain_threshold: The multiplier used for the retraining threshold
      * @summary Get Training Status
      */
-    public async getTrainingStatusV1IndexesTrainingStatusGet (options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: any;  }> {
+    public async getTrainingStatusV1IndexesTrainingStatusGet (options: {headers: {[name: string]: string}} = {headers: {}}) : Promise<{ response: http.IncomingMessage; body: IndexTrainingStatusResponseModel;  }> {
         const localVarPath = this.basePath + '/v1/indexes/training-status';
         let localVarQueryParameters: any = {};
         let localVarHeaderParams: any = (<any>Object).assign({}, this._defaultHeaders);
@@ -511,13 +512,13 @@ export class DefaultApi {
                     localVarRequestOptions.form = localVarFormParams;
                 }
             }
-            return new Promise<{ response: http.IncomingMessage; body: any;  }>((resolve, reject) => {
+            return new Promise<{ response: http.IncomingMessage; body: IndexTrainingStatusResponseModel;  }>((resolve, reject) => {
                 localVarRequest(localVarRequestOptions, (error, response, body) => {
                     if (error) {
                         reject(error);
                     } else {
                         if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
-                            body = ObjectSerializer.deserialize(body, "any");
+                            body = ObjectSerializer.deserialize(body, "IndexTrainingStatusResponseModel");
                             resolve({ response: response, body: body });
                         } else {
                             reject(new HttpError(response, body, response.statusCode));
