@@ -179,7 +179,6 @@ export class CyborgDB {
       if (finalConfig.type === 'ivfpq') {
         indexConfigObj.pqDim = (finalConfig as IndexIVFPQ).pqDim || 32;
         indexConfigObj.pqBits = (finalConfig as IndexIVFPQ).pqBits || 8;
-        indexConfigObj.nLists = (finalConfig as any).nLists;
       }
       
       // Add metric to the config if provided  

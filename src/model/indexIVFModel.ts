@@ -13,12 +13,11 @@
 import { RequestFile } from './models';
 
 /**
-* Model for configuring an IVF (Inverted File) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivf\".     n_lists (Optional[int]): Number of inverted lists (clusters). Defaults to 100.
+* Model for configuring an IVF (Inverted File) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivf\".
 */
 export class IndexIVFModel {
     'dimension'?: number | null;
     'type'?: string = 'ivf';
-    'nLists'?: number | null;
 
     static discriminator: string | undefined = undefined;
 
@@ -32,11 +31,6 @@ export class IndexIVFModel {
             "name": "type",
             "baseName": "type",
             "type": "string"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
         }    ];
 
     static getAttributeTypeMap() {

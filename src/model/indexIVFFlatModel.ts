@@ -13,12 +13,11 @@
 import { RequestFile } from './models';
 
 /**
-* Model for configuring an IVFFlat (Inverted File with Flat quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfflat\".     n_lists (Optional[int]): Number of inverted lists (clusters). Defaults to 100.
+* Model for configuring an IVFFlat (Inverted File with Flat quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfflat\".
 */
 export class IndexIVFFlatModel {
     'dimension'?: number | null;
     'type'?: string = 'ivfflat';
-    'nLists'?: number | null;
 
     static discriminator: string | undefined = undefined;
 
@@ -32,11 +31,6 @@ export class IndexIVFFlatModel {
             "name": "type",
             "baseName": "type",
             "type": "string"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
         }    ];
 
     static getAttributeTypeMap() {

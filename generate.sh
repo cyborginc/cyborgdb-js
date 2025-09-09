@@ -15,9 +15,20 @@ echo "🧹 Cleaning old generated files..."
 rm -rf src/model src/api
 
 # Generate TypeScript client using typescript-node generator
-# using 7.14.0 for the generation
-echo "⚡ Generating TypeScript client..."
-openapi-generator generate \
+# Using OpenAPI Generator version 7.12.0
+echo "⚡ Generating TypeScript client with OpenAPI Generator 7.12.0..."
+
+# Check if openapi-generator-cli is installed
+if ! command -v openapi-generator-cli &> /dev/null; then
+    echo "Installing openapi-generator-cli..."
+    npm install -g @openapitools/openapi-generator-cli
+fi
+
+# Set the specific version
+export OPENAPI_GENERATOR_VERSION=7.12.0
+
+# Generate the client
+openapi-generator-cli generate \
     -i openapi.json \
     -g typescript-node \
     -o . \

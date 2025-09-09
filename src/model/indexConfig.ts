@@ -18,7 +18,6 @@ import { IndexIVFPQModel } from './indexIVFPQModel';
 export class IndexConfig {
     'dimension'?: number;
     'type'?: string = 'ivfflat';
-    'nLists'?: number;
     'pqDim': number;
     'pqBits': number;
 
@@ -34,11 +33,6 @@ export class IndexConfig {
             "name": "type",
             "baseName": "type",
             "type": "string"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
         },
         {
             "name": "pqDim",

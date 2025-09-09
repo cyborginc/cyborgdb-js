@@ -13,12 +13,11 @@
 import { RequestFile } from './models';
 
 /**
-* Model for configuring an IVFPQ (Inverted File with Product Quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfpq\".     n_lists (Optional[int]): Number of inverted lists (clusters). Defaults to 100.     pq_dim (int): Dimensionality of PQ codes.     pq_bits (int): Number of bits per quantizer.
+* Model for configuring an IVFPQ (Inverted File with Product Quantization) index.  Attributes:     type (str): Index type identifier. Defaults to \"ivfpq\".     pq_dim (int): Dimensionality of PQ codes.     pq_bits (int): Number of bits per quantizer.
 */
 export class IndexIVFPQModel {
     'dimension'?: number | null;
     'type'?: string = 'ivfpq';
-    'nLists'?: number | null;
     'pqDim': number;
     'pqBits': number;
 
@@ -34,11 +33,6 @@ export class IndexIVFPQModel {
             "name": "type",
             "baseName": "type",
             "type": "string"
-        },
-        {
-            "name": "nLists",
-            "baseName": "n_lists",
-            "type": "number"
         },
         {
             "name": "pqDim",
