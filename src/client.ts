@@ -325,4 +325,26 @@ export class CyborgDB {
       this.handleApiError(error);
     }
   }
+
+  /**
+   * Check if any indexes are currently being trained
+   * 
+   * Retrieves information about which indexes are currently being trained
+   * and the retrain threshold configuration.
+   * 
+   * @returns Promise resolving to training status information including:
+   *   - training_indexes: Array of index names currently being trained
+   *   - retrain_threshold: The multiplier used for the retraining threshold
+   */
+  async isTraining(): Promise<{
+    training_indexes: string[];
+    retrain_threshold: number;
+  }> {
+    try {
+      const response = await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
+      return response.body;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
 }

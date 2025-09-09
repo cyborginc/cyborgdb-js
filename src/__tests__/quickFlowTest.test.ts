@@ -192,6 +192,16 @@ describe('CyborgDB Combined Integration Tests', () => {
     expect(typeof health).toBe('object');
   });
 
+  // Test 1b: Check training status
+  test('should check training status', async () => {
+    const status = await client.isTraining();
+    expect(status).toBeDefined();
+    expect(typeof status).toBe('object');
+    expect(Array.isArray(status.training_indexes)).toBe(true);
+    expect(typeof status.retrain_threshold).toBe('number');
+    console.log(`Training status - Indexes being trained: ${status.training_indexes.length}, Retrain threshold: ${status.retrain_threshold}`);
+  });
+
   // Test 2: Index creation and basic operations
   test('should create index and verify properties', async () => {
     const retrievedIndexName = await index.getIndexName();
