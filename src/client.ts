@@ -342,7 +342,11 @@ export class CyborgDB {
   }> {
     try {
       const response = await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
-      return response.body;
+      // Map the camelCase response to snake_case for consistency
+      return {
+        training_indexes: response.body.trainingIndexes || [],
+        retrain_threshold: response.body.retrainThreshold || 0
+      };
     } catch (error: any) {
       this.handleApiError(error);
     }
