@@ -666,9 +666,6 @@ describe('CyborgDB Combined Integration Tests', () => {
     });
     
     expect(response.results.length).toBeGreaterThan(0);
-    console.log("TEST TEST TEST - Number of results:", response.results.length);
-    console.log("TEST TEST TEST - First result:", response.results[0]);
-    console.log("TEST TEST TEST - All results:", JSON.stringify(response.results, null, 2));
     // Test nested filter
     const nestedFilter = {
       "$or": [

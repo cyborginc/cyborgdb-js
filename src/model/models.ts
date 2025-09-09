@@ -153,7 +153,6 @@ export class ObjectSerializer {
             }
         }
         
-        console.log(`ObjectSerializer.serialize(${type}):`, JSON.stringify(serialized, null, 2));
         return serialized;
     }
     
