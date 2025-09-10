@@ -29,17 +29,29 @@ npm install cyborgdb
 **Usage**
 
 ```typescript
-import { Client, IndexIVFFlat } from 'cyborgdb';
+import { Client as CyborgDB, IndexIVFFlat } from 'cyborgdb';
 
 // Initialize the client
-const client = new Client('https://localhost:8000', 'your-api-key');
+const client = new CyborgDB({ 
+  baseUrl: 'https://localhost:8000', 
+  apiKey: 'your-api-key' 
+});
 
 // Generate a 32-byte encryption key
-const indexKey = new Uint8Array(32);
-crypto.getRandomValues(indexKey);
+const indexKey = client.generateKey();
+
+// Create index configuration
+const indexConfig = new IndexIVFFlat();
+indexConfig.dimension = 128;
+indexConfig.type = 'ivfflat';
 
 // Create an encrypted index
-const index = await client.createIndex('my-index', indexKey, IndexIVFFlat(128, 1024));
+const index = await client.createIndex({
+  indexName: 'my-index',
+  indexKey: indexKey,
+  indexConfig: indexConfig,
+  metric: 'euclidean'
+});
 
 // Add encrypted vector items
 const items = [
@@ -57,11 +69,14 @@ const items = [
   }
 ];
 
-await index.upsert(items);
+await index.upsert({ items });
 
 // Query the encrypted index
-const queryVector = [0.1, 0.2, 0.3, /* ... 1536 dimensions */];
-const results = await index.query(queryVector, 10);
+const queryVector = [0.1, 0.2, 0.3, /* ... 128 dimensions */];
+const results = await index.query({
+  queryVectors: queryVector,
+  topK: 10
+});
 
 // Print the results
 results.results.forEach(result => {
@@ -80,28 +95,35 @@ const queryVectors = [
   [0.4, 0.5, 0.6, /* ... */]
 ];
 
-const batchResults = await index.query(queryVectors, 5);
+const batchResults = await index.query({
+  queryVectors: queryVectors,
+  topK: 5
+});
 ```
 
 **Metadata Filtering**
 
 ```typescript
 // Search with metadata filters
-const results = await index.query(
-  queryVector,
-  10,      // topK
-  1,       // nProbes
-  false,   // greedy
-  { category: 'greeting', language: 'en' }, // filters
-  ['distance', 'metadata', 'contents']      // include
-);
+const results = await index.query({
+  queryVectors: queryVector,
+  topK: 10,
+  nProbes: 1,
+  greedy: false,
+  filters: { category: 'greeting', language: 'en' },
+  include: ['distance', 'metadata', 'contents']
+});
 ```
 
 **Index Training**
 
 ```typescript
 // Train the index for better query performance (recommended for IVF indexes)
-await index.train(2048, 100, 1e-6);
+await index.train({
+  batchSize: 2048,
+  maxIters: 100,
+  tolerance: 1e-6
+});
 ```
 
 **Documentation**
