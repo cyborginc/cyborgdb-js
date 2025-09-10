@@ -1,5 +1,6 @@
 // Main SDK exports
 export { CyborgDB as Client } from './client';
+export { EncryptedIndex } from './encryptedIndex';
 
 // Export commonly used types and interfaces
 export {
