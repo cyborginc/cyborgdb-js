@@ -13,28 +13,34 @@
 import { RequestFile } from './models';
 
 /**
-* Standard success response model for operations like upsert and delete.  Attributes:     status (str): Operation status. Defaults to `\"success\"`.     message (str): Descriptive success message.
+* Request model for listing all IDs in the index.  Inherits:     IndexOperationRequest: Includes `index_name` and `index_key`.
 */
-export class CyborgdbServiceApiSchemasVectorsSuccessResponseModel {
-    'status'?: string = 'success';
-    'message': string;
+export class ListIDsRequest {
+    /**
+    * 32-byte encryption key as hex string
+    */
+    'indexKey': string;
+    /**
+    * ID name
+    */
+    'indexName': string;
 
     static discriminator: string | undefined = undefined;
 
     static attributeTypeMap: Array<{name: string, baseName: string, type: string}> = [
         {
-            "name": "status",
-            "baseName": "status",
+            "name": "indexKey",
+            "baseName": "index_key",
             "type": "string"
         },
         {
-            "name": "message",
-            "baseName": "message",
+            "name": "indexName",
+            "baseName": "index_name",
             "type": "string"
         }    ];
 
     static getAttributeTypeMap() {
-        return CyborgdbServiceApiSchemasVectorsSuccessResponseModel.attributeTypeMap;
+        return ListIDsRequest.attributeTypeMap;
     }
 }
 

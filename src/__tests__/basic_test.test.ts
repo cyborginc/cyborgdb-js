@@ -147,17 +147,16 @@ describe('IVFPQBasicIntegrationTest', () => {
     
     const indexConfig: IndexIVFPQ = {
           dimension: dimension,
-          metric: METRIC,
           type: "ivfpq",
-          nLists: N_LISTS,
           pqDim: PQ_DIM,
           pqBits: PQ_BITS
     };
     console.log(`Creating IVFPQ index with dimension ${dimension}`);
-    console.log(`IVFPQ config: nLists=${N_LISTS}, pqDim=${PQ_DIM}, pqBits=${PQ_BITS}`);
+    console.log(`IVFPQ config: metric=${METRIC}, nLists=${N_LISTS}, pqDim=${PQ_DIM}, pqBits=${PQ_BITS}`);
     
     // This should succeed - if it fails, the test should fail
-    index = await client.createIndex({ indexName, indexKey, indexConfig });
+    // Note: metric is now passed separately, nLists will be passed to train()
+    index = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
     console.log(`✓ IVFPQ index created successfully: ${indexName}`);
   }, 30000);
   
@@ -177,6 +176,83 @@ describe('IVFPQBasicIntegrationTest', () => {
     expect(index).toBeDefined();
     expect(await index.getIndexName()).toBe(indexName);
     expect(await index.getIndexType()).toBe("ivfpq");
+  });
+
+  test('should list IDs from the index', async () => {
+    // First, add some vectors to the index
+    const testIds = ['vec1', 'vec2', 'vec3', 'vec4', 'vec5'];
+    const vectors = trainData.slice(0, 5);
+    
+    // Upsert vectors with specific IDs
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+    
+    console.log('✓ Added 5 vectors to the index');
+    
+    // Now test listIds
+    const result = await index.listIds();
+    
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(5);
+    expect(result.ids.length).toBe(5);
+    
+    // Check that all our IDs are in the result
+    for (const id of testIds) {
+      expect(result.ids).toContain(id);
+    }
+    
+    console.log(`✓ listIds returned ${result.count} IDs: ${result.ids.join(', ')}`);
+  });
+
+  test('should return empty list for empty index', async () => {
+    // Test listIds on an empty index
+    const result = await index.listIds();
+    
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(0);
+    expect(result.ids.length).toBe(0);
+    
+    console.log('✓ listIds correctly returned empty list for empty index');
+  });
+
+  test('should update list after deletions', async () => {
+    // Add vectors
+    const testIds = ['del1', 'del2', 'del3', 'keep1', 'keep2'];
+    const vectors = trainData.slice(0, 5);
+    
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+    
+    // Verify all are present
+    let result = await index.listIds();
+    expect(result.count).toBe(5);
+    
+    // Delete some vectors
+    await index.delete({ ids: ['del1', 'del2', 'del3'] });
+    console.log('✓ Deleted 3 vectors from the index');
+    
+    // Check listIds after deletion
+    result = await index.listIds();
+    
+    expect(result.count).toBe(2);
+    expect(result.ids.length).toBe(2);
+    expect(result.ids).toContain('keep1');
+    expect(result.ids).toContain('keep2');
+    expect(result.ids).not.toContain('del1');
+    expect(result.ids).not.toContain('del2');
+    expect(result.ids).not.toContain('del3');
+    
+    console.log(`✓ listIds correctly updated after deletion: ${result.ids.join(', ')}`);
   });
 
 

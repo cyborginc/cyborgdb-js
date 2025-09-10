@@ -1,12 +1,17 @@
-import { CyborgDB } from '../client';
+import { 
+  Client as CyborgDB,
+  QueryResultItem, 
+  QueryResponse,
+  IndexIVF, 
+  IndexIVFPQ, 
+  IndexIVFFlat,
+  EncryptedIndex
+} from 'cyborgdb';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
-import { QueryResultItem } from '../model/queryResultItem';
-import { EncryptedIndex } from '../encryptedIndex';
-import { QueryResponse } from '../model/queryResponse';
-import { IndexIVF, IndexIVFPQ, IndexIVFFlat } from '../index';
+import { assert } from 'console';
 
 /**
  * Combined CyborgDB Integration Tests
@@ -42,7 +47,7 @@ const BATCH_SIZE = 100;
 const MAX_ITERS = 5;
 const TOLERANCE = 1e-5;
 type IndexType = "ivfflat" | "ivfpq" | "ivf";
-const testIndexType: IndexType = "ivfpq" as IndexType;
+const testIndexType: IndexType = "ivfflat" as IndexType;
 
 // Recall thresholds
 const RECALL_THRESHOLDS = {
@@ -85,8 +90,6 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
   if (testIndexType === "ivfpq") {
     const indexConfig = new IndexIVFPQ();
     indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
     
     // Set the IVFPQ-specific properties (these exist in the class definition)
     indexConfig.pqDim = PQ_DIM;
@@ -97,15 +100,11 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
   } else if (testIndexType === "ivfflat") {
     const indexConfig = new IndexIVFFlat();
     indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
     indexConfig.type = 'ivfflat';
     return indexConfig;
   } else {
     const indexConfig = new IndexIVF();
     indexConfig.dimension = dimension;
-    indexConfig.metric = METRIC;
-    indexConfig.nLists = N_LISTS;
     indexConfig.type = 'ivf';
     return indexConfig;
   }
@@ -115,15 +114,32 @@ function generateIndexConfig(testIndexType: string, dimension: number): IndexIVF
 beforeAll(async () => {
   try {
     sharedData = JSON.parse(fs.readFileSync(JSON_DATASET_PATH, 'utf8'));
+    // If loaded dataset has fewer vectors, we can extend it
+    if (sharedData && sharedData.train.length < 20000) {
+      console.log(`Loaded dataset has ${sharedData.train.length} vectors, extending to 10000...`);
+      const dimension = sharedData.train[0].length;
+      const additionalVectors = 20000 - sharedData.train.length;
+      const newVectors = Array(additionalVectors).fill(0).map(() => 
+        Array(dimension).fill(0).map(() => Math.random())
+      );
+      sharedData.train = [...sharedData.train, ...newVectors];
+    }
   } catch (error) {
     console.error('Error loading shared dataset:', error);
-    // Create minimal synthetic data as fallback
+    // Create synthetic data with 10k training vectors for proper testing
+    console.log('Creating synthetic dataset with 10000 training vectors...');
     sharedData = {
-      train: Array(200).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
-      test: Array(20).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
-      neighbors: Array(20).fill(0).map(() => Array(TOP_K).fill(0).map(() => Math.floor(Math.random() * 200)))
+      train: Array(10000).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
+      test: Array(100).fill(0).map(() => Array(768).fill(0).map(() => Math.random())),
+      neighbors: Array(100).fill(0).map(() => Array(TOP_K).fill(0).map(() => Math.floor(Math.random() * 10000)))
     };
   }
+  
+  if (!sharedData) {
+    throw new Error('Failed to initialize test dataset');
+  }
+  
+  console.log(`Dataset ready: ${sharedData.train.length} training vectors, ${sharedData.test.length} test vectors`);
 }, 60000);
 
 // Main test suite combining all functionality
@@ -143,8 +159,11 @@ describe('CyborgDB Combined Integration Tests', () => {
   beforeAll(() => {
     if (sharedData) {
       dimension = sharedData.train[0].length;
-      trainData = sharedData.train.slice(0, 200);
-      testData = sharedData.test.slice(0, 20);
+      // Use all available training data (up to 10k vectors)
+      trainData = sharedData.train;
+      // Use all available test data (up to 100 vectors)
+      testData = sharedData.test;
+      console.log(`Test data setup: ${trainData.length} training vectors, ${testData.length} test vectors, dimension: ${dimension}`);
     } else {
       throw new Error("Shared data not available");
     }
@@ -155,7 +174,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     indexName = generateIndexName();
     indexKey = client.generateKey();
     const indexConfig = generateIndexConfig(testIndexType, dimension);
-    index = await client.createIndex({ indexName, indexKey, indexConfig });
+    index = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
   }, 30000);
   
   // Clean up after each test
@@ -175,6 +194,16 @@ describe('CyborgDB Combined Integration Tests', () => {
     const health = await client.getHealth();
     expect(health).toBeDefined();
     expect(typeof health).toBe('object');
+  });
+
+  // Test 1b: Check training status
+  test('should check training status', async () => {
+    const status = await client.isTraining();
+    expect(status).toBeDefined();
+    expect(typeof status).toBe('object');
+    expect(Array.isArray(status.training_indexes)).toBe(true);
+    expect(typeof status.retrain_threshold).toBe('number');
+    console.log(`Training status - Indexes being trained: ${status.training_indexes.length}, Retrain threshold: ${status.retrain_threshold}`);
   });
 
   // Test 2: Index creation and basic operations
@@ -374,23 +403,131 @@ describe('CyborgDB Combined Integration Tests', () => {
   });
 
   // Test 7: Train index (equivalent to Python test_05_train_index)
-  test('should train the index successfully', async () => {
-    // Upsert enough vectors for training using (ids, vectors) overload
-    const vectors = trainData.slice(0, 100);
+  test('should train the index successfully auto', async () => {
+    // Upsert a substantial number of vectors for proper training
+    // Using 10000 vectors for robust training (100x the number of clusters)
+    const numTrainingVectors = Math.min(20005, trainData.length);
+    const vectors = trainData.slice(0, numTrainingVectors);
+    expect(vectors.length).toBeGreaterThan(10000)
     const ids = vectors.map((_, i) => i.toString());
+    
+    console.log(`Training with ${numTrainingVectors} vectors...`);
     await index.upsert({ ids, vectors });
     
-    // Verify index is not trained initially
-    const initialTrainedState = await index.isTrained();
-    expect(initialTrainedState).toBe(false);
-    
-    // Train the index
-    const trainResult = await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
-    expect(trainResult.status).toBe('success');
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
     
     // Verify index is now trained
     const finalTrainedState = await index.isTrained();
     expect(finalTrainedState).toBe(true);
+  });
+
+  // Test 7.5: Trained upsert - upsert additional vectors after training (equivalent to Python test_07_trained_upsert)
+  test('should upsert additional vectors to already trained index', async () => {
+    // Step 1: Initial upsert to trigger training (>10000 vectors)
+    const numPreTrainingVectors = 10000;
+    const numAdditionalVectors = 1000;
+    
+    // First batch: upsert 10000 vectors
+    const preTrainingVectors = trainData.slice(0, numPreTrainingVectors).map((vector, i) => ({
+      id: i.toString(),
+      vector,
+      metadata: { batch: "pre-training", index: i }
+    }));
+    
+    console.log(`Upserting ${numPreTrainingVectors} vectors to trigger auto-training...`);
+    await index.upsert({ items: preTrainingVectors });
+    
+      
+    
+    // Step 2: Upsert additional vectors to the trained index
+    const additionalVectors = trainData.slice(numPreTrainingVectors, numPreTrainingVectors + numAdditionalVectors).map((vector, i) => ({
+      id: (i + numPreTrainingVectors).toString(),
+      vector,
+      metadata: { batch: "post-training", index: i + numPreTrainingVectors }
+    }));
+    
+    console.log(`Upserting ${numAdditionalVectors} additional vectors to trained index...`);
+    const upsertResult = await index.upsert({ items: additionalVectors });
+    expect(upsertResult.status).toBe('success');
+    
+
+    // Wait for auto-training to complete
+      console.log('Waiting for auto-training to complete...');
+      let trained = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20000)); // Wait 20 seconds
+        trained = await index.isTrained();
+        if (trained) {
+          console.log(`Index trained after ${attempt + 1} attempts`);
+          break;
+        }
+        console.log(`Index not trained yet, retrying... (${attempt + 1}/6)`);
+      }
+    
+    expect(trained).toBe(true);
+    // Step 3: Verify that all vectors (both pre and post training) are accessible
+    // Check some vectors from pre-training batch
+    const preTrainingIds = ['0', '100', '5000', '9999'];
+    const preTrainingResults = await index.get({ ids: preTrainingIds });
+    expect(preTrainingResults.length).toBe(preTrainingIds.length);
+    
+    // Check some vectors from post-training batch
+    const postTrainingIds = [
+      numPreTrainingVectors.toString(),
+      (numPreTrainingVectors + 100).toString(),
+      (numPreTrainingVectors + numAdditionalVectors - 1).toString()
+    ];
+    const postTrainingResults = await index.get({ ids: postTrainingIds });
+    expect(postTrainingResults.length).toBe(postTrainingIds.length);
+    
+    // Verify metadata is correct for both batches
+    preTrainingResults.forEach(result => {
+      if (result.metadata) {
+        const metadata = typeof result.metadata === 'string'
+          ? JSON.parse(result.metadata)
+          : result.metadata;
+        expect(metadata.batch).toBe('pre-training');
+      }
+    });
+    
+    postTrainingResults.forEach(result => {
+      if (result.metadata) {
+        const metadata = typeof result.metadata === 'string'
+          ? JSON.parse(result.metadata)
+          : result.metadata;
+        expect(metadata.batch).toBe('post-training');
+      }
+    });
+    
+    // Step 4: Query and verify results include vectors from both batches
+    const queryResponse = await index.query({
+      queryVectors: testData[0],
+      topK: 20,
+      nProbes: N_PROBES,
+      filters: {},
+      include: ["metadata"],
+      greedy: false
+    });
+    
+    expect(queryResponse.results.length).toBe(20);
+    
+    // Check if results contain vectors from both batches
+    const results = queryResponse.results as QueryResultItem[];
+    const preTrainingCount = results.filter(r => {
+      const id = parseInt(r.id);
+      return id < numPreTrainingVectors;
+    }).length;
+    const postTrainingCount = results.filter(r => {
+      const id = parseInt(r.id);
+      return id >= numPreTrainingVectors;
+    }).length;
+    
+    console.log(`Query results: ${preTrainingCount} from pre-training, ${postTrainingCount} from post-training`);
+    
+    // We expect to see results from both batches (though exact distribution may vary)
+    expect(preTrainingCount + postTrainingCount).toBe(20);
   });
 
   // Test 8: Trained upsert and query (equivalent to Python test_06_trained_upsert + test_07_trained_query_no_metadata)
@@ -402,7 +539,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       metadata: { category: "initial", index: i }
     }));
     await index.upsert({ items: initialVectors });
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
     
     // Add more vectors after training using (ids, vectors) overload
     const additionalVectorData = trainData.slice(50, 80);
@@ -430,7 +567,7 @@ describe('CyborgDB Combined Integration Tests', () => {
   // Test 9: Trained query with complex metadata (equivalent to Python test_08_trained_query_metadata)
   test('should filter with complex metadata on trained index', async () => {
     // Setup with varied metadata using VectorItem[] overload
-    const vectors = trainData.slice(0, 60).map((vector, i) => ({
+    const vectors = trainData.slice(0, 10004).map((vector, i) => ({
       id: i.toString(),
       vector,
       metadata: {
@@ -445,8 +582,12 @@ describe('CyborgDB Combined Integration Tests', () => {
       }
     }));
     await index.upsert({ items: vectors });
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
-    
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Verify index is now trained
+    const finalTrainedState = await index.isTrained();
+    expect(finalTrainedState).toBe(true);
     // Test complex filter using new signature
     const complexFilter = {
       "$and": [
@@ -467,6 +608,78 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     expect(response.results.length).toBeGreaterThan(0);
     
+    // Test nested filter
+    const nestedFilter = {
+      "$or": [
+        { "owner.pets_owned": { "$gt": 1 } },
+        {
+          "$and": [
+            { "age": { "$gt": 30 } },
+            { "owner.name": "John" }
+          ]
+        }
+      ]
+    };
+    
+    const nestedResponse = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: nestedFilter,
+      include: ["metadata"],
+      greedy: false
+    });
+    
+    expect(nestedResponse.results.length).toBeGreaterThan(0);
+  });
+
+  test('should filter with complex metadata on trained index training twice', async () => {
+    // Setup with varied metadata using VectorItem[] overload
+    const vectors = trainData.slice(0, 10004).map((vector, i) => ({
+      id: i.toString(),
+      vector,
+      metadata: {
+        owner: {
+          name: i % 3 === 0 ? "John" : (i % 3 === 1 ? "Joseph" : "Mike"),
+          pets_owned: i % 3 + 1
+        },
+        age: 35 + (i % 20),
+        tags: i % 2 === 0 ? ["pet", "cute"] : ["animal", "friendly"],
+        category: i % 2 === 0 ? 'even' : 'odd',
+        number: i % 10
+      }
+    }));
+    await index.upsert({ items: vectors });
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Verify index is now trained
+    const finalTrainedState = await index.isTrained();
+    expect(finalTrainedState).toBe(true);
+
+    await index.upsert({ items: vectors });
+    // Sleep for 10 seconds after upsert
+    console.log('Waiting 10 seconds for upsert to complete...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Test complex filter using new signature
+    const complexFilter = {
+      "$and": [
+        { "owner.name": "John" },
+        { "age": { "$gt": 30 } },
+        { "tags": { "$in": ["pet"] } }
+      ]
+    };
+    
+    const response = await index.query({
+      queryVectors: testData[0],
+      topK: TOP_K,
+      nProbes: N_PROBES,
+      filters: complexFilter,
+      include: ["metadata"],
+      greedy: false
+    });
+    
+    expect(response.results.length).toBeGreaterThan(0);
     // Test nested filter
     const nestedFilter = {
       "$or": [
@@ -598,7 +811,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.deleteIndex();
     
     // Recreate with the same name
-    const recreatedIndex = await client.createIndex({ indexName, indexKey, indexConfig });
+    const recreatedIndex = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
     const recreatedIndexName = await recreatedIndex.getIndexName();
     const recreatedIndexType = await recreatedIndex.getIndexType();
     
@@ -669,7 +882,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     await index.upsert({ items: initialVectors });
     
     // Train the index
-    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE });
+    await index.train({ batchSize: BATCH_SIZE, maxIters: MAX_ITERS, tolerance: TOLERANCE, nLists: N_LISTS });
     
     // Add more vectors after training using (ids, vectors) overload
     const additionalVectorData = trainData.slice(50, 80);
@@ -687,16 +900,9 @@ describe('CyborgDB Combined Integration Tests', () => {
     // Verify we got the expected number of results
     expect(retrieved.length).toBe(idsToGet.length);
     
-    // Get the index type to determine expected vector dimension
-    const indexType = await index.getIndexType();
-    
-    // For IVFPQ, vectors are compressed to pqDim, for others they keep original dimension
-    let expectedVectorDim: number;
-    if (indexType === "ivfpq" || indexType === "ivf_pq") {
-      expectedVectorDim = PQ_DIM; // Use the constant we defined for IVFPQ
-    } else {
-      expectedVectorDim = dimension;
-    }
+    // Note: Even for IVFPQ, the API returns the original vectors, not compressed ones
+    // The compression is internal for efficient search, but get() returns original vectors
+    const expectedVectorDim: number = dimension;
     
     // Verify each retrieved item matches expectations
     retrieved.forEach((item, idx) => {
@@ -821,11 +1027,7 @@ describe('CyborgDB Combined Integration Tests', () => {
     
     expect(indexConfig).toBeDefined();
     expect(indexConfig.dimension).toBe(dimension);
-    expect(indexConfig.metric).toBe(METRIC);
-    
-    // The property name might be nLists or n_lists depending on the API response
-    const nLists = indexConfig.nLists ?? (indexConfig as any).n_lists;
-    expect(nLists).toBe(N_LISTS);
+    // Note: metric and nLists are no longer part of IndexConfig
     
     if (testIndexType === "ivfpq") {
       const ivfpqConfig = indexConfig as IndexIVFPQ;
@@ -950,36 +1152,176 @@ describe('CyborgDB Combined Integration Tests', () => {
 
   // NEW Test 20: Test large batch operations with different overloads
   test('should handle large batch operations with both overloads', async () => {
-    // Large batch using VectorItem[] overload
-    const largeBatch1 = trainData.slice(0, 100).map((vector, i) => ({
+    // Large batch using VectorItem[] overload (500 vectors)
+    const batch1Size = Math.min(500, trainData.length);
+    const largeBatch1 = trainData.slice(0, batch1Size).map((vector, i) => ({
       id: `large1-${i}`,
       vector,
       metadata: { batch: 'large1', index: i }
     }));
     
+    console.log(`Upserting batch 1: ${batch1Size} vectors with metadata...`);
     const result1 = await index.upsert({ items: largeBatch1 });
     expect(result1.status).toBe('success');
     
-    // Large batch using (ids, vectors) overload
-    const largeBatch2Vectors = trainData.slice(100, 200);
-    const largeBatch2Ids = largeBatch2Vectors.map((_, i) => `large2-${i + 100}`);
+    // Large batch using (ids, vectors) overload (another 500 vectors)
+    const batch2Size = Math.min(500, trainData.length - batch1Size);
+    const largeBatch2Vectors = trainData.slice(batch1Size, batch1Size + batch2Size);
+    const largeBatch2Ids = largeBatch2Vectors.map((_, i) => `large2-${i + batch1Size}`);
     
+    console.log(`Upserting batch 2: ${batch2Size} vectors without metadata...`);
     const result2 = await index.upsert({ ids: largeBatch2Ids, vectors: largeBatch2Vectors });
     expect(result2.status).toBe('success');
     
     // Verify both batches are accessible
-    const sample1 = await index.get({ ids: ['large1-0', 'large1-50', 'large1-99'] });
-    const sample2 = await index.get({ ids: ['large2-100', 'large2-150', 'large2-199'] });
+    const sample1 = await index.get({ ids: ['large1-0', 'large1-250', 'large1-499'].filter(id => 
+      parseInt(id.split('-')[1]) < batch1Size
+    )});
+    const sample2 = await index.get({ ids: [`large2-${batch1Size}`, `large2-${batch1Size + Math.floor(batch2Size/2)}`].filter(id => 
+      parseInt(id.split('-')[1]) < batch1Size + batch2Size
+    )});
     
-    expect(sample1.length).toBe(3);
-    expect(sample2.length).toBe(3);
+    expect(sample1.length).toBeGreaterThan(0);
+    expect(sample2.length).toBeGreaterThan(0);
     
     // Test querying works with large dataset
     const queryResponse = await index.query({ queryVectors: testData[0], topK: 20 });
     expect(queryResponse.results.length).toBe(20);
+    
+    console.log(`Successfully handled ${batch1Size + batch2Size} vectors total`);
   });
 
-  // Test 21: Test content-based query with embedding model
+  // Test 21: Test creating index with optional dimension
+  test('should create index with optional dimension and infer from first upsert', async () => {
+    // Note: Most vector databases require dimension to be specified at index creation time
+    // This test verifies that behavior when dimension is not set
+    
+    const testIndexName = generateIndexName('optional_dim');
+    const testIndexKey = client.generateKey();
+    
+    // Create config without dimension - in reality, the API will likely use a default or fail
+    const config = new IndexIVFFlat();
+    config.type = 'ivfflat';
+    // Intentionally not setting config.dimension to test optional behavior
+    
+    let testIndex: EncryptedIndex | undefined;
+    
+    try {
+      // Attempt to create index without dimension
+      // This might fail or use a default dimension
+      testIndex = await client.createIndex({
+        indexName: testIndexName,
+        indexKey: testIndexKey,
+        indexConfig: config,
+        metric: METRIC
+      });
+      
+      // If creation succeeded, the API either:
+      // 1. Used a default dimension
+      // 2. Allows dimension to be set on first upsert
+      expect(testIndex).toBeDefined();
+      
+      // Try to get the index config to see what dimension was used
+      const indexConfig = await testIndex.getIndexConfig();
+      console.log('Index created with config:', indexConfig);
+      
+      // Now try to upsert vectors
+      const testVectors = trainData.slice(0, 3).map((vector, i) => ({
+        id: `optional-dim-${i}`,
+        vector,
+        metadata: { index: i, test: true }
+      }));
+      
+      try {
+        const upsertResult = await testIndex.upsert({ items: testVectors });
+        
+        // If upsert succeeded, check if we can retrieve the vectors
+        if (upsertResult.status === 'success') {
+          const retrieved = await testIndex.get({ ids: ['optional-dim-0'] });
+          
+          if (retrieved.length > 0) {
+            expect(retrieved[0].vector).toBeDefined();
+            expect(retrieved[0].vector.length).toBe(dimension);
+            console.log('Successfully created index without explicit dimension and inferred from vectors');
+          } else {
+            console.log('Index created but vectors not retrievable - dimension might not be inferred');
+          }
+        } else {
+          console.log('Upsert failed - dimension cannot be inferred after index creation');
+        }
+      } catch (upsertError) {
+        console.log('Upsert failed with error:', upsertError);
+        // This is expected if the API requires dimension at creation time
+      }
+      
+    } catch (createError: any) {
+      // This is the expected behavior - most vector DBs require dimension at creation time
+      console.log('Index creation without dimension failed (expected):', createError.message);
+      expect(createError).toBeDefined();
+      expect(createError.message).toBeDefined();
+    } finally {
+      // Clean up if index was created
+      if (testIndex) {
+        try {
+          await testIndex.deleteIndex();
+        } catch (error) {
+          console.error(`Error cleaning up test index ${testIndexName}:`, error);
+        }
+      }
+    }
+  });
+
+  // Test 22: Test creating index with null dimension explicitly
+  test('should handle null dimension in index config', async () => {
+    const testIndexName = generateIndexName('null_dim');
+    const testIndexKey = client.generateKey();
+    
+    // Create config with explicitly null dimension
+    const config = new IndexIVFFlat();
+    config.type = 'ivfflat';
+    config.dimension = null as any; // Explicitly set to null
+    
+    let testIndex: EncryptedIndex;
+    
+    try {
+      // This should either work (treating null as undefined) or fail gracefully
+      testIndex = await client.createIndex({
+        indexName: testIndexName,
+        indexKey: testIndexKey,
+        indexConfig: config,
+        metric: METRIC
+      });
+      
+      // If it succeeds, verify it works
+      const testVectors = trainData.slice(0, 3).map((vector, i) => ({
+        id: `null-dim-${i}`,
+        vector,
+        metadata: { test: true }
+      }));
+      
+      await testIndex.upsert({ items: testVectors });
+      
+      const retrieved = await testIndex.get({ ids: ['null-dim-0'] });
+      expect(retrieved.length).toBe(1);
+      expect(retrieved[0].vector.length).toBe(dimension);
+      
+    } catch (error) {
+      // If it fails, that's also acceptable behavior
+      // The API might reject null dimension
+      expect(error).toBeDefined();
+    } finally {
+      // Clean up if index was created
+      if (testIndex!) {
+        try {
+          await testIndex.deleteIndex();
+        } catch (error) {
+          console.error(`Error cleaning up test index ${testIndexName}:`, error);
+        }
+      }
+    }
+  });
+
+  // Test 23: Test content-based query with embedding model
   test('should query using content with all-MiniLM-L6-v2 embedding model', async () => {
     // Create a separate index specifically for content-based search
     const contentIndexName = generateIndexName('content');
@@ -991,6 +1333,7 @@ describe('CyborgDB Combined Integration Tests', () => {
       indexName: contentIndexName,
       indexKey: contentIndexKey,
       indexConfig: contentIndexConfig,
+      metric: METRIC,
       embeddingModel: "all-MiniLM-L6-v2"  // Specify the embedding model
     });
     

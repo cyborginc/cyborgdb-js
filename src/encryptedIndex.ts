@@ -16,6 +16,8 @@ import {
     IndexIVFPQModel,
     IndexInfoResponseModel,
     Request,
+    ListIDsRequest,
+    ListIDsResponse,
   } from './model/models';
 
 export class EncryptedIndex {
@@ -25,30 +27,51 @@ export class EncryptedIndex {
     private api: DefaultApi;
 
     private handleApiError(error: any): never {
+      console.error("Full error object:", JSON.stringify(error, null, 2));
+      
+      // Handle different error formats from typescript-node generator
       if (error.response) {
-        console.error("HTTP Status Code:", error.response.status);
+        console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
         console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-        console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); 
+        console.error("Response Body:", error.body || error.response.body || error.response.data);
+      } else if (error.body) {
+        console.error("Error Body:", error.body);
       } else {
         console.error("No response from server");
+        console.error("Error message:", error.message);
       }
       
-      if (error.response?.data) { 
+      // Try to extract error details from different possible locations
+      let errorBody = error.body || error.response?.body || error.response?.data;
+      if (typeof errorBody === 'string') {
         try {
-          const errBody = error.response.data; 
-          if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
-            const err = errBody as ErrorResponseModel;
-            throw new Error(`${err.statusCode} - ${err.detail}`);
-          }
-          if ('detail' in errBody && Array.isArray(errBody.detail)) {
-            const err = errBody as HTTPValidationError;
-            throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-          }
+          errorBody = JSON.parse(errorBody);
         } catch (e) {
-          throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); 
+          // Keep as string if not valid JSON
         }
       }
-      throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
+      
+      if (errorBody) {
+        try {
+          if (typeof errorBody === 'object' && 'detail' in errorBody) {
+            if (Array.isArray(errorBody.detail)) {
+              const err = errorBody as HTTPValidationError;
+              throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
+            } else {
+              const err = errorBody as ErrorResponseModel;
+              throw new Error(`${err.statusCode || error.response?.statusCode || 'Unknown status'} - ${err.detail}`);
+            }
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('Validation failed')) {
+            throw e;
+          }
+          throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
+        }
+      }
+      
+      const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
+      throw new Error(`HTTP error ${statusCode}: ${error.message || 'Unknown error'}`);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
@@ -103,11 +126,11 @@ export class EncryptedIndex {
     }
     public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
-        this.indexConfig = response.indexConfig;
+        this.indexConfig = response.indexConfig as any as IndexConfig;
         // Return a copy to prevent external modification
-        if (this.indexConfig.indexType === 'ivf_flat') {
+        if (this.indexConfig.type === 'ivf_flat') {
             return { ...this.indexConfig } as IndexIVFFlatModel;
-        } else if (this.indexConfig.indexType === 'ivf_pq') {
+        } else if (this.indexConfig.type === 'ivf_pq') {
             return { ...this.indexConfig } as IndexIVFPQModel;
         } else {
             return { ...this.indexConfig } as IndexIVFModel;
@@ -212,16 +235,19 @@ export class EncryptedIndex {
    * @param batchSize Size of batches for training
    * @param maxIters Maximum number of iterations
    * @param tolerance Convergence tolerance
+   * @param nLists Number of Voronoi cells/clusters for IVF indexes
    * @returns Promise with the result of the operation
    */
   async train({
     batchSize = 2048,
     maxIters = 100,
-    tolerance = 1e-6
+    tolerance = 1e-6,
+    nLists
   }: {
     batchSize?: number;
     maxIters?: number;
     tolerance?: number;
+    nLists?: number;
   } = {}) {
     try {
       // Convert indexKey to hex string to match other methods
@@ -232,7 +258,9 @@ export class EncryptedIndex {
         indexKey: keyHex,
         batchSize: batchSize,
         maxIters: maxIters,
-        tolerance: tolerance
+        tolerance: tolerance,
+        nLists: nLists || undefined,
+        maxMemory: 0  // Set to 0 (no limit) instead of undefined/null
       };
       
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
@@ -488,7 +516,7 @@ export class EncryptedIndex {
         include,
         queryVectors: vectors2D
           ? vectors2D.map(vector => vector.map(v => Number(v)))
-          : undefined,
+          : [],
         queryContents: queryContents ?? undefined
       };
 
@@ -542,5 +570,31 @@ export class EncryptedIndex {
           } catch (error: any) {
           this.handleApiError(error);
           }
+      }
+
+      /**
+       * List all vector IDs in the index
+       * @returns Promise with object containing array of vector IDs and count
+       */
+      async listIds(): Promise<{ ids: string[]; count: number }> {
+        try {
+          // Convert indexKey to hex string for transmission
+          const keyHex = Buffer.from(this.indexKey).toString('hex');
+          
+          const listIDsRequest: ListIDsRequest = {
+            indexName: this.indexName,
+            indexKey: keyHex
+          };
+          
+          const response = await this.api.listIdsV1VectorsListIdsPost(listIDsRequest);
+          const responseBody: ListIDsResponse = response.body;
+          
+          return {
+            ids: responseBody.ids,
+            count: responseBody.count
+          };
+        } catch (error: any) {
+          this.handleApiError(error);
+        }
       }
   }

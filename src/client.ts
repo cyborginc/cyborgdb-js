@@ -8,6 +8,7 @@ import {
 } from './index';
 import { ErrorResponseModel } from '../src/model/errorResponseModel';
 import { HTTPValidationError } from '../src/model/hTTPValidationError';
+import { IndexConfig } from './model/indexConfig';
 import { EncryptedIndex } from './encryptedIndex';
 import { randomBytes } from 'crypto';
 import { IndexInfoResponseModel } from './model/indexInfoResponseModel';
@@ -79,41 +80,52 @@ export class CyborgDB {
     }
   }
 
-  /**
-   * Clean up interceptors when done
-   */
-  public cleanup() {
-    // Interceptor cleanup not currently needed
-    // This method is kept for API compatibility
-  }
-
   private handleApiError(error: any): never {
+    console.error("Full error object:", JSON.stringify(error, null, 2));
+    
+    // Handle different error formats from typescript-node generator
     if (error.response) {
-      console.error("HTTP Status Code:", error.response.status);
+      console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
       console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-      console.error("Response Data:", JSON.stringify(error.response.data, null, 2)); // CHANGED: .body to .data
+      console.error("Response Body:", error.body || error.response.body || error.response.data);
+    } else if (error.body) {
+      console.error("Error Body:", error.body);
     } else {
       console.error("No response from server");
       console.error("Error message:", error.message);
     }
     
-    // Check error.response.data instead of error.response.body
-    if (error.response?.data) { // CHANGED: .body to .data
+    // Try to extract error details from different possible locations
+    let errorBody = error.body || error.response?.body || error.response?.data;
+    if (typeof errorBody === 'string') {
       try {
-        const errBody = error.response.data; // CHANGED: .body to .data
-        if ('detail' in errBody && ('status_code' in errBody || 'statusCode' in errBody)) {
-          const err = errBody as ErrorResponseModel;
-          throw new Error(`${err.statusCode} - ${err.detail}`);
-        }
-        if ('detail' in errBody && Array.isArray(errBody.detail)) {
-          const err = errBody as HTTPValidationError;
-          throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-        }
+        errorBody = JSON.parse(errorBody);
       } catch (e) {
-        throw new Error(`Unhandled error format: ${JSON.stringify(error.response.data)}`); // CHANGED: .body to .data
+        // Keep as string if not valid JSON
       }
     }
-    throw new Error(`Unexpected error: ${error.message || 'Unknown error'}`);
+    
+    if (errorBody) {
+      try {
+        if (typeof errorBody === 'object' && 'detail' in errorBody) {
+          if (Array.isArray(errorBody.detail)) {
+            const err = errorBody as HTTPValidationError;
+            throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
+          } else {
+            const err = errorBody as ErrorResponseModel;
+            throw new Error(`${err.statusCode || error.response?.statusCode || 'Unknown status'} - ${err.detail}`);
+          }
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('Validation failed')) {
+          throw e;
+        }
+        throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
+      }
+    }
+    
+    const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
+    throw new Error(`HTTP error ${statusCode}: ${error.message || 'Unknown error'}`);
   }
 
   /**
@@ -133,8 +145,8 @@ export class CyborgDB {
    * Create a new encrypted index
    * @param indexName Name of the index
    * @param indexKey 32-byte encryption key
-   * @param indexConfig Configuration for the index
-   * @param metric Distance metric for the index
+   * @param indexConfig Configuration for the index (optional)
+   * @param metric Distance metric for the index (optional)
    * @param embeddingModel Optional name of embedding model
    * @returns Promise with the created index
    */
@@ -159,36 +171,32 @@ export class CyborgDB {
       // Use default IndexIVFFlat if no config provided
       const finalConfig = indexConfig || new IndexIVFFlat();
       
-      // Apply metric if provided
+      // Create proper IndexConfig object
+      const indexConfigObj = new IndexConfig();
+      indexConfigObj.dimension = finalConfig.dimension || undefined;
+      indexConfigObj.type = finalConfig.type || 'ivfflat';
+      
+      if (finalConfig.type === 'ivfpq') {
+        indexConfigObj.pqDim = (finalConfig as IndexIVFPQ).pqDim || 32;
+        indexConfigObj.pqBits = (finalConfig as IndexIVFPQ).pqBits || 8;
+      }
+      
+      // Add metric to the config if provided  
       if (metric) {
-        finalConfig.metric = metric;
+        (indexConfigObj as any).metric = metric;
       }
       
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
         indexKey: keyHex,
-        indexConfig: {
-          dimension: finalConfig.dimension || undefined,
-          metric: finalConfig.metric || undefined,
-          indexType: finalConfig.type || undefined,
-          nLists: finalConfig.nLists || undefined,
-          // For IVFPQ, add additional properties
-          ...(finalConfig.type === 'ivfpq' ? {
-            pqDim: (finalConfig as IndexIVFPQ).pqDim || undefined,
-            pqBits: (finalConfig as IndexIVFPQ).pqBits ||undefined
-          } : {})
-        },
-        embeddingModel: embeddingModel
+        indexConfig: indexConfigObj,
+        embeddingModel: embeddingModel,
+        metric: metric
       };
-      
-      if (finalConfig.type === 'ivfpq') {
-        (createRequest.indexConfig as any).pq_dim = (finalConfig as IndexIVFPQ).pqDim;
-        (createRequest.indexConfig as any).pq_bits = (finalConfig as IndexIVFPQ).pqBits;
-      }
       
       await this.api.createIndexV1IndexesCreatePost(createRequest);
       return new EncryptedIndex(
-        indexName, indexKey, createRequest.indexConfig, this.api, embeddingModel)
+        indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
     } catch (error: any) {
       this.handleApiError(error);
     }
@@ -287,7 +295,7 @@ export class CyborgDB {
       const response = await this.describeIndex(indexName, indexKey);
       
       // Extract index configuration for initialization
-      const indexConfig = response.indexConfig;
+      const indexConfig = response.indexConfig as any as IndexConfig;
       
       // Create and return fully initialized EncryptedIndex instance
       // This object provides all vector database operations (query, upsert, delete, etc.)
@@ -313,6 +321,32 @@ export class CyborgDB {
     try {
       const response = await this.api.healthCheckV1HealthGet();
       return response.body;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Check if any indexes are currently being trained
+   * 
+   * Retrieves information about which indexes are currently being trained
+   * and the retrain threshold configuration.
+   * 
+   * @returns Promise resolving to training status information including:
+   *   - training_indexes: Array of index names currently being trained
+   *   - retrain_threshold: The multiplier used for the retraining threshold
+   */
+  async isTraining(): Promise<{
+    training_indexes: string[];
+    retrain_threshold: number;
+  }> {
+    try {
+      const response = await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
+      // Map the camelCase response to snake_case for consistency
+      return {
+        training_indexes: response.body.trainingIndexes || [],
+        retrain_threshold: response.body.retrainThreshold || 0
+      };
     } catch (error: any) {
       this.handleApiError(error);
     }

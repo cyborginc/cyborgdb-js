@@ -1,14 +1,12 @@
 export * from './defaultApi';
-import { DefaultApi } from './defaultApi';
-import * as http from 'http';
 
 export class HttpError extends Error {
-    constructor (public response: http.IncomingMessage, public body: any, public statusCode?: number) {
-        super('HTTP request failed');
-        this.name = 'HttpError';
+    constructor(public response: any, public body: any, public statusCode: number) {
+        super(`HTTP error ${statusCode}`);
     }
 }
 
-export { RequestFile } from '../model/models';
-
-export const APIS = [DefaultApi];
+export type RequestFile = {
+    data: Buffer;
+    name: string;
+};

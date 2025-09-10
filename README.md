@@ -43,18 +43,32 @@ npm install cyborgdb
 ### Usage
 
 ```typescript
-import { Client } from 'cyborgdb';
+
+import { Client as CyborgDB, IndexIVFFlat } from 'cyborgdb';
+
 
 // Initialize the client
-const client = new Client('https://localhost:8000', 'your-api-key');
+const client = new CyborgDB({ 
+  baseUrl: 'https://localhost:8000', 
+  apiKey: 'your-api-key' 
+});
 
 // Generate a 32-byte encryption key
-const indexKey = Client.generateKey()
+
+const indexKey = client.generateKey();
+
+// Create index configuration
+const indexConfig = new IndexIVFFlat();
+indexConfig.dimension = 128;
+indexConfig.type = 'ivfflat';
 
 // Create an encrypted index
 const index = await client.createIndex({
-  indexName: "my_index", 
-  indexKey: indexKey
+  indexName: 'my-index',
+  indexKey: indexKey,
+  indexConfig: indexConfig,
+  metric: 'euclidean'
+
 });
 
 // Add encrypted vector items
@@ -73,11 +87,14 @@ const items = [
   }
 ];
 
-await index.upsert(items);
+await index.upsert({ items });
 
 // Query the encrypted index
-const queryVector = [0.1, 0.2, 0.3, /* ... 1536 dimensions */];
-const results = await index.query(queryVector, 10);
+const queryVector = [0.1, 0.2, 0.3, /* ... 128 dimensions */];
+const results = await index.query({
+  queryVectors: queryVector,
+  topK: 10
+});
 
 // Print the results
 results.results.forEach(result => {
@@ -96,24 +113,63 @@ const queryVectors = [
   [0.4, 0.5, 0.6, /* ... */]
 ];
 
-const batchResults = await index.query(queryVectors, 5);
+const batchResults = await index.query({
+  queryVectors: queryVectors,
+  topK: 5
+});
 ```
 
 #### Metadata Filtering
 
 ```typescript
 // Search with metadata filters
-const results = await index.query(
-  queryVector,
-  10,      // topK
-  1,       // nProbes
-  false,   // greedy
-  { category: 'greeting', language: 'en' }, // filters
-  ['distance', 'metadata', 'contents']      // include
-);
+const results = await index.query({
+  queryVectors: queryVector,
+  topK: 10,
+  nProbes: 1,
+  greedy: false,
+  filters: { category: 'greeting', language: 'en' },
+  include: ['distance', 'metadata', 'contents']
+});
 ```
 
-## Documentation
+
+**Index Training**
+
+```typescript
+// Train the index for better query performance (recommended for IVF indexes)
+await index.train({
+  batchSize: 2048,
+  maxIters: 100,
+  tolerance: 1e-6
+});
+```
+
+**Documentation**
+
+For more detailed documentation, visit:
+* [CyborgDB Documentation](https://docs.cyborg.co/)
+
+**Testing**
+
+To run the quickflow integration test that simulates real user usage:
+
+```bash
+# 1. Build the package
+npm run build
+
+# 2. Create a package tarball
+npm pack
+
+# 3. Install the local package (replace x.x.x with your version)
+npm install cyborgdb-x.x.x.tgz
+
+# 4. Run the quickflow test
+npm run test:quickflow
+```
+
+This test imports and uses the `cyborgdb` package exactly as an end user would, ensuring the package works correctly when installed as a dependency.
+
 
 For more information on CyborgDB, see the [Cyborg Docs](https://docs.cyborg.co).
 
