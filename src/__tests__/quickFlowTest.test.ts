@@ -1,12 +1,16 @@
-import { CyborgDB } from '../client';
+import { 
+  Client as CyborgDB,
+  QueryResultItem, 
+  QueryResponse, 
+  IndexIVF, 
+  IndexIVFPQ, 
+  IndexIVFFlat 
+} from '../index';
+import { EncryptedIndex } from '../encryptedIndex';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
-import { QueryResultItem } from '../model/queryResultItem';
-import { EncryptedIndex } from '../encryptedIndex';
-import { QueryResponse } from '../model/queryResponse';
-import { IndexIVF, IndexIVFPQ, IndexIVFFlat } from '../index';
 import { assert } from 'console';
 
 /**
