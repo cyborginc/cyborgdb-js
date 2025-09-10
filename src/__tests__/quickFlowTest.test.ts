@@ -1,12 +1,13 @@
+// Import from the built dist folder to test the package as users would use it
 import { 
   Client as CyborgDB,
   QueryResultItem, 
-  QueryResponse, 
+  QueryResponse,
   IndexIVF, 
   IndexIVFPQ, 
   IndexIVFFlat 
-} from '../index';
-import { EncryptedIndex } from '../encryptedIndex';
+} from '../../dist/index';
+import { EncryptedIndex } from '../../dist/encryptedIndex';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
