@@ -11,16 +11,8 @@
  */
 
 import { RequestFile } from './models';
+import { QueryResultItem } from './queryResultItem';
 
-export class ValidationErrorLocInner {
-
-    static discriminator: string | undefined = undefined;
-
-    static attributeTypeMap: Array<{name: string, baseName: string, type: string}> = [
-    ];
-
-    static getAttributeTypeMap() {
-        return ValidationErrorLocInner.attributeTypeMap;
-    }
-}
+// Results can be either a single array (for single query) or array of arrays (for batch query)
+export type Results = QueryResultItem[] | QueryResultItem[][];
 

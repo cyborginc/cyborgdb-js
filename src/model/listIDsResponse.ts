@@ -13,22 +13,28 @@
 import { RequestFile } from './models';
 
 /**
-* Response model for listing all indexes.  Attributes:     indexes (List[str]): List of available index names.
+* Response model for listing all IDs in the index.  Attributes:     ids (List[str]): List of all item IDs in the index.     count (int): Total number of IDs in the index.
 */
-export class IndexListResponseModel {
-    'indexes': Array<string>;
+export class ListIDsResponse {
+    'ids': Array<string>;
+    'count': number;
 
     static discriminator: string | undefined = undefined;
 
     static attributeTypeMap: Array<{name: string, baseName: string, type: string}> = [
         {
-            "name": "indexes",
-            "baseName": "indexes",
+            "name": "ids",
+            "baseName": "ids",
             "type": "Array<string>"
+        },
+        {
+            "name": "count",
+            "baseName": "count",
+            "type": "number"
         }    ];
 
     static getAttributeTypeMap() {
-        return IndexListResponseModel.attributeTypeMap;
+        return ListIDsResponse.attributeTypeMap;
     }
 }
 

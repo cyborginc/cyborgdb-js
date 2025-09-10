@@ -12,23 +12,15 @@
 
 import { RequestFile } from './models';
 
-/**
-* Response model for listing all indexes.  Attributes:     indexes (List[str]): List of available index names.
-*/
-export class IndexListResponseModel {
-    'indexes': Array<string>;
+export class Contents {
 
     static discriminator: string | undefined = undefined;
 
     static attributeTypeMap: Array<{name: string, baseName: string, type: string}> = [
-        {
-            "name": "indexes",
-            "baseName": "indexes",
-            "type": "Array<string>"
-        }    ];
+    ];
 
     static getAttributeTypeMap() {
-        return IndexListResponseModel.attributeTypeMap;
+        return Contents.attributeTypeMap;
     }
 }
 
