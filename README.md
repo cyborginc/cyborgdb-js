@@ -43,12 +43,10 @@ npm install cyborgdb
 ### Usage
 
 ```typescript
-
-import { Client as CyborgDB, IndexIVFFlat } from 'cyborgdb';
-
+import { Client, IndexIVFFlat } from 'cyborgdb';
 
 // Initialize the client
-const client = new CyborgDB({ 
+const client = new Client({ 
   baseUrl: 'https://localhost:8000', 
   apiKey: 'your-api-key' 
 });
