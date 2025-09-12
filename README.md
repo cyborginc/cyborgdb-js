@@ -20,7 +20,6 @@ This SDK provides an interface to [`cyborgdb-service`](https://pypi.org/project/
 
 To get started in minutes, check out our [Quickstart Guide](https://docs.cyborg.co/quickstart).
 
-
 ### Installation
 
 1. Install `cyborgdb-service`
@@ -43,8 +42,7 @@ npm install cyborgdb
 ### Usage
 
 ```typescript
-
-import { Client, IndexIVFFlat } from 'cyborgdb';
+import { Client } from 'cyborgdb';
 
 // Initialize the client
 const client = new Client({ 
@@ -52,22 +50,13 @@ const client = new Client({
   apiKey: 'your-api-key' 
 });
 
-// Generate a 32-byte encryption key
-
+// Generate a 256-bit encryption key
 const indexKey = client.generateKey();
-
-// Create index configuration
-const indexConfig = new IndexIVFFlat();
-indexConfig.dimension = 128;
-indexConfig.type = 'ivfflat';
 
 // Create an encrypted index
 const index = await client.createIndex({
   indexName: 'my-index',
   indexKey: indexKey,
-  indexConfig: indexConfig,
-  metric: 'euclidean'
-
 });
 
 // Add encrypted vector items
@@ -132,19 +121,7 @@ const results = await index.query({
 });
 ```
 
-
-**Index Training**
-
-```typescript
-// Train the index for better query performance (recommended for IVF indexes)
-await index.train({
-  batchSize: 2048,
-  maxIters: 100,
-  tolerance: 1e-6
-});
-
-This test imports and uses the `cyborgdb` package exactly as an end user would, ensuring the package works correctly when installed as a dependency.
-
+## Documentation
 
 For more information on CyborgDB, see the [Cyborg Docs](https://docs.cyborg.co).
 
