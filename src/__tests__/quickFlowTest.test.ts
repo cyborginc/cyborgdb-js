@@ -1,5 +1,5 @@
 import { 
-  Client as CyborgDB,
+  Client,
   QueryResultItem, 
   QueryResponse,
   IndexIVF, 
@@ -146,7 +146,7 @@ beforeAll(async () => {
 describe('CyborgDB Combined Integration Tests', () => {
   console.log(`Using API URL: ${API_URL}`);
   console.log(`Using API Key: ${CYBORGDB_API_KEY}`);
-  const client = new CyborgDB({ baseUrl: API_URL, apiKey: CYBORGDB_API_KEY });
+  const client = new Client({ baseUrl: API_URL, apiKey: CYBORGDB_API_KEY });
 
   let indexName: string;
   let indexKey: Uint8Array;
