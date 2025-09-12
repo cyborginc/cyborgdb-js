@@ -2,7 +2,7 @@ import { Client, IndexIVFFlat, EncryptedIndex, QueryResultItem, QueryResponse } 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, createHash } from 'crypto';
 
 // Load environment variables from .env.local
 dotenv.config({ path: '.env.local' });
@@ -172,6 +172,15 @@ describe('TestUnitFlow', () => {
         const testDir = path.dirname(path.resolve(__filename));
         const jsonPath = path.join(testDir, 'unit_test_flow_data.json');
         const jsonData = fs.readFileSync(jsonPath, 'utf8');
+
+        // Compute & validate checksum
+        const expectedChecksum = "a2989692cb12e8667b22bee4177acb295b72a23be82458ce7dd06e4a901cb04d";
+        const checksum = createHash('sha256').update(jsonData, 'utf8').digest('hex');
+        if (checksum !== expectedChecksum) {
+            throw new Error(`Data integrity check failed: expected checksum ${expectedChecksum}, got ${checksum}`);
+        }
+
+        // Parse the JSON data
         data = JSON.parse(jsonData);
 
         // Load vectors and neighbors as arrays
@@ -434,7 +443,7 @@ describe('TestUnitFlow', () => {
         const recall = checkQueryResults(results, trainedNeighbors, numQueries);
         console.log(`Trained Query (No Metadata). Expected recall: ${trainedRecall}, got ${recall}`);
 
-        expect(Math.abs(recall - trainedRecall)).toBeLessThan(0.8);
+        expect(Math.abs(recall - trainedRecall)).toBeLessThan(0.08);
     });
 
     test('test_10_trained_query_no_metadata_auto_n_probes', async () => {
