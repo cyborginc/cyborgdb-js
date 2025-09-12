@@ -509,11 +509,11 @@ export class EncryptedIndex {
       const requestData: Request = {
         indexName: this.indexName,
         indexKey: keyHex,
-        topK: topK || undefined,
-        nProbes: nProbes || undefined,
-        greedy: greedy || undefined,
-        filters: filters || undefined,
-        include: include || undefined,
+        topK: topK ?? undefined,
+        nProbes: nProbes ?? undefined,
+        greedy: greedy ?? undefined,
+        filters: filters ?? undefined,
+        include: include ?? undefined,
         queryVectors: vectors2D
           ? vectors2D.map(vector => vector.map(v => Number(v)))
           : [],
