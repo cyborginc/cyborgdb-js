@@ -256,10 +256,10 @@ export class EncryptedIndex {
       const trainRequest: TrainRequest = {
         indexName: this.indexName,
         indexKey: keyHex,
-        batchSize: batchSize || undefined,
-        maxIters: maxIters || undefined,
-        tolerance: tolerance || undefined,
-        nLists: nLists || undefined,
+        batchSize: batchSize ?? undefined,
+        maxIters: maxIters ?? undefined,
+        tolerance: tolerance ?? undefined,
+        nLists: nLists ?? undefined,
         maxMemory: undefined
       };
       
