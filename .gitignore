@@ -4,3 +4,4 @@ typings
 dist
 coverage
 .openapi-generator
+.env
