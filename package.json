@@ -22,8 +22,8 @@
     "prepublishOnly": "npm run lint && npm run build",
     "test:ssl": "jest __tests__/ssl-verification.test.ts",
     "test:integration": "jest __tests__/integration.test.ts",
-    "test:quickflow": "jest __tests__/quickFlowTest.test.ts",
-    "test:quickflow:built": "npm run build && jest __tests__/quickFlowTest.test.ts",
+    "test:quickflow": "jest __tests__/quick_flow.test.ts",
+    "test:quickflow:built": "npm run build && jest __tests__/quick_flow.test.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

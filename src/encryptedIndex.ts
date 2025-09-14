@@ -239,15 +239,15 @@ export class EncryptedIndex {
    * @returns Promise with the result of the operation
    */
   async train({
-    batchSize = 2048,
-    maxIters = 100,
-    tolerance = 1e-6,
-    nLists
+    nLists,
+    batchSize,
+    maxIters,
+    tolerance
   }: {
+    nLists?: number;
     batchSize?: number;
     maxIters?: number;
     tolerance?: number;
-    nLists?: number;
   } = {}) {
     try {
       // Convert indexKey to hex string to match other methods
@@ -256,11 +256,11 @@ export class EncryptedIndex {
       const trainRequest: TrainRequest = {
         indexName: this.indexName,
         indexKey: keyHex,
-        batchSize: batchSize,
-        maxIters: maxIters,
-        tolerance: tolerance,
-        nLists: nLists || undefined,
-        maxMemory: 0  // Set to 0 (no limit) instead of undefined/null
+        batchSize: batchSize ?? undefined,
+        maxIters: maxIters ?? undefined,
+        tolerance: tolerance ?? undefined,
+        nLists: nLists ?? undefined,
+        maxMemory: undefined
       };
       
       const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
@@ -462,22 +462,22 @@ export class EncryptedIndex {
    *
    * @param queryVectors Single vector [0.1, 0.2] or batch [[0.1, 0.2], [0.3, 0.4]]
    * @param queryContents Optional text content to embed and search (alternative to queryVectors)
-   * @param topK Maximum number of results to return per query (default: 100)
-   * @param nProbes Number of cluster centers to search (default: 0 for auto)
+   * @param topK Maximum number of results to return per query
+   * @param nProbes Number of cluster centers to search
    * @param filters Metadata filters (MongoDB-style queries supported)
-   * @param include Fields to include in results (default: ["distance", "metadata"])
-   * @param greedy Use faster approximate search (default: false)
+   * @param include Fields to include in results
+   * @param greedy Use faster approximate search
    * @returns Promise resolving to QueryResponse
    * @throws Error if neither queryVectors nor queryContents provided
    */
   async query({
     queryVectors,
     queryContents,
-    topK = 100,
-    nProbes = 0,
-    filters = {},
-    include = ["distance", "metadata"],
-    greedy = false
+    topK,
+    nProbes,
+    filters,
+    include,
+    greedy
   }: {
     queryVectors?: number[] | number[][];
     queryContents?: string;
@@ -509,11 +509,11 @@ export class EncryptedIndex {
       const requestData: Request = {
         indexName: this.indexName,
         indexKey: keyHex,
-        topK,
-        nProbes,
-        greedy,
-        filters,
-        include,
+        topK: topK ?? undefined,
+        nProbes: nProbes ?? undefined,
+        greedy: greedy ?? undefined,
+        filters: filters ?? undefined,
+        include: include ?? undefined,
         queryVectors: vectors2D
           ? vectors2D.map(vector => vector.map(v => Number(v)))
           : [],
