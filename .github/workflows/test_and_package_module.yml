@@ -57,6 +57,8 @@ jobs:
           "
 
   build_package:
+    permissions:
+      contents: read
     needs: test_package
     runs-on: ubuntu-latest
     steps:
