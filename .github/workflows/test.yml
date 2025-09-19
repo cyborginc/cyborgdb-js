@@ -1,4 +1,6 @@
 name: Test CyborgDB JavaScript SDK
+permissions:
+  contents: read
 
 on:
   pull_request:
