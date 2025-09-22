@@ -32,6 +32,7 @@ describe('CyborgDB SSL Verification', () => {
     // Store original axios defaults to restore later
     if (typeof require !== 'undefined') {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const axios = require('axios');
         originalAxiosDefaults = { ...axios.defaults };
       } catch (e) {
@@ -48,6 +49,7 @@ describe('CyborgDB SSL Verification', () => {
     // Restore axios defaults if they were modified
     if (originalAxiosDefaults && typeof require !== 'undefined') {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const axios = require('axios');
         Object.assign(axios.defaults, originalAxiosDefaults);
       } catch (e) {
@@ -160,6 +162,7 @@ describe('CyborgDB SSL Verification', () => {
 
       // Verify axios defaults were modified (if axios is available)
       try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const axios = require('axios');
         expect(axios.defaults.httpsAgent).toBeDefined();
         expect(axios.defaults.httpsAgent.options.rejectUnauthorized).toBe(false);

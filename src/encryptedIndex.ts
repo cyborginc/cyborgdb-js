@@ -566,7 +566,7 @@ export class EncryptedIndex {
         throw new Error("No response received from query API");
       }
 
-      let finalResponse = response;
+      const finalResponse = response;
 
       if (
         isSingleQuery &&

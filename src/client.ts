@@ -63,6 +63,7 @@ export class CyborgDB {
       // Node.js environments need custom fetch configuration
       try {
         // Try undici first (Node.js 18+)
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { Agent } = require('undici');
         fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
           const agent = new Agent({
