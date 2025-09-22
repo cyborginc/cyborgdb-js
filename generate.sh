@@ -2,21 +2,21 @@
 
 set -e
 
-echo "🚀 Generating TypeScript client from openapi.json..."
+echo "Generating TypeScript client from openapi.json..."
 
 # Check if OpenAPI spec exists
 if [ ! -f "openapi.json" ]; then
-    echo "❌ Error: openapi.json not found!"
+    echo "Error: openapi.json not found!"
     exit 1
 fi
 
 # Clean existing generated files
-echo "🧹 Cleaning old generated files..."
+echo "Cleaning old generated files..."
 rm -rf src/model src/api
 
-# Generate TypeScript client using typescript-node generator
+# Generate TypeScript client using typescript-fetch generator
 # Using OpenAPI Generator version 7.12.0
-echo "⚡ Generating TypeScript client with OpenAPI Generator 7.12.0..."
+echo "Generating TypeScript client with OpenAPI Generator 7.12.0..."
 
 # Check if openapi-generator-cli is installed
 if ! command -v openapi-generator-cli &> /dev/null; then
@@ -34,22 +34,15 @@ openapi-generator-cli generate \
     -o src \
     --skip-validate-spec
 
-echo "✅ Generated TypeScript client"
+echo "Generated TypeScript client"
 
 # Test build
 echo "🧪 Testing build..."
 if npm run build > /dev/null 2>&1; then
-    echo "✅ Build successful!"
+    echo "Build successful!"
 else
-    echo "⚠️  Build completed with warnings (this is normal)"
+    echo "Build completed with warnings (this is normal)"
 fi
 
 echo ""
-echo "🎉 Code generation complete!"
-echo "📁 Generated files:"
-echo "   - src/api/defaultApi.ts (Main API client)"
-echo "   - src/api/apis.ts (API exports)"
-echo "   - src/model/*.ts (Type definitions)"
-echo "   - src/model/models.ts (Model exports)"
-echo ""
-echo "Your TypeScript client is ready to use!"
+echo "Code generation complete!"
