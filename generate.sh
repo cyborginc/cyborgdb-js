@@ -37,7 +37,7 @@ openapi-generator-cli generate \
 echo "Generated TypeScript client"
 
 # Test build
-echo "🧪 Testing build..."
+echo "Testing build..."
 if npm run build > /dev/null 2>&1; then
     echo "Build successful!"
 else
