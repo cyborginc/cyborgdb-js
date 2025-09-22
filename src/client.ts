@@ -1,17 +1,18 @@
-import { DefaultApi, DefaultApiApiKeys } from '../src/api/defaultApi';
-import { 
+import { DefaultApi } from './apis/DefaultApi';
+import { Configuration } from './runtime';
+import {
   CreateIndexRequest,
-  IndexIVFPQ,
-  IndexIVFFlat,
-  IndexIVF,
+  IndexIVFPQModel as IndexIVFPQ,
+  IndexIVFFlatModel as IndexIVFFlat,
+  IndexIVFModel as IndexIVF,
   IndexOperationRequest,
-} from './index';
-import { ErrorResponseModel } from '../src/model/errorResponseModel';
-import { HTTPValidationError } from '../src/model/hTTPValidationError';
-import { IndexConfig } from './model/indexConfig';
+  ErrorResponseModel,
+  HTTPValidationError,
+  IndexConfig,
+  IndexInfoResponseModel
+} from './models';
 import { EncryptedIndex } from './encryptedIndex';
 import { randomBytes } from 'crypto';
-import { IndexInfoResponseModel } from './model/indexInfoResponseModel';
 
 /**
  * CyborgDB TypeScript SDK
@@ -53,37 +54,50 @@ export class CyborgDB {
       console.warn('SSL verification is disabled. Not recommended for production.');
     }
 
-    this.api = new DefaultApi(baseUrl);
-    
-    // Configure SSL verification for Axios in Node.js environments
+    // Configure fetch API based on environment and SSL settings
+    let fetchApi: typeof fetch | undefined;
+
+    // Only configure custom fetch in Node.js when SSL verification is disabled
     if (!verifySsl && typeof process !== 'undefined' && process.versions && process.versions.node) {
-      // In Node.js, configure axios defaults to disable SSL verification
-      const https = require('https');
-      const axiosDefaults = require('axios').defaults;
-      
-      axiosDefaults.httpsAgent = new https.Agent({
-        rejectUnauthorized: false
-      });
-      
-      console.warn('SSL verification disabled in Node.js environment');
+      // Browser environments can't disable SSL verification (security restriction)
+      // Node.js environments need custom fetch configuration
+      try {
+        // Try undici first (Node.js 18+)
+        const { Agent } = require('undici');
+        fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
+          const agent = new Agent({
+            connect: { rejectUnauthorized: false }
+          });
+          return globalThis.fetch(url, { ...init, dispatcher: agent } as any);
+        };
+      } catch (e) {
+        // Fallback: warn that SSL verification can't be disabled
+        console.warn('Could not configure SSL verification - using default fetch');
+      }
+
+      if (fetchApi) {
+        console.warn('SSL verification disabled in Node.js environment');
+      }
     }
-    
-    // Set default headers
-    this.api.defaultHeaders = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    };
-    
-    // Set API key if provided
-    if (apiKey) {
-      this.api.setApiKey(DefaultApiApiKeys.APIKeyHeader, apiKey);
-    }
+
+    // Create configuration
+    const config = new Configuration({
+      basePath: baseUrl,
+      apiKey: apiKey ? () => apiKey : undefined,
+      ...(fetchApi && { fetchApi }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+
+    this.api = new DefaultApi(config);
   }
 
   private handleApiError(error: any): never {
     console.error("Full error object:", JSON.stringify(error, null, 2));
-    
-    // Handle different error formats from typescript-node generator
+
+    // Handle different error formats from typescript-fetch generator
     if (error.response) {
       console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
       console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
@@ -93,8 +107,15 @@ export class CyborgDB {
     } else {
       console.error("No response from server");
       console.error("Error message:", error.message);
+      // Log additional error details if available
+      if (error.cause) {
+        console.error("Error cause:", error.cause);
+      }
+      if (error.code) {
+        console.error("Error code:", error.code);
+      }
     }
-    
+
     // Try to extract error details from different possible locations
     let errorBody = error.body || error.response?.body || error.response?.data;
     if (typeof errorBody === 'string') {
@@ -104,7 +125,7 @@ export class CyborgDB {
         // Keep as string if not valid JSON
       }
     }
-    
+
     if (errorBody) {
       try {
         if (typeof errorBody === 'object' && 'detail' in errorBody) {
@@ -123,9 +144,19 @@ export class CyborgDB {
         throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
       }
     }
-    
+
+    // Provide more detailed error message for fetch failures
     const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
-    throw new Error(`HTTP error ${statusCode}: ${error.message || 'Unknown error'}`);
+    let errorMessage = error.message || 'Unknown error';
+
+    // Enhance error message with additional context if available
+    if (error.message === 'fetch failed' && error.cause) {
+      errorMessage = `Network request failed: ${error.cause.message || error.cause}`;
+    } else if (error.code) {
+      errorMessage = `${errorMessage} (code: ${error.code})`;
+    }
+
+    throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
   }
 
   /**
@@ -135,7 +166,7 @@ export class CyborgDB {
   async listIndexes() {
     try {
       const response = await this.api.listIndexesV1IndexesListGet();
-      return response.body.indexes || [];
+      return response.indexes || [];
     } catch (error: any) {
       this.handleApiError(error);
     }
@@ -169,22 +200,25 @@ export class CyborgDB {
 
       // Create the request using the proper snake_case property names
       // Use default IndexIVFFlat if no config provided
-      const finalConfig = indexConfig || new IndexIVFFlat();
+      const finalConfig: IndexIVFFlat | IndexIVFPQ | IndexIVF = indexConfig || {
+        type: 'ivfflat',
+        dimension: undefined
+      };
       
       // Create proper IndexConfig object
-      const indexConfigObj = new IndexConfig();
-      indexConfigObj.dimension = finalConfig.dimension || undefined;
-      indexConfigObj.type = finalConfig.type || 'ivfflat';
-      
-      if (finalConfig.type === 'ivfpq') {
-        indexConfigObj.pqDim = (finalConfig as IndexIVFPQ).pqDim || 32;
-        indexConfigObj.pqBits = (finalConfig as IndexIVFPQ).pqBits || 8;
-      }
-      
-      // Add metric to the config if provided  
-      if (metric) {
-        (indexConfigObj as any).metric = metric;
-      }
+      const baseConfig = {
+        dimension: finalConfig.dimension || undefined,
+        type: finalConfig.type || 'ivfflat',
+        ...(metric && { metric })
+      };
+
+      const indexConfigObj: IndexConfig = finalConfig.type === 'ivfpq'
+        ? {
+            ...baseConfig,
+            pqDim: (finalConfig as IndexIVFPQ).pqDim ?? 32,
+            pqBits: (finalConfig as IndexIVFPQ).pqBits ?? 8
+          }
+        : baseConfig as IndexConfig;
       
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
@@ -194,7 +228,7 @@ export class CyborgDB {
         metric: metric
       };
       
-      await this.api.createIndexV1IndexesCreatePost(createRequest);
+      await this.api.createIndexV1IndexesCreatePost({ createIndexRequest: createRequest });
       return new EncryptedIndex(
         indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
     } catch (error: any) {
@@ -249,10 +283,10 @@ export class CyborgDB {
       }
       
       // Make API call to retrieve comprehensive index information
-      const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost(request);
-      
-      // Extract and return the structured response body
-      return apiResponse.body;
+      const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost({ indexOperationRequest: request });
+
+      // Extract and return the structured response
+      return apiResponse;
     } catch (error: any) {
       this.handleApiError(error);
     }
@@ -320,7 +354,7 @@ export class CyborgDB {
   async getHealth() {
     try {
       const response = await this.api.healthCheckV1HealthGet();
-      return response.body;
+      return response;
     } catch (error: any) {
       this.handleApiError(error);
     }
@@ -344,8 +378,8 @@ export class CyborgDB {
       const response = await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
       // Map the camelCase response to snake_case for consistency
       return {
-        training_indexes: response.body.trainingIndexes || [],
-        retrain_threshold: response.body.retrainThreshold || 0
+        training_indexes: response.trainingIndexes || [],
+        retrain_threshold: response.retrainThreshold || 0
       };
     } catch (error: any) {
       this.handleApiError(error);
