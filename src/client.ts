@@ -60,16 +60,23 @@ export class CyborgDB {
     // Only configure custom fetch in Node.js when SSL verification is disabled
     if (!verifySsl && typeof process !== 'undefined' && process.versions && process.versions.node) {
       // Browser environments can't disable SSL verification (security restriction)
-      // Node.js environments need custom fetch configuration
+      // Node.js 18+ has built-in fetch but needs a custom agent for SSL options
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const https = require('https');
+        const agent = new https.Agent({
+          rejectUnauthorized: false
+        });
 
-      // Disable SSL verification globally for the Node.js process
-      // This affects all HTTPS connections in the process
-      process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
+        fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
+          return globalThis.fetch(url, { ...init, agent } as any);
+        };
 
-      console.warn('SSL verification disabled in Node.js environment');
-
-      // Use the default fetch - it will respect the NODE_TLS_REJECT_UNAUTHORIZED setting
-      fetchApi = undefined; // Use default fetch
+        console.warn('SSL verification disabled in Node.js environment');
+      } catch (e) {
+        // Fallback: warn that SSL verification can't be disabled
+        console.warn('Could not configure SSL verification - using default fetch');
+      }
     }
 
     // Create configuration
