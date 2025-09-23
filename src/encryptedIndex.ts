@@ -220,20 +220,7 @@ export class EncryptedIndex {
             include: includeFields
           };
 
-          // Debug logging for get request
-          console.log(`[DEBUG] Making get request for ${ids.length} items`);
-          console.log(`[DEBUG] First few IDs: ${ids.slice(0, 5).join(', ')}...`);
-
-          let response;
-          try {
-            response = await this.api.getVectorsV1VectorsGetPost({getRequest});
-            console.log(`[DEBUG] Get response received, processing...`);
-          } catch (apiError: any) {
-            console.error(`[DEBUG] API call failed immediately:`, apiError);
-            console.error(`[DEBUG] Error name: ${apiError?.name}`);
-            console.error(`[DEBUG] Error constructor: ${apiError?.constructor?.name}`);
-            throw apiError;
-          }
+          const response = await this.api.getVectorsV1VectorsGetPost({getRequest});
 
           // Process the results to match Python SDK format
           const responseBody: GetResponseModel = response;

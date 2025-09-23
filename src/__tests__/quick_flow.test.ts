@@ -691,7 +691,10 @@ describe('TestUnitFlow', () => {
 
     test('test_15_get_deleted', async () => {
         // GET DELETED ITEMS
-        console.log('[TEST] Starting test_15_get_deleted');
+        // Add a delay after the previous test's large delete operation
+        // The need for this may indicate eventual consistency in the system
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
         const numGet = 1000;
         const getIndices: number[] = [];
         const usedIndices = new Set<number>();
@@ -705,8 +708,6 @@ describe('TestUnitFlow', () => {
         }
 
         const getIndicesStr = getIndices.map(i => String(i));
-        console.log(`[TEST] About to call index.get with ${getIndicesStr.length} IDs`);
-        console.log(`[TEST] Index object exists: ${index !== undefined && index !== null}`);
         const getResults = await index.get({
             ids: getIndicesStr,
             include: ['vector', 'contents', 'metadata']
@@ -718,53 +719,52 @@ describe('TestUnitFlow', () => {
         }
     });
 
-//     test('test_16_query_deleted', async () => {
-//         // QUERY DELETED ITEMS
-//         const response = await index.query({
-//             queryVectors: queries,
-//             topK: 100,
-//             nProbes: 24
-//         });
+    test('test_16_query_deleted', async () => {
+        // QUERY DELETED ITEMS
+        const response = await index.query({
+            queryVectors: queries,
+            topK: 100,
+            nProbes: 24
+        });
 
-//         const results = response.results as QueryResultItem[][];
-//         for (const result of results) {
-//             for (const queryResult of result) {
-//                 const id = parseInt(queryResult.id);
-//                 expect(id).toBeGreaterThanOrEqual(numUntrainedVectors);
-//             }
-//         }
+        const results = response.results as QueryResultItem[][];
+        for (const result of results) {
+            for (const queryResult of result) {
+                const id = parseInt(queryResult.id);
+                expect(id).toBeGreaterThanOrEqual(numUntrainedVectors);
+            }
+        }
 
-//         expect(true).toBe(true);
-//     });
+        expect(true).toBe(true);
+    });
 
-//     test('test_17_list_indexes', async () => {
-//         // LIST INDEXES
-//         const indexes = await client.listIndexes();
-//         expect(Array.isArray(indexes)).toBe(true);
-//         expect(indexes.length).toBeGreaterThan(0);
+    test('test_17_list_indexes', async () => {
+        // LIST INDEXES
+        const indexes = await client.listIndexes();
+        expect(Array.isArray(indexes)).toBe(true);
+        expect(indexes.length).toBeGreaterThan(0);
 
-//         // Check if the created index is in the list
-//         expect(indexes).toContain(indexName);
-//     });
+        // Check if the created index is in the list
+        expect(indexes).toContain(indexName);
+    });
 
-//     test('test_18_index_properties', async () => {
-//         // Check if the index has the expected properties
-//         expect(await index.getIndexName()).toBe(indexName);
+    test('test_18_index_properties', async () => {
+        // Check if the index has the expected properties
+        expect(await index.getIndexName()).toBe(indexName);
         
-//         const config = await index.getIndexConfig();
-//         expect(config).toBeDefined();
-//         expect(typeof config).toBe('object');
+        const config = await index.getIndexConfig();
+        expect(config).toBeDefined();
+        expect(typeof config).toBe('object');
         
-//         expect(await index.getIndexType()).toBe('ivfflat');
-//     });
+        expect(await index.getIndexType()).toBe('ivfflat');
+    });
 
-//     test('test_19_load_index', async () => {
-//         // Test loading an existing index
-//         const loadedIndex = await client.loadIndex({ indexName, indexKey });
-//         expect(loadedIndex).toBeDefined();
-//         expect(await loadedIndex.getIndexName()).toBe(indexName);
-//     });
-
+    test('test_19_load_index', async () => {
+        // Test loading an existing index
+        const loadedIndex = await client.loadIndex({ indexName, indexKey });
+        expect(loadedIndex).toBeDefined();
+        expect(await loadedIndex.getIndexName()).toBe(indexName);
+    });
 });
 
 // Set Jest timeout for all tests

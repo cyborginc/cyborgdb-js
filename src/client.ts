@@ -61,24 +61,15 @@ export class CyborgDB {
     if (!verifySsl && typeof process !== 'undefined' && process.versions && process.versions.node) {
       // Browser environments can't disable SSL verification (security restriction)
       // Node.js environments need custom fetch configuration
-      try {
-        // Try undici first (Node.js 18+)
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { Agent } = require('undici');
-        fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
-          const agent = new Agent({
-            connect: { rejectUnauthorized: false }
-          });
-          return globalThis.fetch(url, { ...init, dispatcher: agent } as any);
-        };
-      } catch (e) {
-        // Fallback: warn that SSL verification can't be disabled
-        console.warn('Could not configure SSL verification - using default fetch');
-      }
 
-      if (fetchApi) {
-        console.warn('SSL verification disabled in Node.js environment');
-      }
+      // Disable SSL verification globally for the Node.js process
+      // This affects all HTTPS connections in the process
+      process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
+
+      console.warn('SSL verification disabled in Node.js environment');
+
+      // Use the default fetch - it will respect the NODE_TLS_REJECT_UNAUTHORIZED setting
+      fetchApi = undefined; // Use default fetch
     }
 
     // Create configuration

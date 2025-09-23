@@ -9,6 +9,7 @@ module.exports = {
     verbose: true,
     testTimeout: 600000, // Default timeout of 60 seconds for all tests
     bail: false, // Continue running tests even after a failure
+    maxWorkers: 1, // Run tests sequentially to avoid conflicts
     collectCoverage: true,
     collectCoverageFrom: [
       'src/**/*.ts',
