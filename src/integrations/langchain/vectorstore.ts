@@ -173,8 +173,11 @@ export class CyborgVectorStore extends VectorStore {
         : (existingIndexes as any).indices?.includes(this.indexName) || false;
 
       if (indexExists) {
-        // Load existing index
-        this.index = (this.client as any).index(this.indexName, this.indexKey);
+        // Load existing index using loadIndex method
+        this.index = await this.client.loadIndex({
+          indexName: this.indexName,
+          indexKey: this.indexKey
+        });
       } else {
         // Detect dimension if not provided
         if (!this.dimension) {

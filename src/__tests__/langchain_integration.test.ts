@@ -131,7 +131,11 @@ describe('CyborgDB LangChain Integration', () => {
   afterAll(async () => {
     // Clean up: delete the test index
     try {
-      await client.deleteIndex(testIndexName);
+      // Access the index and delete it
+      const index = (vectorStore as any).index;
+      if (index) {
+        await index.deleteIndex();
+      }
     } catch (error) {
       console.error('Error cleaning up test index:', error);
     }
@@ -334,7 +338,10 @@ describe('CyborgDB LangChain Integration', () => {
       expect(ids.length).toBeGreaterThanOrEqual(2);
       
       // Clean up
-      await client.deleteIndex(store['indexName']);
+      const index = (store as any).index;
+      if (index) {
+        await index.deleteIndex();
+      }
     });
 
     test('should create vector store from documents', async () => {
@@ -362,11 +369,14 @@ describe('CyborgDB LangChain Integration', () => {
       expect(store).toBeInstanceOf(CyborgVectorStore);
       
       // Clean up
-      await client.deleteIndex(store['indexName']);
+      const index = (store as any).index;
+      if (index) {
+        await index.deleteIndex();
+      }
     });
 
     test('should create vector store from existing index', async () => {
-      const indexKey = CyborgDB.generateKey();
+      const indexKey = vectorStore['indexKey'] as Uint8Array;
       const store = await CyborgVectorStore.fromExistingIndex(
         new MockEmbeddings(384),
         {

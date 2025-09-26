@@ -306,6 +306,20 @@ export class CyborgDB {
   }
 
   /**
+   * Static method to generate a cryptographically secure 32-byte encryption key
+   * 
+   * Creates a random 32-byte (256-bit) key suitable for index encryption.
+   * Each key is unique and provides strong security for your vector data.
+   * 
+   * @returns Uint8Array containing 32 cryptographically secure random bytes
+   */
+  static generateKey(): Uint8Array {
+    // Generate 32 bytes of cryptographically secure random data
+    // Uses Node.js crypto.randomBytes() which leverages OS entropy sources
+    return new Uint8Array(randomBytes(32));
+  }
+
+  /**
    * Load and connect to an existing encrypted index
    * 
    * Establishes a connection to a previously created index using its name and encryption key.
