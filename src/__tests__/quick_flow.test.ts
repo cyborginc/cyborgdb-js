@@ -691,10 +691,14 @@ describe('TestUnitFlow', () => {
 
     test('test_15_get_deleted', async () => {
         // GET DELETED ITEMS
+        // Add a delay after the previous test's large delete operation
+        // The need for this may indicate eventual consistency in the system
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
         const numGet = 1000;
         const getIndices: number[] = [];
         const usedIndices = new Set<number>();
-        
+
         while (getIndices.length < numGet) {
             const idx = Math.floor(Math.random() * numUntrainedVectors);
             if (!usedIndices.has(idx)) {
@@ -702,7 +706,7 @@ describe('TestUnitFlow', () => {
                 getIndices.push(idx);
             }
         }
-        
+
         const getIndicesStr = getIndices.map(i => String(i));
         const getResults = await index.get({
             ids: getIndicesStr,

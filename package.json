@@ -5,15 +5,19 @@
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
+  "browser": {
+  "./dist/index.js": "./dist/index.esm.js"
+  },
   "files": [
     "dist/**/*",
     "README.md",
     "LICENSE"
   ],
+  "sideEffects": false,
   "scripts": {
     "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types",
-    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:fs --external:path --external:request --external:crypto --external:http --external:https --external:url --external:stream --external:querystring",
-    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:fs --external:path --external:request --external:crypto --external:http --external:https --external:url --external:stream --external:querystring",
+    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring",
+    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
     "clean": "rm -rf dist",
     "lint": "eslint 'src/*.ts' 'src/__tests__/**/*.ts'",
@@ -46,15 +50,10 @@
     "url": "https://github.com/cyborginc/cyborgdb-js/issues"
   },
   "homepage": "https://github.com/cyborginc/cyborgdb-js#readme",
-  "dependencies": {
-    "axios": "^1.10.0",
-    "cyborgdb": "file:cyborgdb-0.12.0.tgz",
-    "request": "^2.88.2"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.10",
-    "@types/request": "^2.48.13",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "dotenv": "^16.4.7",
@@ -63,9 +62,10 @@
     "jest": "^29.7.0",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "axios": "^1.12.2"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }

@@ -1,6 +1,6 @@
-import { DefaultApi } from "./api/apis";
-import { 
-    UpsertRequest, 
+import { DefaultApi } from "./apis/DefaultApi";
+import {
+    UpsertRequest,
     IndexOperationRequest,
     TrainRequest,
     DeleteRequest,
@@ -18,7 +18,7 @@ import {
     Request,
     ListIDsRequest,
     ListIDsResponse,
-  } from './model/models';
+  } from './models';
 
 export class EncryptedIndex {
     private indexName: string = "";
@@ -28,8 +28,8 @@ export class EncryptedIndex {
 
     private handleApiError(error: any): never {
       console.error("Full error object:", JSON.stringify(error, null, 2));
-      
-      // Handle different error formats from typescript-node generator
+
+      // Handle different error formats from typescript-fetch generator
       if (error.response) {
         console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
         console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
@@ -39,8 +39,22 @@ export class EncryptedIndex {
       } else {
         console.error("No response from server");
         console.error("Error message:", error.message);
+        // Log additional error details if available
+        if (error.cause) {
+          console.error("Error cause:", error.cause);
+          // Log more details about the cause if it's an object
+          if (typeof error.cause === 'object' && error.cause !== null) {
+            console.error("Cause details:", JSON.stringify(error.cause, null, 2));
+          }
+        }
+        if (error.code) {
+          console.error("Error code:", error.code);
+        }
+        if (error.stack) {
+          console.error("Error stack trace:", error.stack);
+        }
       }
-      
+
       // Try to extract error details from different possible locations
       let errorBody = error.body || error.response?.body || error.response?.data;
       if (typeof errorBody === 'string') {
@@ -50,7 +64,7 @@ export class EncryptedIndex {
           // Keep as string if not valid JSON
         }
       }
-      
+
       if (errorBody) {
         try {
           if (typeof errorBody === 'object' && 'detail' in errorBody) {
@@ -69,9 +83,19 @@ export class EncryptedIndex {
           throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
         }
       }
-      
+
+      // Provide more detailed error message for fetch failures
       const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
-      throw new Error(`HTTP error ${statusCode}: ${error.message || 'Unknown error'}`);
+      let errorMessage = error.message || 'Unknown error';
+
+      // Enhance error message with additional context if available
+      if (error.message === 'fetch failed' && error.cause) {
+        errorMessage = `Network request failed: ${error.cause.message || error.cause}`;
+      } else if (error.code) {
+        errorMessage = `${errorMessage} (code: ${error.code})`;
+      }
+
+      throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
@@ -104,10 +128,10 @@ export class EncryptedIndex {
         }
         
         // Get the full response object
-        const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost(request);
+        const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
         
         // Extract the body which contains the IndexInfoResponseModel
-        return apiResponse.body;
+        return apiResponse;
       } catch (error: any) {
         this.handleApiError(error);
       }
@@ -143,13 +167,13 @@ export class EncryptedIndex {
         try {
             const keyHex = Buffer.from(this.indexKey).toString('hex');
             const request: IndexOperationRequest = {
-            indexName: this.indexName,
-            indexKey: keyHex
+              indexName: this.indexName,
+              indexKey: keyHex
             };
                     
             // Call the getIndexInfo API first
             try {
-            await this.api.getIndexInfoV1IndexesDescribePost(request);
+            await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
             } catch (infoError: any) {
             // Check if the error is specifically about the index not existing
             if (infoError.response?.body?.detail?.includes('not exist')) {
@@ -159,9 +183,9 @@ export class EncryptedIndex {
             throw infoError;
             }
         
-            const response = await this.api.deleteIndexV1IndexesDeletePost(request);
+            const response = await this.api.deleteIndexV1IndexesDeletePost({indexOperationRequest: request});
         
-            return response.body;
+            return response;
         } catch (error: any) {
             this.handleApiError(error);
         }
@@ -195,14 +219,17 @@ export class EncryptedIndex {
             ids: ids,
             include: includeFields
           };
-          
-          const response = await this.api.getVectorsV1VectorsGetPost(getRequest);
+
+          const response = await this.api.getVectorsV1VectorsGetPost({getRequest});
+
           // Process the results to match Python SDK format
-          const responseBody: GetResponseModel = response.body;
+          const responseBody: GetResponseModel = response;
           const items = responseBody.results || [];
+
+          console.log(`[DEBUG] Got ${items.length} items in response`);
           
           // Convert results to the expected format
-          return items.map(item => {
+          return items.map((item: any) => {
             const result: any = { id: item.id };
             
             if (item.vector) result.vector = item.vector;
@@ -263,8 +290,8 @@ export class EncryptedIndex {
         maxMemory: undefined
       };
       
-      const response = await this.api.trainIndexV1IndexesTrainPost(trainRequest);
-      return response.body;
+      const response = await this.api.trainIndexV1IndexesTrainPost({trainRequest});
+      return response;
     } catch (error: any) {
       this.handleApiError(error);
     }
@@ -439,8 +466,8 @@ export class EncryptedIndex {
         items: processedItems
       };
       
-      const response = await this.api.upsertVectorsV1VectorsUpsertPost(upsertRequest);
-      return response.body;
+      const response = await this.api.upsertVectorsV1VectorsUpsertPost({upsertRequest});
+      return response;
     } catch (error: any) {
       // Enhance error handling for API errors
       if (error.message && !error.message.startsWith('Invalid')) {
@@ -520,13 +547,13 @@ export class EncryptedIndex {
         queryContents: queryContents ?? undefined
       };
 
-      const response = await this.api.queryVectorsV1VectorsQueryPost(requestData as Request);
+      const response = await this.api.queryVectorsV1VectorsQueryPost({request: requestData});
 
       if (!response) {
         throw new Error("No response received from query API");
       }
 
-      let finalResponse = response.body;
+      const finalResponse = response;
 
       if (
         isSingleQuery &&
@@ -565,8 +592,8 @@ export class EncryptedIndex {
               ids: ids
           };
           
-          const response = await this.api.deleteVectorsV1VectorsDeletePost(deleteRequest);
-          return response.body;
+          const response = await this.api.deleteVectorsV1VectorsDeletePost({deleteRequest});
+          return response;
           } catch (error: any) {
           this.handleApiError(error);
           }
@@ -586,8 +613,8 @@ export class EncryptedIndex {
             indexKey: keyHex
           };
           
-          const response = await this.api.listIdsV1VectorsListIdsPost(listIDsRequest);
-          const responseBody: ListIDsResponse = response.body;
+          const response = await this.api.listIdsV1VectorsListIdsPost({listIDsRequest});
+          const responseBody: ListIDsResponse = response;
           
           return {
             ids: responseBody.ids,

@@ -8,6 +8,8 @@ on:
 jobs:
   test_package:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -57,6 +59,8 @@ jobs:
           "
 
   build_package:
+    permissions:
+      contents: read
     needs: test_package
     runs-on: ubuntu-latest
     steps:

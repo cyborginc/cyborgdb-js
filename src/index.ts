@@ -1,3 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+export const VERSION = require('../package.json').version;
+
 // Main SDK exports
 export { CyborgDB as Client } from './client';
 export { EncryptedIndex } from './encryptedIndex';
@@ -20,10 +23,4 @@ export {
   IndexIVFModel as IndexIVF,
   IndexIVFPQModel as IndexIVFPQ,
   QueryResultItem
-} from './model/models';
-
-// Export API classes if users need direct access
-export { DefaultApi, DefaultApiApiKeys } from './api/defaultApi';
-
-// Version info
-export const VERSION = '1.0.0';
+} from './models';
