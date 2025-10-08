@@ -11,60 +11,16 @@
 import { CyborgDB } from '../../client';
 import { EncryptedIndex } from '../../encryptedIndex';
 import { VectorItem, QueryResultItem } from '../../models';
-
-// Type definitions for LangChain compatibility
-export interface Document {
-  pageContent: string;
-  metadata: Record<string, any>;
-}
-
-export interface Embeddings {
-  embedDocuments(texts: string[]): Promise<number[][]>;
-  embedQuery(text: string): Promise<number[]>;
-}
-
-export abstract class VectorStore {
-  declare FilterType: Record<string, any>;
-  embeddings: Embeddings;
-
-  constructor(embeddings: Embeddings, config?: any) {
-    this.embeddings = embeddings;
-  }
-
-  abstract addTexts(
-    texts: string[],
-    metadatas?: object[] | object,
-    options?: { ids?: string[] }
-  ): Promise<string[]>;
-
-  abstract addDocuments(
-    documents: Document[],
-    options?: { ids?: string[] }
-  ): Promise<string[]>;
-
-  abstract similaritySearch(
-    query: string,
-    k?: number,
-    filter?: any,
-    callbacks?: any
-  ): Promise<Document[]>;
-
-  abstract similaritySearchWithScore(
-    query: string,
-    k?: number,
-    filter?: any,
-    callbacks?: any
-  ): Promise<[Document, number][]>;
-
-  abstract _vectorstoreType(): string;
-}
+import { VectorStore } from "@langchain/core/vectorstores";
+import type { EmbeddingsInterface } from "@langchain/core/embeddings";
+import { Document, DocumentInterface } from "@langchain/core/documents";
 
 export interface CyborgVectorStoreConfig {
   indexName: string;
   indexKey: string | Uint8Array;
   apiKey: string;
   baseUrl: string;
-  embedding: Embeddings;
+  embedding: EmbeddingsInterface;
   indexType?: 'ivfflat' | 'ivf' | 'ivfpq';
   indexConfigParams?: Record<string, any>;
   dimension?: number;
@@ -87,7 +43,7 @@ export class CyborgVectorStore extends VectorStore {
   }
 
   constructor(
-    embeddings: Embeddings,
+    embeddings: EmbeddingsInterface,
     config: CyborgVectorStoreConfig
   ) {
     super(embeddings, config);
@@ -241,7 +197,7 @@ export class CyborgVectorStore extends VectorStore {
    * Add documents to the vector store.
    */
   async addDocuments(
-    documents: Document[],
+    documents: DocumentInterface[],
     options?: { ids?: string[] }
   ): Promise<string[]> {
     const texts = documents.map(doc => doc.pageContent);
@@ -254,7 +210,7 @@ export class CyborgVectorStore extends VectorStore {
    */
   async addVectors(
     vectors: number[][],
-    documents: Document[],
+    documents: DocumentInterface[],
     options?: { ids?: string[] }
   ): Promise<string[]> {
     await this.initializeIndex();
@@ -352,7 +308,7 @@ export class CyborgVectorStore extends VectorStore {
     k = 4,
     filter?: this['FilterType'],
     _callbacks?: any
-  ): Promise<Document[]> {
+  ): Promise<DocumentInterface[]> {
     await this.initializeIndex();
     
     if (!this.index) {
@@ -409,7 +365,7 @@ export class CyborgVectorStore extends VectorStore {
     k = 4,
     filter?: this['FilterType'],
     _callbacks?: any
-  ): Promise<[Document, number][]> {
+  ): Promise<[DocumentInterface, number][]> {
     await this.initializeIndex();
     
     if (!this.index) {
@@ -470,7 +426,7 @@ export class CyborgVectorStore extends VectorStore {
     query: number[],
     k: number,
     filter?: this['FilterType']
-  ): Promise<[Document, number][]> {
+  ): Promise<[DocumentInterface, number][]> {
     await this.initializeIndex();
     
     if (!this.index) {
@@ -541,12 +497,134 @@ export class CyborgVectorStore extends VectorStore {
   }
 
   /**
+   * Maximal Marginal Relevance search - balances similarity with diversity.
+   * 
+   * @param query - The query string
+   * @param options - MMR search options including k, fetchK, lambda, and filter
+   * @returns Promise of documents selected by maximal marginal relevance
+   */
+  async maxMarginalRelevanceSearch(
+    query: string,
+    options: {
+      k: number;
+      fetchK?: number;
+      lambda?: number;
+      filter?: Record<string, any>;
+    }
+  ): Promise<DocumentInterface[]> {
+    const { k, fetchK = k * 2, lambda = 0.5, filter } = options;
+    
+    // Step 1: Get query embedding
+    const queryEmbedding = await this.embeddings.embedQuery(query);
+    
+    // Step 2: Fetch more candidates than we need
+    const candidates = await this.similaritySearchVectorWithScore(
+      queryEmbedding,
+      fetchK,
+      filter
+    );
+    
+    if (candidates.length === 0) {
+      return [];
+    }
+    
+    // Step 3: Get embeddings for all candidate documents
+    const candidateEmbeddings = await Promise.all(
+      candidates.map(([doc]) => 
+        this.embeddings.embedQuery(doc.pageContent)
+      )
+    );
+    
+    // Step 4: Implement MMR algorithm
+    const selected: number[] = [];
+    const selectedDocs: DocumentInterface[] = [];
+    
+    // Start with the most similar document
+    let bestIdx = 0;
+    let bestScore = candidates[0][1];
+    for (let i = 1; i < candidates.length; i++) {
+      if (candidates[i][1] > bestScore) {
+        bestScore = candidates[i][1];
+        bestIdx = i;
+      }
+    }
+    selected.push(bestIdx);
+    selectedDocs.push(candidates[bestIdx][0]);
+    
+    // Iteratively select documents that maximize MMR
+    while (selected.length < k && selected.length < candidates.length) {
+      let bestMmrScore = -Infinity;
+      let bestMmrIdx = -1;
+      
+      for (let i = 0; i < candidates.length; i++) {
+        if (selected.includes(i)) continue;
+        
+        // Calculate similarity to query (already have this from the search)
+        const querySimScore = candidates[i][1];
+        
+        // Calculate maximum similarity to already selected documents
+        let maxSelectedSim = 0;
+        for (const selectedIdx of selected) {
+          const sim = this.cosineSimilarity(
+            candidateEmbeddings[i],
+            candidateEmbeddings[selectedIdx]
+          );
+          maxSelectedSim = Math.max(maxSelectedSim, sim);
+        }
+        
+        // Calculate MMR score
+        const mmrScore = lambda * querySimScore - (1 - lambda) * maxSelectedSim;
+        
+        if (mmrScore > bestMmrScore) {
+          bestMmrScore = mmrScore;
+          bestMmrIdx = i;
+        }
+      }
+      
+      if (bestMmrIdx === -1) break;
+      
+      selected.push(bestMmrIdx);
+      selectedDocs.push(candidates[bestMmrIdx][0]);
+    }
+    
+    return selectedDocs;
+  }
+  
+  /**
+   * Calculate cosine similarity between two vectors.
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) {
+      throw new Error('Vectors must have the same length');
+    }
+    
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    
+    normA = Math.sqrt(normA);
+    normB = Math.sqrt(normB);
+    
+    if (normA === 0 || normB === 0) {
+      return 0;
+    }
+    
+    return dotProduct / (normA * normB);
+  }
+
+  /**
    * Create a vector store from texts.
    */
   static async fromTexts(
     texts: string[],
     metadatas: object[] | object,
-    embeddings: Embeddings,
+    embeddings: EmbeddingsInterface,
     config: CyborgVectorStoreConfig
   ): Promise<CyborgVectorStore> {
     const store = new CyborgVectorStore(embeddings, config);
@@ -558,8 +636,8 @@ export class CyborgVectorStore extends VectorStore {
    * Create a vector store from documents.
    */
   static async fromDocuments(
-    docs: Document[],
-    embeddings: Embeddings,
+    docs: DocumentInterface[],
+    embeddings: EmbeddingsInterface,
     config: CyborgVectorStoreConfig
   ): Promise<CyborgVectorStore> {
     const store = new CyborgVectorStore(embeddings, config);
@@ -571,7 +649,7 @@ export class CyborgVectorStore extends VectorStore {
    * Create a vector store from an existing index.
    */
   static async fromExistingIndex(
-    embeddings: Embeddings,
+    embeddings: EmbeddingsInterface,
     config: CyborgVectorStoreConfig
   ): Promise<CyborgVectorStore> {
     const store = new CyborgVectorStore(embeddings, config);

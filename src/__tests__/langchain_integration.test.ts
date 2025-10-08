@@ -4,7 +4,8 @@
  * This module tests the LangChain VectorStore implementation for CyborgDB.
  */
 
-import { Document, Embeddings } from '../integrations/langchain/vectorstore';
+import type { Document } from '@langchain/core/documents';
+import { Embeddings } from '@langchain/core/embeddings';
 import { CyborgVectorStore } from '../integrations/langchain';
 import { CyborgDB } from '../client';
 import * as dotenv from 'dotenv';
@@ -15,12 +16,13 @@ dotenv.config({ path: '.env.local' });
 /**
  * Mock embeddings for testing that generates semantically meaningful vectors.
  */
-class MockEmbeddings implements Embeddings {
+class MockEmbeddings extends Embeddings {
   private dimension: number;
   private vocab: Map<string, number>;
   private vocabSize: number;
 
   constructor(dimension = 384) {
+    super({});
     this.dimension = dimension;
     this.vocab = new Map();
     this.vocabSize = 0;
