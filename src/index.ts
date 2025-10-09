@@ -24,3 +24,6 @@ export {
   IndexIVFPQModel as IndexIVFPQ,
   QueryResultItem
 } from './models';
+
+// Export integrations
+export * from './integrations';
