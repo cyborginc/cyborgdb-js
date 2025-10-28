@@ -118,24 +118,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Verify version matches release
+      - name: Verify version matches tag
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          RELEASE_VERSION=${{ github.event.release.tag_name }}
+          TAG="${GITHUB_REF#refs/tags/}"
           # Remove 'v' prefix if present
-          RELEASE_VERSION=${RELEASE_VERSION#v}
-          
+          TAG_VERSION="${TAG#v}"
+
           echo "Package version: $PACKAGE_VERSION"
-          echo "Release version: $RELEASE_VERSION"
-          
-          if [ "$PACKAGE_VERSION" != "$RELEASE_VERSION" ]; then
-            echo "Version mismatch! Package.json has $PACKAGE_VERSION but release is $RELEASE_VERSION"
-            echo "Setting package version to match release version..."
-            npm version $RELEASE_VERSION --no-git-tag-version
-            PACKAGE_VERSION=$(node -p "require('./package.json').version")
-            echo "Updated package version to $PACKAGE_VERSION"
+          echo "Tag: $TAG"
+          echo "Tag version: $TAG_VERSION"
+
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "   package.json: $PACKAGE_VERSION"
+            echo "   Git tag: $TAG_VERSION"
+            echo ""
+            echo "Please update package.json version to match the tag before pushing:"
+            echo "   npm version $TAG_VERSION --no-git-tag-version"
+            echo "   git add package.json"
+            echo "   git commit -m \"Bump version to $TAG_VERSION\""
+            exit 1
           fi
-          echo "Versions match"
+          echo "✅ Versions match: $PACKAGE_VERSION"
       
       - name: Build package
         run: npm run build
