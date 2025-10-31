@@ -27,3 +27,6 @@ export {
 
 // Export integrations
 export * from './integrations';
+
+// Export demo API key generator
+export { getDemoApiKey } from './demo';
