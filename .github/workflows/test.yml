@@ -87,15 +87,19 @@ jobs:
       - name: Load Demo API Key
         run: |
           echo "=== Loading Demo API Key ==="
-
-          # Import from the built bundle
-          export CYBORGDB_API_KEY=$(node -e "const { getDemoApiKey } = require('./dist/index.js'); console.log(getDemoApiKey());")
-
+          
+          # Get output and extract only the line that looks like a demo key
+          OUTPUT=$(node -e "const { getDemoApiKey } = require('./dist/index.js'); getDemoApiKey().then(key => console.log(key));" 2>&1)
+          
+          # Extract the demo key (starts with 'cyborg_demo_')
+          CYBORGDB_API_KEY=$(echo "$OUTPUT" | grep -E '^cyborg_demo_[a-zA-Z0-9_-]+$' | head -n 1)
+          
           if [ -z "$CYBORGDB_API_KEY" ]; then
             echo "Error: Failed to generate demo API key"
+            echo "Output was: $OUTPUT"
             exit 1
           fi
-
+          
           echo "CYBORGDB_API_KEY=$CYBORGDB_API_KEY" >> $GITHUB_ENV
           echo "Demo API key loaded successfully"
           
