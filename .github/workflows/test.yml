@@ -71,35 +71,38 @@ jobs:
           token: ${{ secrets.CYBORGDB_SERVICE_TOKEN }}
           fetch-depth: 0  # Get full history for version detection
           fetch-tags: true  # Fetch all tags
-
-      - name: Install service dependencies
-        run: |
-          # Install CPU-only torch
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          # Install optional test dependencies
-          pip install sentence-transformers
           
       - name: Install cyborgdb-service from source
         run: |
           # Install the server from the cloned repository
-          pip install ./cyborgdb-service
+          pip install './cyborgdb-service[embeddings]'
           
       - name: Install SDK dependencies
         run: |
           npm ci
 
-      ## TODO: add Lite tests
-      
-      # - name: Test with Lite version
-      #   run: |
-      #     echo "=== Testing with Lite version ==="
-      #     ...
+      - name: Build SDK
+        run: npm run build
+        
+      - name: Load Demo API Key
+        run: |
+          echo "=== Loading Demo API Key ==="
+
+          # Import from the built bundle
+          export CYBORGDB_API_KEY=$(node -e "const { getDemoApiKey } = require('./dist/index.js'); console.log(getDemoApiKey());")
+
+          if [ -z "$CYBORGDB_API_KEY" ]; then
+            echo "Error: Failed to generate demo API key"
+            exit 1
+          fi
+
+          echo "CYBORGDB_API_KEY=$CYBORGDB_API_KEY" >> $GITHUB_ENV
+          echo "Demo API key loaded successfully"
           
       - name: Test with Standard version
         run: |
           echo "=== Testing with Standard version ==="
           # Set up environment for Standard
-          export CYBORGDB_API_KEY="${{ secrets.CYBORGDB_STANDARD_API_KEY }}"
           export CYBORGDB_DB_TYPE=postgres
           export CYBORGDB_CONNECTION_STRING="host=localhost port=5432 dbname=cyborgdb user=postgres password=postgres"
           export CYBORGDB_SERVICE_LOG_LEVEL=DEBUG
