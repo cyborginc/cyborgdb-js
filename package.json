@@ -1,6 +1,6 @@
 {
   "name": "cyborgdb",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "JavaScript & TypeScript Client SDK for CyborgDB: The Confidential Vector Database",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
