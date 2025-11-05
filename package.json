@@ -16,8 +16,8 @@
   "sideEffects": false,
   "scripts": {
     "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types",
-    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring",
-    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring",
+    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring --external:@langchain/core",
+    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring --external:@langchain/core",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
     "clean": "rm -rf dist",
     "lint": "eslint 'src/*.ts' 'src/__tests__/**/*.ts'",

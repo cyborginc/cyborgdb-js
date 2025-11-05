@@ -13,6 +13,7 @@ import {
 } from './models';
 import { EncryptedIndex } from './encryptedIndex';
 import { randomBytes } from 'crypto';
+import { HealthResponse, TrainingStatus, isError } from './types';
 
 /**
  * CyborgDB TypeScript SDK
@@ -93,30 +94,53 @@ export class CyborgDB {
     this.api = new DefaultApi(config);
   }
 
-  private handleApiError(error: any): never {
+  private handleApiError(error: unknown): never {
     console.error("Full error object:", JSON.stringify(error, null, 2));
 
+    // Type guards for error handling
+    const hasResponse = (err: unknown): err is { response: { statusCode?: number; status?: number; headers?: unknown; body?: unknown; data?: unknown } } => {
+      return typeof err === 'object' && err !== null && 'response' in err;
+    };
+
+    const hasBody = (err: unknown): err is { body: unknown } => {
+      return typeof err === 'object' && err !== null && 'body' in err;
+    };
+
+    const hasMessage = (err: unknown): err is { message: string } => {
+      return typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string';
+    };
+
+    const hasCause = (err: unknown): err is { cause: unknown } => {
+      return typeof err === 'object' && err !== null && 'cause' in err;
+    };
+
+    const hasCode = (err: unknown): err is { code: string } => {
+      return typeof err === 'object' && err !== null && 'code' in err;
+    };
+
     // Handle different error formats from typescript-fetch generator
-    if (error.response) {
+    if (hasResponse(error)) {
       console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
       console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-      console.error("Response Body:", error.body || error.response.body || error.response.data);
-    } else if (error.body) {
+      console.error("Response Body:", hasBody(error) ? error.body : error.response.body || error.response.data);
+    } else if (hasBody(error)) {
       console.error("Error Body:", error.body);
     } else {
       console.error("No response from server");
-      console.error("Error message:", error.message);
+      if (hasMessage(error)) {
+        console.error("Error message:", error.message);
+      }
       // Log additional error details if available
-      if (error.cause) {
+      if (hasCause(error)) {
         console.error("Error cause:", error.cause);
       }
-      if (error.code) {
+      if (hasCode(error)) {
         console.error("Error code:", error.code);
       }
     }
 
     // Try to extract error details from different possible locations
-    let errorBody = error.body || error.response?.body || error.response?.data;
+    let errorBody: unknown = hasBody(error) ? error.body : hasResponse(error) ? error.response.body || error.response.data : undefined;
     if (typeof errorBody === 'string') {
       try {
         errorBody = JSON.parse(errorBody);
@@ -127,17 +151,19 @@ export class CyborgDB {
 
     if (errorBody) {
       try {
-        if (typeof errorBody === 'object' && 'detail' in errorBody) {
-          if (Array.isArray(errorBody.detail)) {
+        if (typeof errorBody === 'object' && errorBody !== null && 'detail' in errorBody) {
+          const detailValue = (errorBody as { detail: unknown }).detail;
+          if (Array.isArray(detailValue)) {
             const err = errorBody as HTTPValidationError;
             throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
           } else {
             const err = errorBody as ErrorResponseModel;
-            throw new Error(`${err.statusCode || error.response?.statusCode || 'Unknown status'} - ${err.detail}`);
+            const statusCode = err.statusCode || (hasResponse(error) ? error.response.statusCode || error.response.status : undefined) || 'Unknown status';
+            throw new Error(`${statusCode} - ${err.detail}`);
           }
         }
       } catch (e) {
-        if (e instanceof Error && e.message.includes('Validation failed')) {
+        if (isError(e) && e.message.includes('Validation failed')) {
           throw e;
         }
         throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
@@ -145,13 +171,14 @@ export class CyborgDB {
     }
 
     // Provide more detailed error message for fetch failures
-    const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
-    let errorMessage = error.message || 'Unknown error';
+    const statusCode = hasResponse(error) ? error.response.statusCode || error.response.status : 'Unknown';
+    let errorMessage = hasMessage(error) ? error.message : 'Unknown error';
 
     // Enhance error message with additional context if available
-    if (error.message === 'fetch failed' && error.cause) {
-      errorMessage = `Network request failed: ${error.cause.message || error.cause}`;
-    } else if (error.code) {
+    if (hasMessage(error) && error.message === 'fetch failed' && hasCause(error)) {
+      const causeMsg = hasMessage(error.cause) ? error.cause.message : String(error.cause);
+      errorMessage = `Network request failed: ${causeMsg}`;
+    } else if (hasCode(error)) {
       errorMessage = `${errorMessage} (code: ${error.code})`;
     }
 
@@ -166,7 +193,7 @@ export class CyborgDB {
     try {
       const response = await this.api.listIndexesV1IndexesListGet();
       return response.indexes || [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleApiError(error);
     }
   }
@@ -230,7 +257,7 @@ export class CyborgDB {
       await this.api.createIndexV1IndexesCreatePost({ createIndexRequest: createRequest });
       return new EncryptedIndex(
         indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleApiError(error);
     }
   }
@@ -286,7 +313,7 @@ export class CyborgDB {
 
       // Extract and return the structured response
       return apiResponse;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleApiError(error);
     }
   }
@@ -340,10 +367,10 @@ export class CyborgDB {
     try {
       // Retrieve comprehensive index information and validate access
       const response = await this.describeIndex(indexName, indexKey);
-      
+
       // Extract index configuration for initialization
-      const indexConfig = response.indexConfig as any as IndexConfig;
-      
+      const indexConfig = response.indexConfig as IndexConfig;
+
       // Create and return fully initialized EncryptedIndex instance
       // This object provides all vector database operations (query, upsert, delete, etc.)
       const loadedIndex: EncryptedIndex = new EncryptedIndex(
@@ -352,9 +379,9 @@ export class CyborgDB {
         indexConfig,        // Configuration metadata for validation and optimization
         this.api           // Shared API client for server communication
       );
-      
+
       return loadedIndex;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Enhance error context with operation details
       this.handleApiError(error);
     }
@@ -364,29 +391,26 @@ export class CyborgDB {
    * Check the health of the server
    * @returns Promise with the health status
    */
-  async getHealth() {
+  async getHealth(): Promise<HealthResponse> {
     try {
       const response = await this.api.healthCheckV1HealthGet();
-      return response;
-    } catch (error: any) {
+      return response as HealthResponse;
+    } catch (error: unknown) {
       this.handleApiError(error);
     }
   }
 
   /**
    * Check if any indexes are currently being trained
-   * 
+   *
    * Retrieves information about which indexes are currently being trained
    * and the retrain threshold configuration.
-   * 
+   *
    * @returns Promise resolving to training status information including:
    *   - training_indexes: Array of index names currently being trained
    *   - retrain_threshold: The multiplier used for the retraining threshold
    */
-  async isTraining(): Promise<{
-    training_indexes: string[];
-    retrain_threshold: number;
-  }> {
+  async isTraining(): Promise<TrainingStatus> {
     try {
       const response = await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
       // Map the camelCase response to snake_case for consistency
@@ -394,7 +418,7 @@ export class CyborgDB {
         training_indexes: response.trainingIndexes || [],
         retrain_threshold: response.retrainThreshold || 0
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.handleApiError(error);
     }
   }
