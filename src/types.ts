@@ -6,9 +6,6 @@
  */
 
 import {
-  IndexIVFModel,
-  IndexIVFFlatModel,
-  IndexIVFPQModel,
   GetResultItemModel,
 } from './models';
 
@@ -169,42 +166,6 @@ export interface GetResultItem extends Omit<GetResultItemModel, 'metadata' | 'co
    * Metadata associated with the vector (if included)
    */
   metadata?: VectorMetadata;
-}
-
-/**
- * Index configuration union type
- * Properly typed alternative to { [key: string]: any }
- */
-export type IndexConfigUnion = IndexIVFFlatConfig | IndexIVFConfig | IndexIVFPQConfig;
-
-/**
- * Configuration for IVF Flat index
- * Extends IndexIVFFlatModel from models with additional properties
- */
-export interface IndexIVFFlatConfig extends IndexIVFFlatModel {
-  type?: 'ivfflat' | 'ivf_flat';
-  metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
-  nLists?: number;
-}
-
-/**
- * Configuration for IVF index
- * Extends IndexIVFModel from models with additional properties
- */
-export interface IndexIVFConfig extends IndexIVFModel {
-  type?: 'ivf';
-  metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
-  nLists?: number;
-}
-
-/**
- * Configuration for IVF PQ (Product Quantization) index
- * Extends IndexIVFPQModel from models with additional properties
- */
-export interface IndexIVFPQConfig extends IndexIVFPQModel {
-  type?: 'ivfpq' | 'ivf_pq';
-  metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
-  nLists?: number;
 }
 
 /**

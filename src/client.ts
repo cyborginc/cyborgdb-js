@@ -189,7 +189,7 @@ export class CyborgDB {
    * List all available indexes
    * @returns Promise with the list of index names
    */
-  async listIndexes() {
+  async listIndexes(): Promise<string[]> {
     try {
       const response = await this.api.listIndexesV1IndexesListGet();
       return response.indexes || [];

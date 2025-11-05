@@ -25,8 +25,26 @@ export {
   QueryResultItem
 } from './models';
 
+// Export custom strongly-typed interfaces
+export {
+  JsonValue,
+  JsonObject,
+  JsonArray,
+  JsonPrimitive,
+  VectorMetadata,
+  FilterExpression,
+  FilterValue,
+  FilterOperator,
+  UpsertResponse,
+  DeleteResponse,
+  TrainResponse,
+  HealthResponse,
+  TrainingStatus,
+  GetResultItem,
+  isJsonValue,
+  isError,
+  getErrorMessage
+} from './types';
+
 // Export integrations
 export * from './integrations';
-
-// Export demo API key generator
-export { getDemoApiKey } from './demo';

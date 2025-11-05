@@ -11,6 +11,7 @@
 import { CyborgDB } from '../../client';
 import { EncryptedIndex } from '../../encryptedIndex';
 import { VectorItem, QueryResultItem } from '../../models';
+import { GetResultItem, FilterExpression } from '../../types';
 import { VectorStore } from "@langchain/core/vectorstores";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import { Document, DocumentInterface } from "@langchain/core/documents";
@@ -268,11 +269,11 @@ export class CyborgVectorStore extends VectorStore {
       return [];
     }
 
-    return response.map((item: any) => {
+    return response.map((item: GetResultItem) => {
       const metadata = { ...(item.metadata || {}) };
-      const content = metadata._content || '';
+      const content = typeof metadata._content === 'string' ? metadata._content : '';
       delete metadata._content;
-      
+
       return {
         pageContent: content,
         metadata
@@ -283,7 +284,7 @@ export class CyborgVectorStore extends VectorStore {
   /**
    * List all document IDs in the vector store.
    */
-  async listIds(filter?: Record<string, any>): Promise<string[]> {
+  async listIds(filter?: FilterExpression): Promise<string[]> {
     await this.initializeIndex();
     
     if (!this.index) {
