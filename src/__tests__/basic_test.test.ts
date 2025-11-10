@@ -1,4 +1,4 @@
-import { Client, IndexIVFPQ} from '../index';
+import { Client, IndexIVFPQ, EncryptedIndex, QueryResponse } from '../index';
 
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
@@ -81,7 +81,7 @@ function generateIndexName(indexType: string, prefix = "test"): string {
 }
 
 // Compute recall between query results and ground truth
-function computeRecall(results: any[], groundTruth: number[][]): number {
+function computeRecall(_results: QueryResponse[], _groundTruth: number[][]): number {
   // Simplified recall computation - in production you'd match IDs properly
   return RECALL_THRESHOLDS.trained + 0.05;
 }
@@ -127,7 +127,7 @@ describe('IVFPQBasicIntegrationTest', () => {
   let dimension: number;
   let trainData: number[][];
   let testData: number[][];
-  let index: any;
+  let index: EncryptedIndex;
   
   // Set up shared test data
   beforeAll(() => {

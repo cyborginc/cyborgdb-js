@@ -352,7 +352,9 @@ describe('TestUnitFlow', () => {
             expect(getResult.vector).toEqual(expectedVector);
             
             // Check metadata equality
-            const metadataStr = JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort());
+            const metadataStr = getResult.metadata
+              ? JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort())
+              : 'null';
             const expectedMetadataStr = JSON.stringify(metadata[getIndices[i]], Object.keys(metadata[getIndices[i]]).sort());
             expect(metadataStr).toBe(expectedMetadataStr);
         }
@@ -666,7 +668,9 @@ describe('TestUnitFlow', () => {
             expect(getResult.vector).toEqual(expectedVector);
             
             // Check metadata equality
-            const metadataStr = JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort());
+            const metadataStr = getResult.metadata
+              ? JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort())
+              : 'null';
             const expectedMetadataStr = JSON.stringify(metadata[getIndices[i]], Object.keys(metadata[getIndices[i]]).sort());
             expect(metadataStr).toBe(expectedMetadataStr);
         }

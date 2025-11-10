@@ -19,6 +19,14 @@ import {
     ListIDsRequest,
     ListIDsResponse,
   } from './models';
+import {
+  UpsertResponse,
+  DeleteResponse,
+  TrainResponse,
+  GetResultItem,
+  FilterExpression,
+  isError
+} from './types';
 
 export class EncryptedIndex {
     private indexName: string = "";
@@ -26,37 +34,64 @@ export class EncryptedIndex {
     private indexConfig: IndexConfig;
     private api: DefaultApi;
 
-    private handleApiError(error: any): never {
+    private handleApiError(error: unknown): never {
       console.error("Full error object:", JSON.stringify(error, null, 2));
 
+      // Type guards for error handling
+      const hasResponse = (err: unknown): err is { response: { statusCode?: number; status?: number; headers?: unknown; body?: unknown; data?: unknown } } => {
+        return typeof err === 'object' && err !== null && 'response' in err;
+      };
+
+      const hasBody = (err: unknown): err is { body: unknown } => {
+        return typeof err === 'object' && err !== null && 'body' in err;
+      };
+
+      const hasMessage = (err: unknown): err is { message: string } => {
+        return typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string';
+      };
+
+      const hasCause = (err: unknown): err is { cause: unknown } => {
+        return typeof err === 'object' && err !== null && 'cause' in err;
+      };
+
+      const hasCode = (err: unknown): err is { code: string } => {
+        return typeof err === 'object' && err !== null && 'code' in err;
+      };
+
+      const hasStack = (err: unknown): err is { stack: string } => {
+        return typeof err === 'object' && err !== null && 'stack' in err;
+      };
+
       // Handle different error formats from typescript-fetch generator
-      if (error.response) {
+      if (hasResponse(error)) {
         console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
         console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-        console.error("Response Body:", error.body || error.response.body || error.response.data);
-      } else if (error.body) {
+        console.error("Response Body:", hasBody(error) ? error.body : error.response.body || error.response.data);
+      } else if (hasBody(error)) {
         console.error("Error Body:", error.body);
       } else {
         console.error("No response from server");
-        console.error("Error message:", error.message);
+        if (hasMessage(error)) {
+          console.error("Error message:", error.message);
+        }
         // Log additional error details if available
-        if (error.cause) {
+        if (hasCause(error)) {
           console.error("Error cause:", error.cause);
           // Log more details about the cause if it's an object
           if (typeof error.cause === 'object' && error.cause !== null) {
             console.error("Cause details:", JSON.stringify(error.cause, null, 2));
           }
         }
-        if (error.code) {
+        if (hasCode(error)) {
           console.error("Error code:", error.code);
         }
-        if (error.stack) {
+        if (hasStack(error)) {
           console.error("Error stack trace:", error.stack);
         }
       }
 
       // Try to extract error details from different possible locations
-      let errorBody = error.body || error.response?.body || error.response?.data;
+      let errorBody: unknown = hasBody(error) ? error.body : hasResponse(error) ? error.response.body || error.response.data : undefined;
       if (typeof errorBody === 'string') {
         try {
           errorBody = JSON.parse(errorBody);
@@ -67,17 +102,19 @@ export class EncryptedIndex {
 
       if (errorBody) {
         try {
-          if (typeof errorBody === 'object' && 'detail' in errorBody) {
-            if (Array.isArray(errorBody.detail)) {
+          if (typeof errorBody === 'object' && errorBody !== null && 'detail' in errorBody) {
+            const detailValue = (errorBody as { detail: unknown }).detail;
+            if (Array.isArray(detailValue)) {
               const err = errorBody as HTTPValidationError;
               throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
             } else {
               const err = errorBody as ErrorResponseModel;
-              throw new Error(`${err.statusCode || error.response?.statusCode || 'Unknown status'} - ${err.detail}`);
+              const statusCode = err.statusCode || (hasResponse(error) ? error.response.statusCode || error.response.status : undefined) || 'Unknown status';
+              throw new Error(`${statusCode} - ${err.detail}`);
             }
           }
         } catch (e) {
-          if (e instanceof Error && e.message.includes('Validation failed')) {
+          if (isError(e) && e.message.includes('Validation failed')) {
             throw e;
           }
           throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
@@ -85,17 +122,66 @@ export class EncryptedIndex {
       }
 
       // Provide more detailed error message for fetch failures
-      const statusCode = error.response?.statusCode || error.response?.status || 'Unknown';
-      let errorMessage = error.message || 'Unknown error';
+      const statusCode = hasResponse(error) ? error.response.statusCode || error.response.status : 'Unknown';
+      let errorMessage = hasMessage(error) ? error.message : 'Unknown error';
 
       // Enhance error message with additional context if available
-      if (error.message === 'fetch failed' && error.cause) {
-        errorMessage = `Network request failed: ${error.cause.message || error.cause}`;
-      } else if (error.code) {
+      if (hasMessage(error) && error.message === 'fetch failed' && hasCause(error)) {
+        const causeMsg = hasMessage(error.cause) ? error.cause.message : String(error.cause);
+        errorMessage = `Network request failed: ${causeMsg}`;
+      } else if (hasCode(error)) {
         errorMessage = `${errorMessage} (code: ${error.code})`;
       }
 
       throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
+    }
+
+    /**
+     * Type guard to check if value is an object
+     */
+    private isObject(value: unknown): value is Record<string, unknown> {
+      return typeof value === 'object' && value !== null;
+    }
+
+    /**
+     * Type guard to check if error has a response property
+     */
+    private hasResponseProperty(err: unknown): err is { response: unknown } {
+      return this.isObject(err) && 'response' in err;
+    }
+
+    /**
+     * Type guard to check if response has a body property
+     */
+    private hasBodyProperty(response: unknown): response is { body: unknown } {
+      return this.isObject(response) && 'body' in response;
+    }
+
+    /**
+     * Type guard to check if body has a detail property that is a string
+     */
+    private hasDetailString(body: unknown): body is { detail: string } {
+      return this.isObject(body) && 'detail' in body && typeof body.detail === 'string';
+    }
+
+    /**
+     * Safely extracts error detail string from nested error structure
+     * Returns the detail string if present, otherwise undefined
+     */
+    private extractErrorDetail(err: unknown): string | undefined {
+      if (!this.hasResponseProperty(err)) {
+        return undefined;
+      }
+
+      if (!this.hasBodyProperty(err.response)) {
+        return undefined;
+      }
+
+      if (!this.hasDetailString(err.response.body)) {
+        return undefined;
+      }
+
+      return err.response.body.detail;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
@@ -105,19 +191,30 @@ export class EncryptedIndex {
     this.api = api;
 
     // Normalize camelCase keys from potential snake_case input
-    this.indexConfig = {
-      ...indexConfig,
-      pqDim: indexConfig.pqDim ?? (indexConfig as any).pq_dim,
-      pqBits: indexConfig.pqBits ?? (indexConfig as any).pq_bits
+    // Only copy properties we want to keep, handling both camelCase and snake_case
+    const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number };
+    const isIVFPQ = indexConfig.type?.toLowerCase() === 'ivfpq';
+
+    // Build config with only necessary properties
+    const normalizedConfig: IndexConfig = {
+      dimension: indexConfig.dimension,
+      type: indexConfig.type,
+      pqDim: 0,  // Default values
+      pqBits: 0
     };
 
-    delete (this.indexConfig as any).pq_dim;
-    delete (this.indexConfig as any).pq_bits;
+    // Only add pqDim and pqBits for IVFPQ index type
+    if (isIVFPQ) {
+      normalizedConfig.pqDim = indexConfig.pqDim ?? legacyConfig.pq_dim ?? 0;
+      normalizedConfig.pqBits = indexConfig.pqBits ?? legacyConfig.pq_bits ?? 0;
+    }
+
+    this.indexConfig = normalizedConfig;
   }
 
 
   private async describeIndex(
-      indexName: string, 
+      indexName: string,
       indexKey: Uint8Array
     ): Promise<IndexInfoResponseModel> {
       try {
@@ -126,16 +223,16 @@ export class EncryptedIndex {
           indexName: indexName,
           indexKey: keyHex
         }
-        
+
         // Get the full response object
         const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
-        
+
         // Extract the body which contains the IndexInfoResponseModel
         return apiResponse;
-      } catch (error: any) {
+      } catch (error: unknown) {
         this.handleApiError(error);
       }
-    }  
+    }
     public async getIndexName(): Promise<string> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         return response.indexName;
@@ -150,7 +247,7 @@ export class EncryptedIndex {
     }
     public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
-        this.indexConfig = response.indexConfig as any as IndexConfig;
+        this.indexConfig = response.indexConfig as IndexConfig;
         // Return a copy to prevent external modification
         if (this.indexConfig.type === 'ivf_flat') {
             return { ...this.indexConfig } as IndexIVFFlatModel;
@@ -170,23 +267,24 @@ export class EncryptedIndex {
               indexName: this.indexName,
               indexKey: keyHex
             };
-                    
+
             // Call the getIndexInfo API first
             try {
             await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
-            } catch (infoError: any) {
+            } catch (infoError: unknown) {
             // Check if the error is specifically about the index not existing
-            if (infoError.response?.body?.detail?.includes('not exist')) {
+            const errorDetail = this.extractErrorDetail(infoError);
+            if (errorDetail?.includes('not exist')) {
                 return { status: 'success', message: `Index '${this.indexName}' was already deleted` };
             }
             // If it's another type of error, rethrow it
             throw infoError;
             }
-        
+
             const response = await this.api.deleteIndexV1IndexesDeletePost({indexOperationRequest: request});
-        
+
             return response;
-        } catch (error: any) {
+        } catch (error: unknown) {
             this.handleApiError(error);
         }
     }
@@ -203,16 +301,16 @@ export class EncryptedIndex {
       }: {
         ids: string[];
         include?: string[];
-      }) {
+      }): Promise<GetResultItem[]> {
         try {
           // Convert indexKey to hex string for transmission - matching other methods
           const keyHex = Buffer.from(this.indexKey).toString('hex');
-          
+
           const includeFields: string[] = [];
           if (include.includes("vector")) includeFields.push("vector");
           if (include.includes("contents")) includeFields.push("contents");
           if (include.includes("metadata")) includeFields.push("metadata");
-          
+
           const getRequest: GetRequest = {
             indexName: this.indexName,
             indexKey: keyHex,
@@ -227,11 +325,11 @@ export class EncryptedIndex {
           const items = responseBody.results || [];
 
           console.log(`[DEBUG] Got ${items.length} items in response`);
-          
+
           // Convert results to the expected format
-          return items.map((item: any) => {
-            const result: any = { id: item.id };
-            
+          return items.map((item): GetResultItem => {
+            const result: GetResultItem = { id: item.id };
+
             if (item.vector) result.vector = item.vector;
             if (item.contents) {
               // Check if it's a string that looks like base64
@@ -252,7 +350,7 @@ export class EncryptedIndex {
             if (item.metadata) result.metadata = item.metadata;
             return result;
           });
-        } catch (error: any) {
+        } catch (error: unknown) {
           this.handleApiError(error);
         }
       }
@@ -275,11 +373,11 @@ export class EncryptedIndex {
     batchSize?: number;
     maxIters?: number;
     tolerance?: number;
-  } = {}) {
+  } = {}): Promise<TrainResponse> {
     try {
       // Convert indexKey to hex string to match other methods
       const keyHex = Buffer.from(this.indexKey).toString('hex');
-      
+
       const trainRequest: TrainRequest = {
         indexName: this.indexName,
         indexKey: keyHex,
@@ -289,19 +387,19 @@ export class EncryptedIndex {
         nLists: nLists ?? undefined,
         maxMemory: undefined
       };
-      
+
       const response = await this.api.trainIndexV1IndexesTrainPost({trainRequest});
-      return response;
-    } catch (error: any) {
+      return response as TrainResponse;
+    } catch (error: unknown) {
       this.handleApiError(error);
     }
   }
 
   /**
    * Add or update vectors in the index
-   * 
+   *
    * This method accepts either items (VectorItem[]) or parallel arrays (ids + vectors)
-   * 
+   *
    * @param items Array of VectorItems containing id, vector, and optional metadata/contents
    * @param ids Array of ID strings for each vector (used with vectors parameter)
    * @param vectors Array of vector embeddings corresponding to each ID (used with ids parameter)
@@ -316,11 +414,11 @@ export class EncryptedIndex {
     items?: VectorItem[];
     ids?: string[];
     vectors?: number[][];
-  }): Promise<any> {
+  }): Promise<UpsertResponse> {
     try {
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(this.indexKey).toString('hex');
-      
+
       let finalItems: VectorItem[] = [];
 
       // Case 1: items provided
@@ -337,38 +435,38 @@ export class EncryptedIndex {
         // Validate each VectorItem in detail
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
-          
+
           if (!item || typeof item !== 'object') {
             throw new Error(`Invalid VectorItem at index ${i}: Item must be an object, got ${typeof item}`);
           }
-          
+
           if (!item.id) {
             throw new Error(`Invalid VectorItem at index ${i}: Missing required 'id' field. Each VectorItem must have an 'id' property.`);
           }
-          
+
           if (typeof item.id !== 'string') {
             throw new Error(`Invalid VectorItem at index ${i}: Field 'id' must be a string, got ${typeof item.id}`);
           }
-          
+
           if (!item.vector) {
             throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Missing required 'vector' field`);
           }
-          
+
           if (!Array.isArray(item.vector)) {
             throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`);
           }
-          
+
           if (item.vector.length === 0) {
             throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`);
           }
-          
+
           // Validate vector contains only numbers
           for (let j = 0; j < item.vector.length; j++) {
             if (typeof item.vector[j] !== 'number' || !isFinite(item.vector[j])) {
               throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`);
             }
           }
-          
+
           // Optional: validate metadata if present
           if (item.metadata !== undefined && item.metadata !== null && typeof item.metadata !== 'object') {
             throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'metadata' must be an object or null, got ${typeof item.metadata}`);
@@ -377,13 +475,13 @@ export class EncryptedIndex {
 
         finalItems = items;
       }
-      
+
       // Case 2: ids and vectors provided
       else if (ids !== undefined && vectors !== undefined) {
         if (!Array.isArray(ids)) {
           throw new Error("Invalid upsert call: ids must be an array of strings");
         }
-        
+
         if (!Array.isArray(vectors)) {
           throw new Error("Invalid upsert call: vectors must be an array of number arrays");
         }
@@ -391,7 +489,7 @@ export class EncryptedIndex {
         if (ids.length !== vectors.length) {
           throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${vectors.length} vectors provided. The number of IDs must match the number of vectors.`);
         }
-        
+
         if (ids.length === 0) {
           // Empty arrays are valid - just return early success
           return { status: 'success', message: 'No items to upsert' };
@@ -416,7 +514,7 @@ export class EncryptedIndex {
           if (vector.length === 0) {
             throw new Error(`Invalid vector at index ${i} (id: "${ids[i]}"): Vector array cannot be empty`);
           }
-          
+
           // Validate vector contains only numbers
           for (let j = 0; j < vector.length; j++) {
             if (typeof vector[j] !== 'number' || !isFinite(vector[j])) {
@@ -435,11 +533,11 @@ export class EncryptedIndex {
       } else {
         throw new Error("Invalid upsert call: Must provide either 'items' or both 'ids' and 'vectors'");
       }
-      
+
       // Convert items to the format expected by the API
       const processedItems: VectorItem[] = finalItems.map((item, index) => {
         let contentValue: string | undefined = undefined;
-        
+
         if (item.contents) {
           try {
             if (typeof item.contents === 'string') {
@@ -451,7 +549,7 @@ export class EncryptedIndex {
             throw new Error(`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
         }
-        
+
         return {
           id: item.id,
           vector: item.vector,
@@ -459,25 +557,31 @@ export class EncryptedIndex {
           metadata: item.metadata || undefined
         };
       });
-      
+
       const upsertRequest: UpsertRequest = {
         indexName: this.indexName,
         indexKey: keyHex,
         items: processedItems
       };
-      
+
       const response = await this.api.upsertVectorsV1VectorsUpsertPost({upsertRequest});
-      return response;
-    } catch (error: any) {
+      return response as UpsertResponse;
+    } catch (error: unknown) {
+      // Type guard for error with message
+      const hasMessage = (err: unknown): err is { message: string; stack?: string } => {
+        return typeof err === 'object' && err !== null && 'message' in err &&
+               typeof (err as { message: unknown }).message === 'string';
+      };
+
       // Enhance error handling for API errors
-      if (error.message && !error.message.startsWith('Invalid')) {
+      if (hasMessage(error) && !error.message.startsWith('Invalid')) {
         // This is likely an API error, enhance it with context
         const enhancedMessage = `Upsert operation failed: ${error.message}`;
         const enhancedError = new Error(enhancedMessage);
         enhancedError.stack = error.stack;
         throw enhancedError;
       }
-      
+
       // Re-throw validation errors as-is since they're already detailed
       throw error;
     }
@@ -510,7 +614,7 @@ export class EncryptedIndex {
     queryContents?: string;
     topK?: number;
     nProbes?: number;
-    filters?: object;
+    filters?: FilterExpression;
     include?: string[];
     greedy?: boolean;
   }): Promise<QueryResponse> {
@@ -566,8 +670,18 @@ export class EncryptedIndex {
       }
 
       return finalResponse;
-    } catch (error: any) {
-      console.error("Query error:", error.response?.data || error.message);
+    } catch (error: unknown) {
+      // Type guards for logging
+      const hasResponse = (err: unknown): err is { response: { data?: unknown } } => {
+        return typeof err === 'object' && err !== null && 'response' in err;
+      };
+      const hasMessage = (err: unknown): err is { message: string } => {
+        return typeof err === 'object' && err !== null && 'message' in err &&
+               typeof (err as { message: unknown }).message === 'string';
+      };
+
+      const errorData = hasResponse(error) ? error.response.data : hasMessage(error) ? error.message : 'Unknown error';
+      console.error("Query error:", errorData);
       this.handleApiError(error);
     }
   }
@@ -581,20 +695,20 @@ export class EncryptedIndex {
         ids
       }: {
         ids: string[];
-      }) {
+      }): Promise<DeleteResponse> {
           try {
           // Convert indexKey to hex string to match other methods
           const keyHex = Buffer.from(this.indexKey).toString('hex');
-          
+
           const deleteRequest: DeleteRequest = {
               indexName: this.indexName,
               indexKey: keyHex,
               ids: ids
           };
-          
+
           const response = await this.api.deleteVectorsV1VectorsDeletePost({deleteRequest});
-          return response;
-          } catch (error: any) {
+          return response as DeleteResponse;
+          } catch (error: unknown) {
           this.handleApiError(error);
           }
       }
@@ -607,20 +721,20 @@ export class EncryptedIndex {
         try {
           // Convert indexKey to hex string for transmission
           const keyHex = Buffer.from(this.indexKey).toString('hex');
-          
+
           const listIDsRequest: ListIDsRequest = {
             indexName: this.indexName,
             indexKey: keyHex
           };
-          
+
           const response = await this.api.listIdsV1VectorsListIdsPost({listIDsRequest});
           const responseBody: ListIDsResponse = response;
-          
+
           return {
             ids: responseBody.ids,
             count: responseBody.count
           };
-        } catch (error: any) {
+        } catch (error: unknown) {
           this.handleApiError(error);
         }
       }
