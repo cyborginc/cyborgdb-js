@@ -170,8 +170,9 @@ export interface GetResultItem extends Omit<GetResultItemModel, 'metadata' | 'co
 
 /**
  * Type guard to check if a value is a valid JSON value
+ * Handles circular references by tracking visited objects
  */
-export function isJsonValue(value: unknown): value is JsonValue {
+export function isJsonValue(value: unknown, visited: WeakSet<object> = new WeakSet()): value is JsonValue {
   if (value === null) return true;
 
   const type = typeof value;
@@ -180,11 +181,18 @@ export function isJsonValue(value: unknown): value is JsonValue {
   }
 
   if (Array.isArray(value)) {
-    return value.every(isJsonValue);
+    // Check for circular reference
+    if (visited.has(value)) return false;
+    visited.add(value);
+    return value.every(item => isJsonValue(item, visited));
   }
 
   if (type === 'object') {
-    return Object.values(value as object).every(isJsonValue);
+    const obj = value as object;
+    // Check for circular reference
+    if (visited.has(obj)) return false;
+    visited.add(obj);
+    return Object.values(obj).every(item => isJsonValue(item, visited));
   }
 
   return false;

@@ -136,6 +136,54 @@ export class EncryptedIndex {
       throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
     }
 
+    /**
+     * Type guard to check if value is an object
+     */
+    private isObject(value: unknown): value is Record<string, unknown> {
+      return typeof value === 'object' && value !== null;
+    }
+
+    /**
+     * Type guard to check if error has a response property
+     */
+    private hasResponseProperty(err: unknown): err is { response: unknown } {
+      return this.isObject(err) && 'response' in err;
+    }
+
+    /**
+     * Type guard to check if response has a body property
+     */
+    private hasBodyProperty(response: unknown): response is { body: unknown } {
+      return this.isObject(response) && 'body' in response;
+    }
+
+    /**
+     * Type guard to check if body has a detail property that is a string
+     */
+    private hasDetailString(body: unknown): body is { detail: string } {
+      return this.isObject(body) && 'detail' in body && typeof body.detail === 'string';
+    }
+
+    /**
+     * Safely extracts error detail string from nested error structure
+     * Returns the detail string if present, otherwise undefined
+     */
+    private extractErrorDetail(err: unknown): string | undefined {
+      if (!this.hasResponseProperty(err)) {
+        return undefined;
+      }
+
+      if (!this.hasBodyProperty(err.response)) {
+        return undefined;
+      }
+
+      if (!this.hasDetailString(err.response.body)) {
+        return undefined;
+      }
+
+      return err.response.body.detail;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
     constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, _embeddingModel?: string) {
     this.indexName = indexName;
@@ -143,21 +191,25 @@ export class EncryptedIndex {
     this.api = api;
 
     // Normalize camelCase keys from potential snake_case input
-    // Handle legacy snake_case property names if present
+    // Only copy properties we want to keep, handling both camelCase and snake_case
     const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number };
-    this.indexConfig = {
-      ...indexConfig,
-      pqDim: indexConfig.pqDim ?? legacyConfig.pq_dim,
-      pqBits: indexConfig.pqBits ?? legacyConfig.pq_bits
+    const isIVFPQ = indexConfig.type?.toLowerCase() === 'ivfpq';
+
+    // Build config with only necessary properties
+    const normalizedConfig: IndexConfig = {
+      dimension: indexConfig.dimension,
+      type: indexConfig.type,
+      pqDim: 0,  // Default values
+      pqBits: 0
     };
 
-    // Clean up legacy properties if they exist
-    if ('pq_dim' in this.indexConfig) {
-      delete (this.indexConfig as Record<string, unknown>).pq_dim;
+    // Only add pqDim and pqBits for IVFPQ index type
+    if (isIVFPQ) {
+      normalizedConfig.pqDim = indexConfig.pqDim ?? legacyConfig.pq_dim ?? 0;
+      normalizedConfig.pqBits = indexConfig.pqBits ?? legacyConfig.pq_bits ?? 0;
     }
-    if ('pq_bits' in this.indexConfig) {
-      delete (this.indexConfig as Record<string, unknown>).pq_bits;
-    }
+
+    this.indexConfig = normalizedConfig;
   }
 
 
@@ -221,18 +273,8 @@ export class EncryptedIndex {
             await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
             } catch (infoError: unknown) {
             // Check if the error is specifically about the index not existing
-            const hasResponseBody = (err: unknown): err is { response: { body: { detail: string } } } => {
-              return typeof err === 'object' && err !== null && 'response' in err &&
-                     typeof (err as { response: unknown }).response === 'object' &&
-                     (err as { response: { body?: unknown } }).response !== null &&
-                     'body' in (err as { response: { body?: unknown } }).response &&
-                     typeof (err as { response: { body?: { detail?: unknown } } }).response.body === 'object' &&
-                     (err as { response: { body: { detail?: unknown } } }).response.body !== null &&
-                     'detail' in (err as { response: { body: { detail?: unknown } } }).response.body &&
-                     typeof (err as { response: { body: { detail: unknown } } }).response.body.detail === 'string';
-            };
-
-            if (hasResponseBody(infoError) && infoError.response.body.detail.includes('not exist')) {
+            const errorDetail = this.extractErrorDetail(infoError);
+            if (errorDetail?.includes('not exist')) {
                 return { status: 'success', message: `Index '${this.indexName}' was already deleted` };
             }
             // If it's another type of error, rethrow it
