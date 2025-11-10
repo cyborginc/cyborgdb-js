@@ -48,3 +48,6 @@ export {
 
 // Export integrations
 export * from './integrations';
+
+// Export demo utilities
+export { getDemoApiKey } from './demo';
