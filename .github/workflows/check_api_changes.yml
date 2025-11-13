@@ -40,7 +40,7 @@ jobs:
           script: |
             const body = `## ⚠️ API Contract Change Detected
 
-            This PR modifies the public API contract of the CyborgDB Python SDK.
+            This PR modifies the public API contract of the CyborgDB JS SDK.
 
             **Please provide an explanation for this change:**
             - Why is this change necessary?
