@@ -904,6 +904,7 @@ describe('CyborgDB API Contract Tests', () => {
       
       const result = await (tempIndex.deleteIndex as any)('unexpected');
       expect(result).toBeDefined();
+    
     });
   });
 });
