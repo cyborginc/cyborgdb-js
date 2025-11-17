@@ -164,9 +164,23 @@ export class CyborgVectorStore extends VectorStore {
     options?: { ids?: string[] }
   ): Promise<string[]> {
     await this.initializeIndex();
-    
+
     if (!this.index) {
       throw new Error('Index not initialized');
+    }
+
+    // Validate that metadata doesn't contain reserved _content field
+    if (metadatas) {
+      const metadataArray = Array.isArray(metadatas) ? metadatas : [metadatas];
+      metadataArray.forEach((meta, idx) => {
+        if (meta && typeof meta === 'object' && '_content' in meta) {
+          throw new Error(
+            `Reserved field '_content' found in metadata at index ${idx}. ` +
+            `This field is used internally by CyborgVectorStore to store document text. ` +
+            `Please use a different field name for your metadata.`
+          );
+        }
+      });
     }
 
     const ids = options?.ids || texts.map(() => this.generateId());
@@ -215,10 +229,21 @@ export class CyborgVectorStore extends VectorStore {
     options?: { ids?: string[] }
   ): Promise<string[]> {
     await this.initializeIndex();
-    
+
     if (!this.index) {
       throw new Error('Index not initialized');
     }
+
+    // Validate that document metadata doesn't contain reserved _content field
+    documents.forEach((doc, idx) => {
+      if (doc.metadata && typeof doc.metadata === 'object' && '_content' in doc.metadata) {
+        throw new Error(
+          `Reserved field '_content' found in document metadata at index ${idx}. ` +
+          `This field is used internally by CyborgVectorStore to store document text. ` +
+          `Please use a different field name for your metadata.`
+        );
+      }
+    });
 
     const ids = options?.ids || documents.map(() => this.generateId());
     
@@ -271,7 +296,21 @@ export class CyborgVectorStore extends VectorStore {
 
     return response.map((item: GetResultItem) => {
       const metadata = { ...(item.metadata || {}) };
-      const content = typeof metadata._content === 'string' ? metadata._content : '';
+
+      let content = '';
+      if (metadata._content !== undefined) {
+        if (typeof metadata._content === 'string') {
+          content = metadata._content;
+        } else {
+          console.warn(
+            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+            `Expected string but got ${typeof metadata._content}. ` +
+            `This likely means the document was created using the native CyborgDB API. ` +
+            `The content will be set to an empty string. ` +
+            `To avoid this warning, use CyborgVectorStore methods to create documents.`
+          );
+        }
+      }
       delete metadata._content;
 
       return {
@@ -345,9 +384,23 @@ export class CyborgVectorStore extends VectorStore {
 
     return queryResults.map((item: QueryResultItem) => {
       const metadata = { ...(item.metadata || {}) };
-      const content = metadata._content || '';
+
+      let content = '';
+      if (metadata._content !== undefined) {
+        if (typeof metadata._content === 'string') {
+          content = metadata._content;
+        } else {
+          console.warn(
+            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+            `Expected string but got ${typeof metadata._content}. ` +
+            `This likely means the document was created using the native CyborgDB API. ` +
+            `The content will be set to an empty string. ` +
+            `To avoid this warning, use CyborgVectorStore methods to create documents.`
+          );
+        }
+      }
       delete metadata._content;
-      
+
       return {
         pageContent: content,
         metadata: {
@@ -368,14 +421,14 @@ export class CyborgVectorStore extends VectorStore {
     _callbacks?: any
   ): Promise<[DocumentInterface, number][]> {
     await this.initializeIndex();
-    
+
     if (!this.index) {
       throw new Error('Index not initialized');
     }
 
     // Generate embedding for query
     const embedding = await this.embeddings.embedQuery(query);
-    
+
     // Query the index
     const results = await this.index.query({
       queryVectors: embedding,
@@ -402,9 +455,23 @@ export class CyborgVectorStore extends VectorStore {
 
     return queryResults.map((item: QueryResultItem) => {
       const metadata = { ...(item.metadata || {}) };
-      const content = metadata._content || '';
+
+      let content = '';
+      if (metadata._content !== undefined) {
+        if (typeof metadata._content === 'string') {
+          content = metadata._content;
+        } else {
+          console.warn(
+            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+            `Expected string but got ${typeof metadata._content}. ` +
+            `This likely means the document was created using the native CyborgDB API. ` +
+            `The content will be set to an empty string. ` +
+            `To avoid this warning, use CyborgVectorStore methods to create documents.`
+          );
+        }
+      }
       delete metadata._content;
-      
+
       const doc: Document = {
         pageContent: content,
         metadata: {
@@ -412,10 +479,10 @@ export class CyborgVectorStore extends VectorStore {
           id: item.id
         }
       };
-      
+
       // Convert distance to similarity score
       const similarity = this.normalizeScore(item.distance || 0);
-      
+
       return [doc, similarity];
     });
   }
@@ -429,7 +496,7 @@ export class CyborgVectorStore extends VectorStore {
     filter?: this['FilterType']
   ): Promise<[DocumentInterface, number][]> {
     await this.initializeIndex();
-    
+
     if (!this.index) {
       throw new Error('Index not initialized');
     }
@@ -460,9 +527,23 @@ export class CyborgVectorStore extends VectorStore {
 
     return queryResults.map((item: QueryResultItem) => {
       const metadata = { ...(item.metadata || {}) };
-      const content = metadata._content || '';
+
+      let content = '';
+      if (metadata._content !== undefined) {
+        if (typeof metadata._content === 'string') {
+          content = metadata._content;
+        } else {
+          console.warn(
+            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+            `Expected string but got ${typeof metadata._content}. ` +
+            `This likely means the document was created using the native CyborgDB API. ` +
+            `The content will be set to an empty string. ` +
+            `To avoid this warning, use CyborgVectorStore methods to create documents.`
+          );
+        }
+      }
       delete metadata._content;
-      
+
       const doc: Document = {
         pageContent: content,
         metadata: {
@@ -470,10 +551,10 @@ export class CyborgVectorStore extends VectorStore {
           id: item.id
         }
       };
-      
+
       // Convert distance to similarity score
       const similarity = this.normalizeScore(item.distance || 0);
-      
+
       return [doc, similarity];
     });
   }

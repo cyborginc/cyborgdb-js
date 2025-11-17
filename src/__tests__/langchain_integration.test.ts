@@ -416,4 +416,205 @@ describe('CyborgDB LangChain Integration', () => {
       expect(Array.isArray(results)).toBe(true);
     });
   });
+
+  describe('Reserved Field Validation', () => {
+    test('should reject metadata with _content field in addTexts (single metadata)', async () => {
+      const texts = ['Test text'];
+      const metadatas = { _content: 'user provided', category: 'test' };
+
+      await expect(vectorStore.addTexts(texts, metadatas)).rejects.toThrow(
+        /Reserved field '_content' found in metadata/
+      );
+    });
+
+    test('should reject metadata with _content field in addTexts (array of metadata)', async () => {
+      const texts = ['Text 1', 'Text 2'];
+      const metadatas = [
+        { category: 'valid' },
+        { _content: 'invalid', category: 'test' }
+      ];
+
+      await expect(vectorStore.addTexts(texts, metadatas)).rejects.toThrow(
+        /Reserved field '_content' found in metadata at index 1/
+      );
+    });
+
+    test('should reject documents with _content in metadata via addDocuments', async () => {
+      const documents: Document[] = [
+        {
+          pageContent: 'Valid document',
+          metadata: { _content: 'should not be here', source: 'test' }
+        }
+      ];
+
+      await expect(vectorStore.addDocuments(documents)).rejects.toThrow(
+        /Reserved field '_content' found in metadata/
+      );
+    });
+
+    test('should reject documents with _content in metadata via addVectors', async () => {
+      const embeddings = new MockEmbeddings(384);
+      const vectors = await embeddings.embedDocuments(['Test text']);
+      const documents: Document[] = [
+        {
+          pageContent: 'Test content',
+          metadata: { _content: 'invalid', source: 'test' }
+        }
+      ];
+
+      await expect(vectorStore.addVectors(vectors, documents)).rejects.toThrow(
+        /Reserved field '_content' found in document metadata/
+      );
+    });
+
+    test('should allow metadata without _content field', async () => {
+      const texts = ['Valid text'];
+      const metadatas = [{ category: 'test', source: 'unittest', priority: 'high' }];
+
+      const ids = await vectorStore.addTexts(texts, metadatas);
+
+      expect(ids).toHaveLength(1);
+      expect(typeof ids[0]).toBe('string');
+    });
+  });
+
+  describe('Non-String _content Warnings', () => {
+    let consoleWarnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleWarnSpy.mockRestore();
+    });
+
+    test('should warn when get() encounters non-string _content', async () => {
+      // Use native API to insert data with non-string _content
+      const index = (vectorStore as any).index;
+      await (vectorStore as any).initializeIndex();
+
+      const testId = `warning_test_${Date.now()}`;
+      const embeddings = new MockEmbeddings(384);
+      const vector = await embeddings.embedQuery('test content');
+
+      // Insert via native API with number _content
+      await index.upsert({
+        items: [{
+          id: testId,
+          vector: vector,
+          metadata: { _content: 12345, category: 'test' }
+        }]
+      });
+
+      // Retrieve via LangChain integration
+      const docs = await vectorStore.get([testId]);
+
+      // Verify warning was logged
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[CyborgVectorStore] Non-string value found in \'_content\' field')
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`document '${testId}'`)
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('got number')
+      );
+
+      // Verify document is returned with empty pageContent
+      expect(docs).toHaveLength(1);
+      expect(docs[0].pageContent).toBe('');
+      expect(docs[0].metadata.category).toBe('test');
+      expect(docs[0].metadata._content).toBeUndefined();
+
+      // Cleanup
+      await index.delete({ ids: [testId] });
+    });
+
+    test('should warn when similaritySearch() encounters non-string _content', async () => {
+      // Use native API to insert data with non-string _content
+      const index = (vectorStore as any).index;
+      await (vectorStore as any).initializeIndex();
+
+      const testId = `warning_search_${Date.now()}`;
+      const embeddings = new MockEmbeddings(384);
+      const vector = await embeddings.embedQuery('searchable content');
+
+      // Insert via native API with object _content
+      await index.upsert({
+        items: [{
+          id: testId,
+          vector: vector,
+          metadata: { _content: { invalid: 'object' }, category: 'search' }
+        }]
+      });
+
+      // Search via LangChain integration
+      const results = await vectorStore.similaritySearch('searchable content', 5);
+
+      // Verify warning was logged
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[CyborgVectorStore] Non-string value found in \'_content\' field')
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('got object')
+      );
+
+      // Verify results were returned despite the warning
+      expect(Array.isArray(results)).toBe(true);
+
+      // Cleanup
+      await index.delete({ ids: [testId] });
+    });
+
+    test('should warn when similaritySearchWithScore() encounters non-string _content', async () => {
+      // Use native API to insert data with non-string _content
+      const index = (vectorStore as any).index;
+      await (vectorStore as any).initializeIndex();
+
+      const testId = `warning_score_${Date.now()}`;
+      const embeddings = new MockEmbeddings(384);
+      const vector = await embeddings.embedQuery('score test content');
+
+      // Insert via native API with boolean _content
+      await index.upsert({
+        items: [{
+          id: testId,
+          vector: vector,
+          metadata: { _content: true, category: 'score' }
+        }]
+      });
+
+      // Search with score via LangChain integration
+      const results = await vectorStore.similaritySearchWithScore('score test content', 5);
+
+      // Verify warning was logged
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[CyborgVectorStore] Non-string value found in \'_content\' field')
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('got boolean')
+      );
+
+      // Verify results were returned despite the warning
+      expect(Array.isArray(results)).toBe(true);
+
+      // Cleanup
+      await index.delete({ ids: [testId] });
+    });
+
+    test('should not warn when _content is a valid string', async () => {
+      const texts = ['Valid string content'];
+      const ids = await vectorStore.addTexts(texts);
+
+      const docs = await vectorStore.get(ids);
+
+      // Verify no warning was logged
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+
+      // Verify correct behavior
+      expect(docs).toHaveLength(1);
+      expect(docs[0].pageContent).toBe('Valid string content');
+    });
+  });
 });
