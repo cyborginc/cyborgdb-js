@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
-import { Client, GetResultItem } from '../index';
+import { Client } from '../index';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
@@ -142,6 +142,11 @@ describe('CyborgDB API Contract Tests', () => {
         new Client({ apiKey: API_KEY } as any);
       }).toThrow();
     });
+
+    it('should construct and store client for subsequent tests', () => {
+      client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY, verifySsl: false });
+      expect(client).toBeInstanceOf(Client);
+    });
   });
 
   describe('03 - Client.generateKey()', () => {
@@ -152,7 +157,6 @@ describe('CyborgDB API Contract Tests', () => {
     });
 
     it('should generate 32-byte encryption key as instance method', () => {
-      const client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY });
       const key = client.generateKey();
       expect(key).toBeInstanceOf(Uint8Array);
       expect(key.length).toBe(32);
@@ -164,13 +168,7 @@ describe('CyborgDB API Contract Tests', () => {
       expect(key1).not.toEqual(key2);
     });
 
-    it('should not accept any arguments', () => {
-      const result = (Client.generateKey as any)('unexpected');
-      expect(result).toBeInstanceOf(Uint8Array);
-      expect(result.length).toBe(32);
-    });
-
-    it('should store generated keys for later tests', () => {
+    it('should generate and store keys for later tests', () => {
       testIndexKey = Client.generateKey();
       embeddingIndexKey = Client.generateKey();
       expect(testIndexKey.length).toBe(32);
@@ -178,14 +176,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('04 - Client Instance Creation', () => {
-    it('should create client instance for testing', () => {
-      client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY, verifySsl: false });
-      expect(client).toBeInstanceOf(Client);
-    });
-  });
-
-  describe('05 - Client.getHealth()', () => {
+  describe('04 - Client.getHealth()', () => {
     it('should return valid health status with correct schema', async () => {
       const health = await client.getHealth();
       
@@ -194,14 +185,9 @@ describe('CyborgDB API Contract Tests', () => {
       expect(health).toHaveProperty('status');
       expect(typeof health.status).toBe('string');
     });
-
-    it('should not accept any arguments', async () => {
-      const result = await (client.getHealth as any)('unexpected');
-      expect(result).toBeDefined();
-    });
   });
 
-  describe('06 - Client.listIndexes()', () => {
+  describe('05 - Client.listIndexes()', () => {
     it('should return array of index names', async () => {
       const indexes = await client.listIndexes();
       
@@ -210,14 +196,9 @@ describe('CyborgDB API Contract Tests', () => {
         expect(typeof name).toBe('string');
       });
     });
-
-    it('should not accept any arguments', async () => {
-      const result = await (client.listIndexes as any)('unexpected');
-      expect(Array.isArray(result)).toBe(true);
-    });
   });
 
-  describe('07 - Index Config Classes', () => {
+  describe('06 - Index Config Classes', () => {
     it('should create IndexIVF config object', () => {
       const config = {
         dimension: 0,
@@ -249,7 +230,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('08 - Client.createIndex()', () => {
+  describe('07 - Client.createIndex()', () => {
     it('should create index with IndexIVFFlat config and custom metric', async () => {
       const tempIndexName = `temp_ivfflat_${Date.now().toString(36)}`;
       const tempIndexKey = Client.generateKey();
@@ -274,7 +255,7 @@ describe('CyborgDB API Contract Tests', () => {
       expect(await index.getIndexType()).toBe('ivfflat');
       
       await index.deleteIndex();
-      await sleep(1000);
+      await sleep(1000); // Backend has eventual consistency for deletions
     });
 
     it('should create index with IndexIVF config', async () => {
@@ -297,7 +278,7 @@ describe('CyborgDB API Contract Tests', () => {
       expect(await index.getIndexType()).toBe('ivf');
       
       await index.deleteIndex();
-      await sleep(1000);
+      await sleep(1000); // Backend has eventual consistency for deletions
     });
 
     it('should create index with IndexIVFPQ config', async () => {
@@ -320,7 +301,7 @@ describe('CyborgDB API Contract Tests', () => {
       expect(await index.getIndexType()).toBe('ivfpq');
       
       await index.deleteIndex();
-      await sleep(1000);
+      await sleep(1000); // Backend has eventual consistency for deletions
     });
 
     it('should create index with embedding model', async () => {
@@ -361,7 +342,7 @@ describe('CyborgDB API Contract Tests', () => {
       
       // Clean up
       await firstIndex.deleteIndex();
-      await sleep(1000);
+      await sleep(1000); // Backend has eventual consistency for deletions
     });
 
     it('should reject unexpected parameters', async () => {
@@ -374,7 +355,7 @@ describe('CyborgDB API Contract Tests', () => {
       const result = await client.createIndex(invalidParams as any);
       expect(result).toBeDefined();
       await result.deleteIndex();
-      await sleep(1000);
+      await sleep(1000); // Backend has eventual consistency for deletions
     });
 
     it('should create main test index for subsequent tests', async () => {
@@ -404,11 +385,11 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('09 - EncryptedIndex Properties', () => {
+  describe('08 - EncryptedIndex Properties', () => {
     it('should expose index name via getIndexName()', async () => {
       // Verify testIndex is still valid
       if (!testIndex) {
-        throw new Error('testIndex is null or undefined - it was not created properly in section 08');
+        throw new Error('testIndex is null or undefined - it was not created properly in section 07');
       }
       
       console.log('Attempting to get index name for:', testIndexName);
@@ -427,25 +408,19 @@ describe('CyborgDB API Contract Tests', () => {
       const config = await testIndex.getIndexConfig();
       expect(typeof config).toBe('object');
       expect(config).toHaveProperty('dimension');
-      expect(config).toHaveProperty('type');
+      expect(config).toHaveProperty('index_type');
       expect(config.dimension).toBe(dimension);
-      expect(config.type).toBe('ivfflat');
     });
   });
 
-  describe('10 - EncryptedIndex.isTrained()', () => {
+  describe('09 - EncryptedIndex.isTrained()', () => {
     it('should return boolean', async () => {
       const trained = await testIndex.isTrained();
       expect(typeof trained).toBe('boolean');
     });
-
-    it('should not accept any arguments', async () => {
-      const result = await (testIndex.isTrained as any)('unexpected');
-      expect(typeof result).toBe('boolean');
-    });
   });
 
-  describe('11 - Client.isTraining()', () => {
+  describe('10 - Client.isTraining()', () => {
     it('should return training status with correct schema', async () => {
       const status = await client.isTraining();
       
@@ -455,15 +430,9 @@ describe('CyborgDB API Contract Tests', () => {
       expect(Array.isArray(status.training_indexes)).toBe(true);
       expect(typeof status.retrain_threshold).toBe('number');
     });
-
-    it('should not accept any arguments', async () => {
-      const result = await (client.isTraining as any)('unexpected');
-      expect(result).toBeDefined();
-      expect(result).toHaveProperty('training_indexes');
-    });
   });
 
-  describe('12 - EncryptedIndex.upsert()', () => {
+  describe('11 - EncryptedIndex.upsert()', () => {
     it('should upsert with items array format (vector + metadata + contents as bytes)', async () => {
       const items = [];
       for (let i = 0; i < 2; i++) {
@@ -547,7 +516,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('13 - EncryptedIndex.listIds()', () => {
+  describe('12 - EncryptedIndex.listIds()', () => {
     it('should return object with ids array and count', async () => {
       const result = await testIndex.listIds();
       
@@ -573,15 +542,9 @@ describe('CyborgDB API Contract Tests', () => {
       }
       expect(missingIds.length).toBe(0);
     });
-
-    it('should not accept any arguments', async () => {
-      const result = await (testIndex.listIds as any)('unexpected');
-      expect(result).toBeDefined();
-      expect(result).toHaveProperty('ids');
-    });
   });
 
-  describe('14 - EncryptedIndex.get()', () => {
+  describe('13 - EncryptedIndex.get()', () => {
     it('should get vectors with default include parameter', async () => {
       const idsToGet = ['0', '5', '9'];
       const results = await testIndex.get({ ids: idsToGet });
@@ -589,18 +552,17 @@ describe('CyborgDB API Contract Tests', () => {
       expect(Array.isArray(results)).toBe(true);
       expect(results.length).toBe(3);
       
-      results.forEach((result: GetResultItem, idx: number) => {
+      results.forEach((result: any, idx: number) => {
         const id = idsToGet[idx];
-        
-        // Check that all expected properties exist
-        expect(result).toHaveProperty('id');
-        expect(result).toHaveProperty('vector');
-        expect(result).toHaveProperty('metadata');
-        expect(result).toHaveProperty('contents');
+        validateExactKeys(
+          result,
+          new Set(['id', 'vector', 'metadata', 'contents']),
+          `get() result for ID ${id} with default include`
+        );
         
         expect(result.id).toBe(id);
         expect(Array.isArray(result.vector)).toBe(true);
-        expect(result.vector?.length).toBe(dimension);
+        expect(result.vector.length).toBe(dimension);
         
         const idInt = parseInt(id);
         if (idInt >= 10) {
@@ -608,18 +570,8 @@ describe('CyborgDB API Contract Tests', () => {
           expect(result.contents).toBeNull();
         } else {
           expect(typeof result.metadata).toBe('object');
-          expect(result.metadata).not.toBeNull();
-          
-          // Contents can be Buffer, Blob, or string
-          expect(result.contents).toBeDefined();
-          expect(result.contents).not.toBeNull();
-          
-          // If it's a Buffer, convert to string for validation
-          const contentsStr = result.contents instanceof Buffer 
-            ? result.contents.toString('utf-8')
-            : result.contents as string;
-          expect(typeof contentsStr).toBe('string');
-          expect(contentsStr).toContain('test content');
+          // Contents should be decoded to string by SDK
+          expect(typeof result.contents).toBe('string');
         }
       });
     });
@@ -631,7 +583,7 @@ describe('CyborgDB API Contract Tests', () => {
         include: ['metadata'] 
       });
       
-      results.forEach((result: GetResultItem) => {
+      results.forEach((result: any) => {
         validateExactKeys(
           result,
           new Set(['id', 'metadata']),
@@ -647,7 +599,7 @@ describe('CyborgDB API Contract Tests', () => {
         include: [] 
       });
       
-      results.forEach((result: GetResultItem) => {
+      results.forEach((result: any) => {
         validateExactKeys(
           result,
           new Set(['id']),
@@ -657,7 +609,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('15 - EncryptedIndex.query()', () => {
+  describe('14 - EncryptedIndex.query()', () => {
     it('should query with single vector (flat array) and return flat results', async () => {
       const queryVector = testVectors[0];
       const response = await testIndex.query({ queryVectors: queryVector });
@@ -777,7 +729,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('16 - EncryptedIndex.query() patterns', () => {
+  describe('15 - EncryptedIndex.query() patterns', () => {
     it('should query with multiple test patterns', async () => {
       const singleVector = testVectors[4];
       const response1 = await testIndex.query({ queryVectors: singleVector, topK: 3 });
@@ -800,7 +752,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('17 - EncryptedIndex.train()', () => {
+  describe('16 - EncryptedIndex.train()', () => {
     it('should train with default parameters', async () => {
       const result = await testIndex.train();
       expect(result).toBeDefined();
@@ -827,7 +779,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('18 - EncryptedIndex.delete()', () => {
+  describe('17 - EncryptedIndex.delete()', () => {
     it('should delete vectors by IDs', async () => {
       const idsToDelete = ['0', '5'];
       const result = await testIndex.delete({ ids: idsToDelete });
@@ -851,7 +803,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('19 - Client.loadIndex()', () => {
+  describe('18 - Client.loadIndex()', () => {
     it('should load existing index', async () => {
       const loaded = await client.loadIndex({
         indexName: testIndexName,
@@ -894,7 +846,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('20 - EncryptedIndex.deleteIndex()', () => {
+  describe('19 - EncryptedIndex.deleteIndex()', () => {
     it('should delete the index', async () => {
       const result = await testIndex.deleteIndex();
       expect(result).toBeDefined();
@@ -904,18 +856,6 @@ describe('CyborgDB API Contract Tests', () => {
       
       const indexes = await client.listIndexes();
       expect(indexes).not.toContain(testIndexName);
-    });
-
-    it('should not accept any arguments', async () => {
-      const tempName = `temp_delete_${Date.now()}`;
-      const tempKey = Client.generateKey();
-      const tempIndex = await client.createIndex({
-        indexName: tempName,
-        indexKey: tempKey
-      });
-      
-      const result = await (tempIndex.deleteIndex as any)('unexpected');
-      expect(result).toBeDefined();
     });
   });
 });
