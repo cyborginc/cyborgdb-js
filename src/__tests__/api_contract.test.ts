@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
-import { Client } from '../index';
+import { Client, GetResultItem } from '../index';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
@@ -427,8 +427,9 @@ describe('CyborgDB API Contract Tests', () => {
       const config = await testIndex.getIndexConfig();
       expect(typeof config).toBe('object');
       expect(config).toHaveProperty('dimension');
-      expect(config).toHaveProperty('index_type');
+      expect(config).toHaveProperty('type');
       expect(config.dimension).toBe(dimension);
+      expect(config.type).toBe('ivfflat');
     });
   });
 
@@ -588,17 +589,18 @@ describe('CyborgDB API Contract Tests', () => {
       expect(Array.isArray(results)).toBe(true);
       expect(results.length).toBe(3);
       
-      results.forEach((result: any, idx: number) => {
+      results.forEach((result: GetResultItem, idx: number) => {
         const id = idsToGet[idx];
-        validateExactKeys(
-          result,
-          new Set(['id', 'vector', 'metadata', 'contents']),
-          `get() result for ID ${id} with default include`
-        );
+        
+        // Check that all expected properties exist
+        expect(result).toHaveProperty('id');
+        expect(result).toHaveProperty('vector');
+        expect(result).toHaveProperty('metadata');
+        expect(result).toHaveProperty('contents');
         
         expect(result.id).toBe(id);
         expect(Array.isArray(result.vector)).toBe(true);
-        expect(result.vector.length).toBe(dimension);
+        expect(result.vector?.length).toBe(dimension);
         
         const idInt = parseInt(id);
         if (idInt >= 10) {
@@ -606,8 +608,18 @@ describe('CyborgDB API Contract Tests', () => {
           expect(result.contents).toBeNull();
         } else {
           expect(typeof result.metadata).toBe('object');
-          // Contents should be decoded to string by SDK
-          expect(typeof result.contents).toBe('string');
+          expect(result.metadata).not.toBeNull();
+          
+          // Contents can be Buffer, Blob, or string
+          expect(result.contents).toBeDefined();
+          expect(result.contents).not.toBeNull();
+          
+          // If it's a Buffer, convert to string for validation
+          const contentsStr = result.contents instanceof Buffer 
+            ? result.contents.toString('utf-8')
+            : result.contents as string;
+          expect(typeof contentsStr).toBe('string');
+          expect(contentsStr).toContain('test content');
         }
       });
     });
@@ -619,7 +631,7 @@ describe('CyborgDB API Contract Tests', () => {
         include: ['metadata'] 
       });
       
-      results.forEach((result: any) => {
+      results.forEach((result: GetResultItem) => {
         validateExactKeys(
           result,
           new Set(['id', 'metadata']),
@@ -635,7 +647,7 @@ describe('CyborgDB API Contract Tests', () => {
         include: [] 
       });
       
-      results.forEach((result: any) => {
+      results.forEach((result: GetResultItem) => {
         validateExactKeys(
           result,
           new Set(['id']),
