@@ -346,14 +346,19 @@ describe('TestUnitFlow', () => {
         for (let i = 0; i < getResults.length; i++) {
             const getResult = getResults[i];
             expect(getResult.id).toBe(getIndicesStr[i]);
-            
+
             // Check vector equality
             const expectedVector = vectors[getIndices[i]];
             expect(getResult.vector).toEqual(expectedVector);
-            
+
             // Check metadata equality
-            const metadataStr = JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort());
-            const expectedMetadataStr = JSON.stringify(metadata[getIndices[i]], Object.keys(metadata[getIndices[i]]).sort());
+            const metadataStr = getResult.metadata
+              ? JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort())
+              : 'null';
+            const expectedMetadata = metadata[getIndices[i]];
+            const expectedMetadataStr = expectedMetadata
+              ? JSON.stringify(expectedMetadata, Object.keys(expectedMetadata).sort())
+              : 'null';
             expect(metadataStr).toBe(expectedMetadataStr);
         }
 
@@ -660,14 +665,19 @@ describe('TestUnitFlow', () => {
         for (let i = 0; i < getResults.length; i++) {
             const getResult = getResults[i];
             expect(getResult.id).toBe(getIndicesStr[i]);
-            
+
             // Check vector equality
             const expectedVector = vectors[getIndices[i]];
             expect(getResult.vector).toEqual(expectedVector);
-            
+
             // Check metadata equality
-            const metadataStr = JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort());
-            const expectedMetadataStr = JSON.stringify(metadata[getIndices[i]], Object.keys(metadata[getIndices[i]]).sort());
+            const metadataStr = getResult.metadata
+              ? JSON.stringify(getResult.metadata, Object.keys(getResult.metadata).sort())
+              : 'null';
+            const expectedMetadata = metadata[getIndices[i]];
+            const expectedMetadataStr = expectedMetadata
+              ? JSON.stringify(expectedMetadata, Object.keys(expectedMetadata).sort())
+              : 'null';
             expect(metadataStr).toBe(expectedMetadataStr);
         }
     });
