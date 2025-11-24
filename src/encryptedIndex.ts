@@ -448,22 +448,26 @@ export class EncryptedIndex {
             throw new Error(`Invalid VectorItem at index ${i}: Field 'id' must be a string, got ${typeof item.id}`);
           }
 
-          if (!item.vector) {
-            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Missing required 'vector' field`);
+          // Vector is required unless contents is provided (for auto-embedding)
+          if (!item.vector && !item.contents) {
+            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Must provide either 'vector' or 'contents' field`);
           }
 
-          if (!Array.isArray(item.vector)) {
-            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`);
-          }
+          // Validate vector if provided
+          if (item.vector) {
+            if (!Array.isArray(item.vector)) {
+              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`);
+            }
 
-          if (item.vector.length === 0) {
-            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`);
-          }
+            if (item.vector.length === 0) {
+              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`);
+            }
 
-          // Validate vector contains only numbers
-          for (let j = 0; j < item.vector.length; j++) {
-            if (typeof item.vector[j] !== 'number' || !isFinite(item.vector[j])) {
-              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`);
+            // Validate vector contains only numbers
+            for (let j = 0; j < item.vector.length; j++) {
+              if (typeof item.vector[j] !== 'number' || !isFinite(item.vector[j])) {
+                throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`);
+              }
             }
           }
 
