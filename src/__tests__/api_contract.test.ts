@@ -570,8 +570,8 @@ describe('CyborgDB API Contract Tests', () => {
           expect(result.contents).toBeNull();
         } else {
           expect(typeof result.metadata).toBe('object');
-          // Contents for the ids were upserted as buffer object 
-          expect(typeof result.contents).toBe('object');
+          // Contents should be decoded to string by SDK
+          expect(typeof result.contents).toBe('string');
         }
       });
     });
