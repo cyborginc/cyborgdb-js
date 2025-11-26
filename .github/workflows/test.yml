@@ -69,8 +69,6 @@ jobs:
           ref: main
           path: cyborgdb-service
           token: ${{ secrets.CYBORGDB_SERVICE_TOKEN }}
-          fetch-depth: 0  # Get full history for version detection
-          fetch-tags: true  # Fetch all tags
           
       - name: Install service dependencies
         run: |
