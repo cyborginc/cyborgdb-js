@@ -335,8 +335,8 @@ export class EncryptedIndex {
               // Check if it's a string that looks like base64
               if (typeof item.contents === 'string') {
                 try {
-                  // Try to decode as base64, but be prepared for it not to be base64
-                  result.contents = Buffer.from(item.contents, 'base64');
+                  // Decode base64 to string (UTF-8)
+                  result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
                 } catch (e) {
                   // If decoding fails, use it as is
                   result.contents = item.contents;
@@ -435,7 +435,7 @@ export class EncryptedIndex {
         // Validate each VectorItem in detail
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
-
+ 
           if (!item || typeof item !== 'object') {
             throw new Error(`Invalid VectorItem at index ${i}: Item must be an object, got ${typeof item}`);
           }
@@ -448,22 +448,26 @@ export class EncryptedIndex {
             throw new Error(`Invalid VectorItem at index ${i}: Field 'id' must be a string, got ${typeof item.id}`);
           }
 
-          if (!item.vector) {
-            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Missing required 'vector' field`);
+          // Vector is required unless contents is provided (for auto-embedding)
+          if (!item.vector && !item.contents) {
+            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Must provide either 'vector' or 'contents' field`);
           }
 
-          if (!Array.isArray(item.vector)) {
-            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`);
-          }
+          // Validate vector if provided
+          if (item.vector) {
+            if (!Array.isArray(item.vector)) {
+              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`);
+            }
 
-          if (item.vector.length === 0) {
-            throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`);
-          }
+            if (item.vector.length === 0) {
+              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`);
+            }
 
-          // Validate vector contains only numbers
-          for (let j = 0; j < item.vector.length; j++) {
-            if (typeof item.vector[j] !== 'number' || !isFinite(item.vector[j])) {
-              throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`);
+            // Validate vector contains only numbers
+            for (let j = 0; j < item.vector.length; j++) {
+              if (typeof item.vector[j] !== 'number' || !isFinite(item.vector[j])) {
+                throw new Error(`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`);
+              }
             }
           }
 

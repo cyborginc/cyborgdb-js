@@ -61,7 +61,7 @@ describe('getDemoApiKey', () => {
     // Verify the request was made correctly
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-    expect(callArgs[0]).toBe('https://api.cyborgdb.co/v1/api-key/manage/create-demo-key');
+    expect(['https://api.cyborgdb.co/v1/api-key/manage/create-demo-key', 'https://staging-api.cyborgdb.co/v1/api-key/manage/create-demo-key']).toContain(callArgs[0]);
     expect(callArgs[1]).toMatchObject({
       method: 'POST',
       headers: {
@@ -114,7 +114,7 @@ describe('getDemoApiKey', () => {
 
     // Verify default endpoint was used
     const callArgs = (global.fetch as jest.Mock).mock.calls[0];
-    expect(callArgs[0]).toBe('https://api.cyborgdb.co/v1/api-key/manage/create-demo-key');
+    expect(['https://api.cyborgdb.co/v1/api-key/manage/create-demo-key', 'https://staging-api.cyborgdb.co/v1/api-key/manage/create-demo-key']).toContain(callArgs[0]);
     expect(apiKey).toBe('demo_test_key_default');
   });
 

@@ -626,12 +626,12 @@ describe('CyborgDB API Contract Tests', () => {
         firstQueryResults.forEach((match: any) => {
           validateExactKeys(
             match,
-            new Set(['id', 'score']),
+            new Set(['id', 'distance']),
             'query() result item'
           );
           expect(typeof match.id).toBe('string');
-          expect(typeof match.score).toBe('number');
-          expect(match.score).toBeGreaterThanOrEqual(0);
+          expect(typeof match.distance).toBe('number');
+          expect(match.distance).toBeGreaterThanOrEqual(0);
         });
       }
     });
@@ -679,8 +679,8 @@ describe('CyborgDB API Contract Tests', () => {
         const firstResults = Array.isArray(results[0]) ? results[0] : results;
         if (firstResults.length > 0) {
           const firstResult = firstResults[0];
-          // Score should ALWAYS be present in query results
-          const expectedKeys = new Set(['id', 'score', 'metadata']);
+          // Distance should ALWAYS be present in query results
+          const expectedKeys = new Set(['id', 'distance', 'metadata']);
           validateExactKeys(
             firstResult,
             expectedKeys,
