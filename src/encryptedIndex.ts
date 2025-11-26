@@ -435,7 +435,7 @@ export class EncryptedIndex {
         // Validate each VectorItem in detail
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
-
+ 
           if (!item || typeof item !== 'object') {
             throw new Error(`Invalid VectorItem at index ${i}: Item must be an object, got ${typeof item}`);
           }
