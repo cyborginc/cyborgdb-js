@@ -335,8 +335,8 @@ export class EncryptedIndex {
               // Check if it's a string that looks like base64
               if (typeof item.contents === 'string') {
                 try {
-                  // Try to decode as base64, but be prepared for it not to be base64
-                  result.contents = Buffer.from(item.contents, 'base64');
+                  // Decode base64 to string (UTF-8)
+                  result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
                 } catch (e) {
                   // If decoding fails, use it as is
                   result.contents = item.contents;
