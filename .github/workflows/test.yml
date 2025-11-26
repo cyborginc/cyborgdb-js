@@ -61,6 +61,15 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.13'
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TOKEN }}
+          PIP_EXTRA_INDEX_URL: "op://CyborgDB/CyborgDB Dev/PIP_EXTRA_INDEX_URL"
+          CYBORGDB_API_KEY: "op://CyborgDB/CyborgDB Dev/CYBORGDB_API_KEY"
           
       - name: Checkout cyborgdb-service repository
         uses: actions/checkout@v4
@@ -80,7 +89,7 @@ jobs:
       - name: Install cyborgdb-service from source
         run: |
           # Install the server from the cloned repository
-          pip install ./cyborgdb-service
+          pip install ./cyborgdb-service --extra-index-url "${PIP_EXTRA_INDEX_URL}"
           
       - name: Install SDK dependencies
         run: |
@@ -88,25 +97,6 @@ jobs:
 
       - name: Build SDK
         run: npm run build
-        
-      - name: Load Demo API Key
-        run: |
-          echo "=== Loading Demo API Key ==="
-          
-          # Get output and extract only the line that looks like a demo key
-          OUTPUT=$(node -e "const { getDemoApiKey } = require('./dist/index.js'); getDemoApiKey().then(key => console.log(key));" 2>&1)
-          
-          # Extract the demo key (starts with 'cyborg_demo_')
-          CYBORGDB_API_KEY=$(echo "$OUTPUT" | grep -E '^cyborg_demo_[a-zA-Z0-9_-]+$' | head -n 1)
-          
-          if [ -z "$CYBORGDB_API_KEY" ]; then
-            echo "Error: Failed to generate demo API key"
-            echo "Output was: $OUTPUT"
-            exit 1
-          fi
-          
-          echo "CYBORGDB_API_KEY=$CYBORGDB_API_KEY" >> $GITHUB_ENV
-          echo "Demo API key loaded successfully"
           
       - name: Test with Standard version
         run: |
