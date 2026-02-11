@@ -14,6 +14,7 @@ import {
     IndexIVFFlatModel,
     IndexIVFModel,
     IndexIVFPQModel,
+    IndexIVFSQModel,
     IndexInfoResponseModel,
     Request,
     ListIDsRequest,
@@ -245,7 +246,7 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         return response.isTrained;
     }
-    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel> {
+    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel | IndexIVFSQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         this.indexConfig = response.indexConfig as IndexConfig;
         // Return a copy to prevent external modification
@@ -253,6 +254,8 @@ export class EncryptedIndex {
             return { ...this.indexConfig } as IndexIVFFlatModel;
         } else if (this.indexConfig.type === 'ivf_pq') {
             return { ...this.indexConfig } as IndexIVFPQModel;
+        } else if (this.indexConfig.type === 'ivf_sq') {
+            return { ...this.indexConfig } as IndexIVFSQModel;
         } else {
             return { ...this.indexConfig } as IndexIVFModel;
     }}
