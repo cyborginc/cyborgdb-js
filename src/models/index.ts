@@ -15,6 +15,7 @@ export * from './IndexConfig';
 export * from './IndexIVFFlatModel';
 export * from './IndexIVFModel';
 export * from './IndexIVFPQModel';
+export * from './IndexIVFSQModel';
 export * from './IndexInfoResponseModel';
 export * from './IndexListResponseModel';
 export * from './IndexOperationRequest';
