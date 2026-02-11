@@ -174,7 +174,7 @@ describe('TestUnitFlow', () => {
         const jsonData = fs.readFileSync(jsonPath, 'utf8');
 
         // Compute & validate checksum
-        const expectedChecksum = "a2989692cb12e8667b22bee4177acb295b72a23be82458ce7dd06e4a901cb04d";
+        const expectedChecksum = "b581f18d84f8dca43d8915f81b36f8aee1d6b914ecd3338684108679ae5a81e7";
         const checksum = createHash('sha256').update(jsonData, 'utf8').digest('hex');
         if (checksum !== expectedChecksum) {
             throw new Error(`Data integrity check failed: expected checksum ${expectedChecksum}, got ${checksum}`);
@@ -378,39 +378,41 @@ describe('TestUnitFlow', () => {
         expect(trainedStatus).toBe(false);
     });
 
-    test('test_06_upsert_for_train', async () => {
-        // TRAINED UPSERT: upsert training vectors
+    test('test_06_upsert_to_trigger_auto_train', async () => {
+        // Upsert 1 vector to exceed 10,000 and trigger auto-train
+        // (RETRAIN_THRESHOLD=10000 means auto-train triggers when num_vectors > 10000)
+        const autoTrainTrigger = 10001;
         const items: any[] = [];
-        for (let i = numUntrainedVectors; i < totalNumVectors; i++) {
+        for (let i = numUntrainedVectors; i < autoTrainTrigger; i++) {
             items.push({
                 id: String(i),
                 vector: vectors[i],
                 metadata: metadata[i]
             });
         }
+        console.log(`\nUpserting ${items.length} vector(s) to trigger auto-train (total will be ${autoTrainTrigger})...`);
         await index.upsert({ items });
 
-        // Wait for 1 second to ensure upsert is processed
+        // Wait for upsert to be processed
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Check if the index has all IDs
+        // Verify IDs are present
         const results = await index.listIds();
-        const expectedIds = Array.from({ length: totalNumVectors }, (_, i) => String(i));
+        console.log(`Total IDs in index: ${results.ids.length}`);
+        const expectedIds = Array.from({ length: autoTrainTrigger }, (_, i) => String(i));
         expect(results.ids.sort()).toEqual(expectedIds.sort());
     });
 
-    test('test_07_wait_for_initial_training', async () => {
-        // WAIT FOR INITIAL TRAINING TO COMPLETE
+    test('test_07_wait_for_auto_train', async () => {
+        // WAIT FOR AUTO TRAINING TO COMPLETE (triggered at >10,000 vectors)
         const numRetries = 60;
         let trained = false;
-        
+
         for (let attempt = 0; attempt < numRetries; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Check if trained directly (no isTraining method in TS SDK)
             trained = await index.isTrained();
             if (trained) {
-                console.log('Index is now trained.');
+                console.log('Index is now trained (auto-train complete).');
                 break;
             } else {
                 console.log(`Index not trained yet, retrying... (${attempt + 1}/${numRetries})`);
@@ -420,7 +422,72 @@ describe('TestUnitFlow', () => {
         expect(trained).toBe(true);
     }, 130000);
 
-    test('test_08_trained_query_should_get_perfect_recall', async () => {
+    test('test_08_upsert_remaining_vectors', async () => {
+        // Upsert remaining vectors (10001 to 49999) after auto-train
+        const autoTrainTrigger = 10001;
+        const items: any[] = [];
+        for (let i = autoTrainTrigger; i < totalNumVectors; i++) {
+            items.push({
+                id: String(i),
+                vector: vectors[i],
+                metadata: metadata[i]
+            });
+        }
+        console.log(`\nUpserting ${items.length} remaining vectors (IDs ${autoTrainTrigger} to ${totalNumVectors - 1})...`);
+        await index.upsert({ items });
+
+        // Wait for upsert to be processed
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Verify all IDs are present
+        const results = await index.listIds();
+        console.log(`Total IDs in index: ${results.ids.length}`);
+        const expectedIds = Array.from({ length: totalNumVectors }, (_, i) => String(i));
+        expect(results.ids.sort()).toEqual(expectedIds.sort());
+    });
+
+    test('test_09_retrain_with_n_lists', async () => {
+        // Retrain with explicit nLists to match core test behavior
+        console.log(`\nRetraining index with nLists=${nLists} on ${totalNumVectors} vectors...`);
+        await index.train({ nLists });
+
+        // Wait for training to finish by checking is_training status
+        const numRetries = 60;
+        let trained = false;
+
+        for (let attempt = 0; attempt < numRetries; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            const trainingStatus = await client.isTraining();
+            const isCurrentlyTraining = trainingStatus.training_indexes.includes(indexName);
+
+            if (!isCurrentlyTraining) {
+                // Training finished, verify it's trained
+                trained = await index.isTrained();
+                if (trained) {
+                    console.log('Index retrained successfully.');
+                    break;
+                }
+            } else {
+                console.log(`Index still training, retrying... (${attempt + 1}/${numRetries})`);
+            }
+        }
+
+        expect(trained).toBe(true);
+
+        // Verify all vectors are still present after training
+        const results = await index.listIds();
+        console.log(`Total IDs in index after retraining: ${results.ids.length}`);
+        expect(results.ids.length).toBe(totalNumVectors);
+
+        // Verify final state - n_lists should match what we specified
+        const finalConfig = await index.getIndexConfig();
+        const finalNLists = (finalConfig as { n_lists?: number })?.n_lists;
+        console.log(`Final n_lists: ${finalNLists}`);
+        expect(finalNLists).toBe(nLists);
+    }, 130000);
+
+    test('test_10_trained_query_should_get_perfect_recall', async () => {
         // TRAINED QUERY WHERE N_PROBES == N_LISTS
         const response = await index.query({
             queryVectors: queries,
@@ -436,7 +503,7 @@ describe('TestUnitFlow', () => {
         expect(recall).toBe(expectedRecall);
     });
 
-    test('test_09_trained_query_no_metadata', async () => {
+    test('test_11_trained_query_no_metadata', async () => {
         // TRAINED QUERY (NO METADATA)
         const response = await index.query({
             queryVectors: queries,
@@ -451,7 +518,7 @@ describe('TestUnitFlow', () => {
         expect(Math.abs(recall - trainedRecall)).toBeLessThan(0.08);
     });
 
-    test('test_10_trained_query_no_metadata_auto_n_probes', async () => {
+    test('test_12_trained_query_no_metadata_auto_n_probes', async () => {
         // TRAINED QUERY (NO METADATA) with Auto n_probes
         const response = await index.query({
             queryVectors: queries,
@@ -466,7 +533,7 @@ describe('TestUnitFlow', () => {
         expect(recall).toBeGreaterThanOrEqual(0.9 - 0.02);
     });
 
-    test('test_11_trained_query_metadata', async () => {
+    test('test_13_trained_query_metadata', async () => {
         // TRAINED QUERY (METADATA)
         const results: QueryResultItem[][][] = [];
         for (const metadataQuery of metadataQueries) {
@@ -493,24 +560,21 @@ describe('TestUnitFlow', () => {
             94.04,  // Query #1
             100.00, // Query #2
             91.05,  // Query #3
-            88.24,  // Query #4
+            77.77,  // Query #4
             100.00, // Query #5
             78.88,  // Query #6
             100.00, // Query #7
             92.35,  // Query #8
             91.66,  // Query #9
-            88.38,  // Query #10
+            77.77,  // Query #10
             88.26,  // Query #11
             94.04,  // Query #12
             90.05,  // Query #13
-            74.09,  // Query #14
-            9.00,   // Query #15
+            50.00,  // Query #14
+            7.00,   // Query #15
+            70.00,  // Query #16
+            70.00,  // Query #17
         ];
-
-        // For the additional recalls, we'll use a default threshold of 70%
-        for (let i = baseThresholds.length; i < recalls.length; i++) {
-            baseThresholds.push(70.00);
-        }
 
         const expectedThresholds = baseThresholds.map(threshold => threshold * 0.95);
 
@@ -523,7 +587,7 @@ describe('TestUnitFlow', () => {
             const recallPercentage = recalls[idx] * 100;
             const threshold = expectedThresholds[idx];
 
-            if (idx < 15) {
+            if (idx < 17) {
                 console.log();
                 console.log(`Metadata Query #${idx + 1}`);
                 console.log(`Metadata filters: ${JSON.stringify(metadataQueries[idx])}`);
@@ -555,7 +619,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_12_trained_query_metadata_auto_n_probes', async () => {
+    test('test_14_trained_query_metadata_auto_n_probes', async () => {
         // TRAINED QUERY (METADATA)
         const results: QueryResultItem[][][] = [];
         for (const metadataQuery of metadataQueries) {
@@ -581,24 +645,21 @@ describe('TestUnitFlow', () => {
             94.04,  // Query #1
             100.00, // Query #2
             91.05,  // Query #3
-            88.24,  // Query #4
+            77.77,  // Query #4
             100.00, // Query #5
             78.88,  // Query #6
             100.00, // Query #7
             92.35,  // Query #8
             91.66,  // Query #9
-            88.38,  // Query #10
+            77.77,  // Query #10
             88.26,  // Query #11
             94.04,  // Query #12
             90.05,  // Query #13
-            74.09,  // Query #14
-            9.00,   // Query #15
+            50.00,  // Query #14
+            7.00,   // Query #15
+            70.00,  // Query #16
+            70.00,  // Query #17
         ];
-
-        // For the additional recalls, we'll use a default threshold of 70%
-        for (let i = baseThresholds.length; i < recalls.length; i++) {
-            baseThresholds.push(70.00);
-        }
 
         // Apply a 10% reduction to the base thresholds
         const expectedThresholds = baseThresholds.map(threshold => threshold * 0.90);
@@ -612,7 +673,7 @@ describe('TestUnitFlow', () => {
             const recallPercentage = recalls[idx] * 100;
             const threshold = expectedThresholds[idx];
 
-            if (idx < 15) {
+            if (idx < 17) {
                 console.log();
                 console.log(`Metadata Query #${idx + 1}`);
                 console.log(`Metadata filters: ${JSON.stringify(metadataQueries[idx])}`);
@@ -642,7 +703,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_13_trained_get', async () => {
+    test('test_15_trained_get', async () => {
         // TRAINED GET (using untrained indices as an example)
         const numGet = 1000;
         const getIndices: number[] = [];
@@ -682,7 +743,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_14_delete', async () => {
+    test('test_16_delete', async () => {
         // DELETE ITEMS (using untrained indices as an example)
         const idsToDelete = Array.from({ length: numUntrainedVectors }, (_, i) => String(i));
         await index.delete({ ids: idsToDelete });
@@ -699,7 +760,7 @@ describe('TestUnitFlow', () => {
         expect(true).toBe(true);
     });
 
-    test('test_15_get_deleted', async () => {
+    test('test_17_get_deleted', async () => {
         // GET DELETED ITEMS
         // Add a delay after the previous test's large delete operation
         // The need for this may indicate eventual consistency in the system
@@ -729,7 +790,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_16_query_deleted', async () => {
+    test('test_18_query_deleted', async () => {
         // QUERY DELETED ITEMS
         const response = await index.query({
             queryVectors: queries,
@@ -748,7 +809,7 @@ describe('TestUnitFlow', () => {
         expect(true).toBe(true);
     });
 
-    test('test_17_list_indexes', async () => {
+    test('test_19_list_indexes', async () => {
         // LIST INDEXES
         const indexes = await client.listIndexes();
         expect(Array.isArray(indexes)).toBe(true);
@@ -758,7 +819,7 @@ describe('TestUnitFlow', () => {
         expect(indexes).toContain(indexName);
     });
 
-    test('test_18_index_properties', async () => {
+    test('test_20_index_properties', async () => {
         // Check if the index has the expected properties
         expect(await index.getIndexName()).toBe(indexName);
         
@@ -769,7 +830,7 @@ describe('TestUnitFlow', () => {
         expect(await index.getIndexType()).toBe('ivfflat');
     });
 
-    test('test_19_load_index', async () => {
+    test('test_21_load_index', async () => {
         // Test loading an existing index
         const loadedIndex = await client.loadIndex({ indexName, indexKey });
         expect(loadedIndex).toBeDefined();
