@@ -19,6 +19,10 @@ import {
     Request,
     ListIDsRequest,
     ListIDsResponse,
+    BinaryUpsertRequest,
+    BinaryQueryRequest,
+    BinaryVectorBatch,
+    BinaryQueryBatch,
   } from './models';
 import {
   UpsertResponse,
@@ -745,4 +749,180 @@ export class EncryptedIndex {
           this.handleApiError(error);
         }
       }
+
+  /**
+   * Add or update vectors using binary format for efficiency.
+   *
+   * This method is optimized for large batches. Vectors are sent as base64-encoded
+   * binary data instead of JSON arrays, which is significantly faster for large datasets.
+   *
+   * @param ids List of unique identifiers for each vector
+   * @param vectors 2D array of vectors (n_vectors x dimension) or Float32Array
+   * @param metadata Optional list of metadata dicts for each vector
+   * @param contents Optional list of contents for each vector
+   * @returns Promise with the result of the operation
+   */
+  async upsertBinary({
+    ids,
+    vectors,
+    metadata,
+    contents
+  }: {
+    ids: string[];
+    vectors: number[][] | Float32Array;
+    metadata?: (Record<string, unknown> | null)[];
+    contents?: (string | null)[];
+  }): Promise<UpsertResponse> {
+    try {
+      const keyHex = Buffer.from(this.indexKey).toString('hex');
+
+      // Convert vectors to Float32Array if needed and get dimension
+      let float32Vectors: Float32Array;
+      let dimension: number;
+
+      if (vectors instanceof Float32Array) {
+        // Assume vectors is already flattened: n_vectors * dimension
+        if (ids.length === 0) {
+          return { status: 'success', message: 'No items to upsert' };
+        }
+        dimension = vectors.length / ids.length;
+        float32Vectors = vectors;
+      } else {
+        // vectors is number[][]
+        if (vectors.length === 0 || ids.length === 0) {
+          return { status: 'success', message: 'No items to upsert' };
+        }
+
+        if (ids.length !== vectors.length) {
+          throw new Error(`Number of ids (${ids.length}) must match number of vectors (${vectors.length})`);
+        }
+
+        dimension = vectors[0].length;
+
+        // Flatten to Float32Array
+        float32Vectors = new Float32Array(vectors.length * dimension);
+        for (let i = 0; i < vectors.length; i++) {
+          if (vectors[i].length !== dimension) {
+            throw new Error(`All vectors must have the same dimension. Vector at index ${i} has dimension ${vectors[i].length}, expected ${dimension}`);
+          }
+          for (let j = 0; j < dimension; j++) {
+            float32Vectors[i * dimension + j] = vectors[i][j];
+          }
+        }
+      }
+
+      // Convert Float32Array to base64
+      const vectorsB64 = Buffer.from(float32Vectors.buffer).toString('base64');
+
+      // Build the batch
+      const batch: BinaryVectorBatch = {
+        ids,
+        vectorsB64,
+        dimension,
+        metadata: metadata ?? undefined,
+        // Cast contents to expected type - the API accepts string | null for each item
+        contents: contents as BinaryVectorBatch['contents']
+      };
+
+      const binaryUpsertRequest: BinaryUpsertRequest = {
+        indexName: this.indexName,
+        indexKey: keyHex,
+        batch
+      };
+
+      const response = await this.api.upsertVectorsBinaryV1VectorsUpsertBinaryPost({binaryUpsertRequest});
+      return response as UpsertResponse;
+    } catch (error: unknown) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Query vectors using binary format for efficiency.
+   *
+   * This method is optimized for large batch queries. Query vectors are sent as
+   * base64-encoded binary data instead of JSON arrays, which is more efficient.
+   *
+   * @param queryVectors 2D array of query vectors (n_queries x dimension) or Float32Array
+   * @param topK Number of nearest neighbors to return for each query
+   * @param nProbes Number of lists to probe during the query
+   * @param filters Metadata filters
+   * @param include Fields to include in the response
+   * @param greedy Whether to use greedy search
+   * @returns Promise with query results (list of lists, one per query vector)
+   */
+  async queryBinary({
+    queryVectors,
+    topK,
+    nProbes,
+    filters,
+    include,
+    greedy
+  }: {
+    queryVectors: number[][] | Float32Array;
+    topK?: number;
+    nProbes?: number;
+    filters?: FilterExpression;
+    include?: string[];
+    greedy?: boolean;
+  }): Promise<QueryResponse> {
+    try {
+      const keyHex = Buffer.from(this.indexKey).toString('hex');
+
+      // Convert vectors to Float32Array if needed and get dimension
+      let float32Vectors: Float32Array;
+      let dimension: number;
+      let numQueries: number;
+
+      if (queryVectors instanceof Float32Array) {
+        // For Float32Array, we need dimension to be specified or inferred
+        // Assume it's provided as a flat array, user must ensure it's valid
+        throw new Error('Float32Array for queryBinary requires dimension to be determinable. Please pass number[][] instead.');
+      } else {
+        // queryVectors is number[][]
+        if (queryVectors.length === 0) {
+          throw new Error('queryVectors cannot be empty');
+        }
+
+        numQueries = queryVectors.length;
+        dimension = queryVectors[0].length;
+
+        // Flatten to Float32Array
+        float32Vectors = new Float32Array(numQueries * dimension);
+        for (let i = 0; i < numQueries; i++) {
+          if (queryVectors[i].length !== dimension) {
+            throw new Error(`All query vectors must have the same dimension. Vector at index ${i} has dimension ${queryVectors[i].length}, expected ${dimension}`);
+          }
+          for (let j = 0; j < dimension; j++) {
+            float32Vectors[i * dimension + j] = queryVectors[i][j];
+          }
+        }
+      }
+
+      // Convert Float32Array to base64
+      const vectorsB64 = Buffer.from(float32Vectors.buffer).toString('base64');
+
+      // Build the batch
+      const batch: BinaryQueryBatch = {
+        vectorsB64,
+        dimension
+      };
+
+      const binaryQueryRequest: BinaryQueryRequest = {
+        indexName: this.indexName,
+        indexKey: keyHex,
+        batch,
+        topK: topK ?? undefined,
+        nProbes: nProbes ?? undefined,
+        greedy: greedy ?? undefined,
+        filters: filters ?? undefined,
+        include: include ?? undefined
+      };
+
+      const response = await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({binaryQueryRequest});
+      return response;
+    } catch (error: unknown) {
+      this.handleApiError(error);
+    }
+  }
   }
