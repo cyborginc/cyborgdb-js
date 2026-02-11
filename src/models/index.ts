@@ -1,6 +1,11 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './BatchQueryRequest';
+export * from './BinaryQueryBatch';
+export * from './BinaryQueryRequest';
+export * from './BinaryUpsertRequest';
+export * from './BinaryVectorBatch';
+export * from './BinaryVectorBatchContentsInner';
 export * from './Contents';
 export * from './CreateIndexRequest';
 export * from './CyborgdbServiceApiSchemasIndexSuccessResponseModel';

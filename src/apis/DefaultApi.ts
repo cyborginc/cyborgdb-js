@@ -15,6 +15,8 @@
 
 import * as runtime from '../runtime';
 import type {
+  BinaryQueryRequest,
+  BinaryUpsertRequest,
   CreateIndexRequest,
   CyborgdbServiceApiSchemasIndexSuccessResponseModel,
   CyborgdbServiceApiSchemasVectorsSuccessResponseModel,
@@ -35,6 +37,10 @@ import type {
   UpsertRequest,
 } from '../models/index';
 import {
+    BinaryQueryRequestFromJSON,
+    BinaryQueryRequestToJSON,
+    BinaryUpsertRequestFromJSON,
+    BinaryUpsertRequestToJSON,
     CreateIndexRequestFromJSON,
     CreateIndexRequestToJSON,
     CyborgdbServiceApiSchemasIndexSuccessResponseModelFromJSON,
@@ -101,12 +107,20 @@ export interface ListIdsV1VectorsListIdsPostRequest {
     listIDsRequest: ListIDsRequest;
 }
 
+export interface QueryVectorsBinaryV1VectorsQueryBinaryPostRequest {
+    binaryQueryRequest: BinaryQueryRequest;
+}
+
 export interface QueryVectorsV1VectorsQueryPostRequest {
     request: Request;
 }
 
 export interface TrainIndexV1IndexesTrainPostRequest {
     trainRequest: TrainRequest;
+}
+
+export interface UpsertVectorsBinaryV1VectorsUpsertBinaryPostRequest {
+    binaryUpsertRequest: BinaryUpsertRequest;
 }
 
 export interface UpsertVectorsV1VectorsUpsertPostRequest {
@@ -501,6 +515,48 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Search for nearest neighbors using binary format for query vectors.  This endpoint is optimized for large batch queries. Query vectors are sent as base64-encoded float32 numpy arrays, which is more efficient than JSON arrays for large batches.
+     * Query Encrypted Index (Binary Format)
+     */
+    async queryVectorsBinaryV1VectorsQueryBinaryPostRaw(requestParameters: QueryVectorsBinaryV1VectorsQueryBinaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<QueryResponse>> {
+        if (requestParameters['binaryQueryRequest'] == null) {
+            throw new runtime.RequiredError(
+                'binaryQueryRequest',
+                'Required parameter "binaryQueryRequest" was null or undefined when calling queryVectorsBinaryV1VectorsQueryBinaryPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // APIKeyHeader authentication
+        }
+
+        const response = await this.request({
+            path: `/v1/vectors/query_binary`,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BinaryQueryRequestToJSON(requestParameters['binaryQueryRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => QueryResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Search for nearest neighbors using binary format for query vectors.  This endpoint is optimized for large batch queries. Query vectors are sent as base64-encoded float32 numpy arrays, which is more efficient than JSON arrays for large batches.
+     * Query Encrypted Index (Binary Format)
+     */
+    async queryVectorsBinaryV1VectorsQueryBinaryPost(requestParameters: QueryVectorsBinaryV1VectorsQueryBinaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<QueryResponse> {
+        const response = await this.queryVectorsBinaryV1VectorsQueryBinaryPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Search for nearest neighbors in the index.
      * Query Encrypted Index
      */
@@ -581,6 +637,48 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async trainIndexV1IndexesTrainPost(requestParameters: TrainIndexV1IndexesTrainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CyborgdbServiceApiSchemasIndexSuccessResponseModel> {
         const response = await this.trainIndexV1IndexesTrainPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Add or update vectors in the index using binary format.  This endpoint is optimized for large batches of vectors. Vectors are sent as base64-encoded float32 numpy arrays, which is much more efficient than JSON arrays for large datasets.  After upserting, checks if the index needs training/retraining based on the number of vectors and triggers automatic training if needed.
+     * Add Items to Encrypted Index (Binary Format)
+     */
+    async upsertVectorsBinaryV1VectorsUpsertBinaryPostRaw(requestParameters: UpsertVectorsBinaryV1VectorsUpsertBinaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CyborgdbServiceApiSchemasVectorsSuccessResponseModel>> {
+        if (requestParameters['binaryUpsertRequest'] == null) {
+            throw new runtime.RequiredError(
+                'binaryUpsertRequest',
+                'Required parameter "binaryUpsertRequest" was null or undefined when calling upsertVectorsBinaryV1VectorsUpsertBinaryPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // APIKeyHeader authentication
+        }
+
+        const response = await this.request({
+            path: `/v1/vectors/upsert_binary`,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BinaryUpsertRequestToJSON(requestParameters['binaryUpsertRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CyborgdbServiceApiSchemasVectorsSuccessResponseModelFromJSON(jsonValue));
+    }
+
+    /**
+     * Add or update vectors in the index using binary format.  This endpoint is optimized for large batches of vectors. Vectors are sent as base64-encoded float32 numpy arrays, which is much more efficient than JSON arrays for large datasets.  After upserting, checks if the index needs training/retraining based on the number of vectors and triggers automatic training if needed.
+     * Add Items to Encrypted Index (Binary Format)
+     */
+    async upsertVectorsBinaryV1VectorsUpsertBinaryPost(requestParameters: UpsertVectorsBinaryV1VectorsUpsertBinaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CyborgdbServiceApiSchemasVectorsSuccessResponseModel> {
+        const response = await this.upsertVectorsBinaryV1VectorsUpsertBinaryPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
