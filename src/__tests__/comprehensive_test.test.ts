@@ -1,6 +1,6 @@
 /**
  * Comprehensive test coverage for TypeScript SDK to achieve standardization
- * Implements SSL, IVF, IVFPQ, error handling, and edge case tests
+ * Implements SSL, IVFPQ, error handling, and edge case tests
  * Matches Python comprehensive_test.py coverage
  */
 
@@ -117,33 +117,6 @@ describe('Index Types Tests', () => {
         console.error(`Error cleaning up index: ${error}`);
       }
     }
-  });
-
-  test('should create and operate IVF index successfully', async () => {
-    const indexConfig = {
-      dimension: dimension,
-      type: 'ivf' as const
-    };
-
-    index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
-    });
-
-    expect(index).toBeDefined();
-
-    // Test upsert
-    const testIds = testVectors.map((_, i) => `ivf_${i}`);
-    await index.upsert({ ids: testIds, vectors: testVectors });
-
-    // Test query
-    const queryVector = testVectors[0];
-    const results = await index.query({ queryVectors: [queryVector], topK: 5 });
-
-    expect(results.results).toBeDefined();
-    expect(Array.isArray(results.results)).toBe(true);
   });
 
   test('should create and operate IVFPQ index successfully', async () => {

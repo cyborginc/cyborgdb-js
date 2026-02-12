@@ -4,7 +4,6 @@ import {
   CreateIndexRequest,
   IndexIVFPQModel as IndexIVFPQ,
   IndexIVFFlatModel as IndexIVFFlat,
-  IndexIVFModel as IndexIVF,
   IndexIVFSQModel as IndexIVFSQ,
   IndexOperationRequest,
   ErrorResponseModel,
@@ -217,7 +216,7 @@ export class CyborgDB {
   }: {
     indexName: string;
     indexKey: Uint8Array;
-    indexConfig?: IndexIVFPQ | IndexIVFFlat | IndexIVF | IndexIVFSQ;
+    indexConfig?: IndexIVFPQ | IndexIVFFlat | IndexIVFSQ;
     metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
     embeddingModel?: string;
   }) {
@@ -227,7 +226,7 @@ export class CyborgDB {
 
       // Create the request using the proper snake_case property names
       // Use default IndexIVFFlat if no config provided
-      const finalConfig: IndexIVFFlat | IndexIVFPQ | IndexIVF | IndexIVFSQ = indexConfig || {
+      const finalConfig: IndexIVFFlat | IndexIVFPQ | IndexIVFSQ = indexConfig || {
         type: 'ivfflat',
         dimension: undefined
       };
@@ -279,7 +278,7 @@ export class CyborgDB {
    * operational parameters.
    * 
    * **Information Retrieved:**
-   * - Index name and type (ivfflat, ivfpq, ivfsq, ivf)
+   * - Index name and type (ivfflat, ivfpq, ivfsq)
    * - Current training status (trained/untrained)
    * - Index configuration (dimensions, metrics, clustering parameters)
    * - Vector count and other operational statistics

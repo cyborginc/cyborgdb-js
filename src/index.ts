@@ -20,7 +20,6 @@ export {
   ErrorResponseModel,
   HTTPValidationError,
   IndexIVFFlatModel as IndexIVFFlat,
-  IndexIVFModel as IndexIVF,
   IndexIVFPQModel as IndexIVFPQ,
   IndexIVFSQModel as IndexIVFSQ,
   QueryResultItem

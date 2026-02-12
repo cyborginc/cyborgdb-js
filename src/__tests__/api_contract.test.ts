@@ -199,14 +199,6 @@ describe('CyborgDB API Contract Tests', () => {
   });
 
   describe('06 - Index Config Classes', () => {
-    it('should create IndexIVF config object', () => {
-      const config = {
-        dimension: 0,
-        type: 'ivf' as const
-      };
-      expect(config.type).toBe('ivf');
-    });
-
     it('should create IndexIVFFlat config object with dimension', () => {
       const config = {
         dimension,
@@ -264,29 +256,6 @@ describe('CyborgDB API Contract Tests', () => {
       const config = await index.getIndexConfig();
       expect(config.dimension).toBe(dimension);
       expect(await index.getIndexType()).toBe('ivfflat');
-      
-      await index.deleteIndex();
-      await sleep(1000); // Backend has eventual consistency for deletions
-    });
-
-    it('should create index with IndexIVF config', async () => {
-      const tempIndexName = `temp_ivf_${Date.now().toString(36)}`;
-      const tempIndexKey = Client.generateKey();
-      
-      const indexConfig = {
-        dimension: 0,
-        type: 'ivf' as const
-      };
-      
-      const index = await client.createIndex({
-        indexName: tempIndexName,
-        indexKey: tempIndexKey,
-        indexConfig,
-        metric: 'squared_euclidean'
-      });
-      
-      expect(index).toBeDefined();
-      expect(await index.getIndexType()).toBe('ivf');
       
       await index.deleteIndex();
       await sleep(1000); // Backend has eventual consistency for deletions

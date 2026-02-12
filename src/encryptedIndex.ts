@@ -12,7 +12,6 @@ import {
     ErrorResponseModel,
     HTTPValidationError,
     IndexIVFFlatModel,
-    IndexIVFModel,
     IndexIVFPQModel,
     IndexIVFSQModel,
     IndexInfoResponseModel,
@@ -250,18 +249,16 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         return response.isTrained;
     }
-    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel | IndexIVFSQModel> {
+    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFPQModel | IndexIVFSQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         this.indexConfig = response.indexConfig as IndexConfig;
         // Return a copy to prevent external modification
-        if (this.indexConfig.type === 'ivf_flat') {
-            return { ...this.indexConfig } as IndexIVFFlatModel;
-        } else if (this.indexConfig.type === 'ivf_pq') {
+        if (this.indexConfig.type === 'ivf_pq') {
             return { ...this.indexConfig } as IndexIVFPQModel;
         } else if (this.indexConfig.type === 'ivf_sq') {
             return { ...this.indexConfig } as IndexIVFSQModel;
         } else {
-            return { ...this.indexConfig } as IndexIVFModel;
+            return { ...this.indexConfig } as IndexIVFFlatModel;
     }}
     /**
      * Delete an index
