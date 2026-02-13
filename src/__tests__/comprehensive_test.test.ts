@@ -4,7 +4,7 @@
  * Matches Python comprehensive_test.py coverage
  */
 
-import { Client, IndexIVFPQ } from '../index';
+import { Client, IndexIVFPQ, IndexIVFSQ } from '../index';
 import { randomBytes } from 'crypto';
 import * as dotenv from 'dotenv';
 import * as https from 'https';
@@ -140,6 +140,39 @@ describe('Index Types Tests', () => {
 
     // Test upsert
     const testIds = testVectors.map((_, i) => `ivfpq_${i}`);
+    await index.upsert({ ids: testIds, vectors: testVectors });
+
+    // Test query
+    const queryVector = testVectors[0];
+    const results = await index.query({ queryVectors: [queryVector], topK: 5 });
+
+    expect(results.results).toBeDefined();
+    expect(Array.isArray(results.results)).toBe(true);
+    if (results.results.length > 0 && results.results[0].length > 0) {
+      expect(results.results[0][0]).toHaveProperty('id');
+    }
+  });
+
+  test('should create and operate IVFSQ index successfully', async () => {
+    const indexConfig: IndexIVFSQ = {
+      dimension: dimension,
+      type: 'ivfsq',
+      sqBits: 8
+    };
+
+    index = await client.createIndex({
+      indexName,
+      indexKey,
+      indexConfig,
+      metric: 'euclidean'
+    });
+
+    expect(index).toBeDefined();
+    expect(await index.getIndexName()).toBe(indexName);
+    expect(await index.getIndexType()).toBe('ivfsq');
+
+    // Test upsert
+    const testIds = testVectors.map((_, i) => `ivfsq_${i}`);
     await index.upsert({ ids: testIds, vectors: testVectors });
 
     // Test query

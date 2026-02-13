@@ -413,12 +413,24 @@ export class EncryptedIndex {
   async upsert({
     items,
     ids,
-    vectors
+    vectors,
+    metadata,
+    contents
   }: {
     items?: VectorItem[];
     ids?: string[];
-    vectors?: number[][];
+    vectors?: number[][] | Float32Array;
+    metadata?: (Record<string, unknown> | null)[];
+    contents?: (string | null)[];
   }): Promise<UpsertResponse> {
+    // Route to binary endpoint if vectors is Float32Array
+    if (vectors instanceof Float32Array) {
+      if (!ids) {
+        throw new Error("Invalid upsert call: 'ids' is required when using Float32Array vectors");
+      }
+      return this._upsertBinary({ ids, vectors, metadata, contents });
+    }
+
     try {
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(this.indexKey).toString('hex');
@@ -616,16 +628,26 @@ export class EncryptedIndex {
     nProbes,
     filters,
     include,
-    greedy
+    greedy,
+    dimension
   }: {
-    queryVectors?: number[] | number[][];
+    queryVectors?: number[] | number[][] | Float32Array;
     queryContents?: string;
     topK?: number;
     nProbes?: number;
     filters?: FilterExpression;
     include?: string[];
     greedy?: boolean;
+    dimension?: number;
   }): Promise<QueryResponse> {
+    // Route to binary endpoint if queryVectors is Float32Array
+    if (queryVectors instanceof Float32Array) {
+      if (!dimension) {
+        throw new Error("Invalid query call: 'dimension' is required when using Float32Array queryVectors");
+      }
+      return this._queryBinary({ queryVectors, topK, nProbes, filters, include, greedy, dimension });
+    }
+
     const keyHex = Buffer.from(this.indexKey).toString('hex');
     let isSingleQuery = false;
 
@@ -748,18 +770,10 @@ export class EncryptedIndex {
       }
 
   /**
-   * Add or update vectors using binary format for efficiency.
-   *
-   * This method is optimized for large batches. Vectors are sent as base64-encoded
-   * binary data instead of JSON arrays, which is significantly faster for large datasets.
-   *
-   * @param ids List of unique identifiers for each vector
-   * @param vectors 2D array of vectors (n_vectors x dimension) or Float32Array
-   * @param metadata Optional list of metadata dicts for each vector
-   * @param contents Optional list of contents for each vector
-   * @returns Promise with the result of the operation
+   * Internal method: Add or update vectors using binary format for efficiency.
+   * Called automatically by upsert() when Float32Array is passed.
    */
-  async upsertBinary({
+  private async _upsertBinary({
     ids,
     vectors,
     metadata,
@@ -835,26 +849,17 @@ export class EncryptedIndex {
   }
 
   /**
-   * Query vectors using binary format for efficiency.
-   *
-   * This method is optimized for large batch queries. Query vectors are sent as
-   * base64-encoded binary data instead of JSON arrays, which is more efficient.
-   *
-   * @param queryVectors 2D array of query vectors (n_queries x dimension) or Float32Array
-   * @param topK Number of nearest neighbors to return for each query
-   * @param nProbes Number of lists to probe during the query
-   * @param filters Metadata filters
-   * @param include Fields to include in the response
-   * @param greedy Whether to use greedy search
-   * @returns Promise with query results (list of lists, one per query vector)
+   * Internal method: Query vectors using binary format for efficiency.
+   * Called automatically by query() when Float32Array is passed.
    */
-  async queryBinary({
+  private async _queryBinary({
     queryVectors,
     topK,
     nProbes,
     filters,
     include,
-    greedy
+    greedy,
+    dimension: providedDimension
   }: {
     queryVectors: number[][] | Float32Array;
     topK?: number;
@@ -862,6 +867,7 @@ export class EncryptedIndex {
     filters?: FilterExpression;
     include?: string[];
     greedy?: boolean;
+    dimension?: number;
   }): Promise<QueryResponse> {
     try {
       const keyHex = Buffer.from(this.indexKey).toString('hex');
@@ -869,19 +875,20 @@ export class EncryptedIndex {
       // Convert vectors to Float32Array if needed and get dimension
       let float32Vectors: Float32Array;
       let dimension: number;
-      let numQueries: number;
 
       if (queryVectors instanceof Float32Array) {
-        // For Float32Array, we need dimension to be specified or inferred
-        // Assume it's provided as a flat array, user must ensure it's valid
-        throw new Error('Float32Array for queryBinary requires dimension to be determinable. Please pass number[][] instead.');
+        if (!providedDimension) {
+          throw new Error('dimension is required when using Float32Array for queryVectors');
+        }
+        float32Vectors = queryVectors;
+        dimension = providedDimension;
       } else {
         // queryVectors is number[][]
         if (queryVectors.length === 0) {
           throw new Error('queryVectors cannot be empty');
         }
 
-        numQueries = queryVectors.length;
+        const numQueries = queryVectors.length;
         dimension = queryVectors[0].length;
 
         // Flatten to Float32Array
