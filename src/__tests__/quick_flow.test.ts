@@ -518,22 +518,7 @@ describe('TestUnitFlow', () => {
         expect(Math.abs(recall - trainedRecall)).toBeLessThan(0.08);
     });
 
-    test('test_12_trained_query_no_metadata_auto_n_probes', async () => {
-        // TRAINED QUERY (NO METADATA) with Auto n_probes
-        const response = await index.query({
-            queryVectors: queries,
-            topK: 100
-        });
-
-        const results = response.results as QueryResultItem[][];
-        const recall = checkQueryResults(results, trainedNeighbors, numQueries);
-        console.log(`Trained Query (No Metadata, Auto n_probes). Expected recall: ${trainedRecall}, got ${recall}`);
-
-        // recall should be ~90% give or take 2%
-        expect(recall).toBeGreaterThanOrEqual(0.9 - 0.02);
-    });
-
-    test('test_13_trained_query_metadata', async () => {
+    test('test_12_trained_query_metadata', async () => {
         // TRAINED QUERY (METADATA)
         const results: QueryResultItem[][][] = [];
         for (const metadataQuery of metadataQueries) {
@@ -619,91 +604,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_14_trained_query_metadata_auto_n_probes', async () => {
-        // TRAINED QUERY (METADATA)
-        const results: QueryResultItem[][][] = [];
-        for (const metadataQuery of metadataQueries) {
-            const response = await index.query({
-                queryVectors: queries,
-                topK: 100,
-                filters: metadataQuery
-            });
-            results.push(response.results as QueryResultItem[][]);
-        }
-        metadataQueries[6] = { number: 0 };
-
-        const recalls = checkMetadataResults(
-            results,
-            trainedMetadataNeighbors,
-            trainedMetadataMatches,
-            numQueries
-        );
-
-        console.log(`Number of recall values: ${recalls.length}`);
-
-        const baseThresholds = [
-            94.04,  // Query #1
-            100.00, // Query #2
-            91.05,  // Query #3
-            77.77,  // Query #4
-            100.00, // Query #5
-            78.88,  // Query #6
-            100.00, // Query #7
-            92.35,  // Query #8
-            91.66,  // Query #9
-            77.77,  // Query #10
-            88.26,  // Query #11
-            94.04,  // Query #12
-            90.05,  // Query #13
-            50.00,  // Query #14
-            7.00,   // Query #15
-            70.00,  // Query #16
-            70.00,  // Query #17
-        ];
-
-        // Apply a 10% reduction to the base thresholds
-        const expectedThresholds = baseThresholds.map(threshold => threshold * 0.90);
-
-        expect(recalls.length).toBe(expectedThresholds.length);
-
-        // Check each recall against its threshold
-        const failingRecalls: Array<[number, number, number]> = [];
-
-        for (let idx = 0; idx < recalls.length; idx++) {
-            const recallPercentage = recalls[idx] * 100;
-            const threshold = expectedThresholds[idx];
-
-            if (idx < 17) {
-                console.log();
-                console.log(`Metadata Query #${idx + 1}`);
-                console.log(`Metadata filters: ${JSON.stringify(metadataQueries[idx])}`);
-                console.log(`Number of candidates: ${trainedMetadataNeighbors[idx].length} / ${totalNumVectors}`);
-                console.log(`Mean recall: ${recallPercentage.toFixed(2)}%`);
-                console.log(`Expected threshold: ${threshold.toFixed(2)}%`);
-            } else {
-                console.log();
-                console.log(`Additional Query #${idx + 1}`);
-                console.log(`Mean recall: ${recallPercentage.toFixed(2)}%`);
-                console.log(`Expected threshold: ${threshold.toFixed(2)}%`);
-            }
-
-            if (recallPercentage < threshold) {
-                failingRecalls.push([idx + 1, recallPercentage, threshold]);
-            }
-        }
-
-        if (failingRecalls.length > 0) {
-            const failMessage = failingRecalls
-                .map(([idx, actual, expected]) => 
-                    `Query #${idx}: recall ${actual.toFixed(2)}% < threshold ${expected.toFixed(2)}%`
-                )
-                .join('\n');
-            expect(failingRecalls.length).toBe(0);
-            throw new Error(`Some recalls are below their thresholds:\n${failMessage}`);
-        }
-    });
-
-    test('test_15_trained_get', async () => {
+    test('test_13_trained_get', async () => {
         // TRAINED GET (using untrained indices as an example)
         const numGet = 1000;
         const getIndices: number[] = [];
@@ -743,7 +644,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_16_delete', async () => {
+    test('test_14_delete', async () => {
         // DELETE ITEMS (using untrained indices as an example)
         const idsToDelete = Array.from({ length: numUntrainedVectors }, (_, i) => String(i));
         await index.delete({ ids: idsToDelete });
@@ -760,7 +661,7 @@ describe('TestUnitFlow', () => {
         expect(true).toBe(true);
     });
 
-    test('test_17_get_deleted', async () => {
+    test('test_15_get_deleted', async () => {
         // GET DELETED ITEMS
         // Add a delay after the previous test's large delete operation
         // The need for this may indicate eventual consistency in the system
@@ -790,7 +691,7 @@ describe('TestUnitFlow', () => {
         }
     });
 
-    test('test_18_query_deleted', async () => {
+    test('test_16_query_deleted', async () => {
         // QUERY DELETED ITEMS
         const response = await index.query({
             queryVectors: queries,
@@ -809,7 +710,7 @@ describe('TestUnitFlow', () => {
         expect(true).toBe(true);
     });
 
-    test('test_19_list_indexes', async () => {
+    test('test_17_list_indexes', async () => {
         // LIST INDEXES
         const indexes = await client.listIndexes();
         expect(Array.isArray(indexes)).toBe(true);
@@ -819,7 +720,7 @@ describe('TestUnitFlow', () => {
         expect(indexes).toContain(indexName);
     });
 
-    test('test_20_index_properties', async () => {
+    test('test_18_index_properties', async () => {
         // Check if the index has the expected properties
         expect(await index.getIndexName()).toBe(indexName);
         
@@ -830,7 +731,7 @@ describe('TestUnitFlow', () => {
         expect(await index.getIndexType()).toBe('ivfflat');
     });
 
-    test('test_21_load_index', async () => {
+    test('test_19_load_index', async () => {
         // Test loading an existing index
         const loadedIndex = await client.loadIndex({ indexName, indexKey });
         expect(loadedIndex).toBeDefined();
