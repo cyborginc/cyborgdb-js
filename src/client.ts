@@ -248,7 +248,7 @@ export class CyborgDB {
       } else if (finalConfig.type === 'ivfsq') {
         indexConfigObj = {
           ...baseConfig,
-          sqBits: (finalConfig as IndexIVFSQ).sqBits ?? 8
+          sqBits: (finalConfig as IndexIVFSQ).sqBits ?? 16
         } as IndexConfig;
       } else {
         indexConfigObj = baseConfig as IndexConfig;
