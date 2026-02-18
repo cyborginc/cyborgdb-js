@@ -196,8 +196,9 @@ export class EncryptedIndex {
 
     // Normalize camelCase keys from potential snake_case input
     // Only copy properties we want to keep, handling both camelCase and snake_case
-    const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number };
+    const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number; sq_bits?: number };
     const isIVFPQ = indexConfig.type?.toLowerCase() === 'ivfpq';
+    const isIVFSQ = indexConfig.type?.toLowerCase() === 'ivfsq';
 
     // Build config with only necessary properties
     const normalizedConfig: IndexConfig = {
@@ -212,6 +213,11 @@ export class EncryptedIndex {
     if (isIVFPQ) {
       normalizedConfig.pqDim = indexConfig.pqDim ?? legacyConfig.pq_dim ?? 0;
       normalizedConfig.pqBits = indexConfig.pqBits ?? legacyConfig.pq_bits ?? 0;
+    }
+
+    // Only add sqBits for IVFSQ index type
+    if (isIVFSQ) {
+      normalizedConfig.sqBits = indexConfig.sqBits ?? legacyConfig.sq_bits ?? 0;
     }
 
     this.indexConfig = normalizedConfig;
