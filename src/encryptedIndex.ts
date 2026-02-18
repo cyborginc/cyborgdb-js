@@ -204,7 +204,8 @@ export class EncryptedIndex {
       dimension: indexConfig.dimension,
       type: indexConfig.type,
       pqDim: 0,  // Default values
-      pqBits: 0
+      pqBits: 0,
+      sqBits: 0
     };
 
     // Only add pqDim and pqBits for IVFPQ index type
@@ -428,6 +429,12 @@ export class EncryptedIndex {
       if (!ids) {
         throw new Error("Invalid upsert call: 'ids' is required when using Float32Array vectors");
       }
+      if (metadata !== undefined && metadata.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`);
+      }
+      if (contents !== undefined && contents.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
+      }
       return this._upsertBinary({ ids, vectors, metadata, contents });
     }
 
@@ -510,6 +517,14 @@ export class EncryptedIndex {
           throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${vectors.length} vectors provided. The number of IDs must match the number of vectors.`);
         }
 
+        if (metadata !== undefined && metadata.length !== ids.length) {
+          throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`);
+        }
+
+        if (contents !== undefined && contents.length !== ids.length) {
+          throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
+        }
+
         if (ids.length === 0) {
           // Empty arrays are valid - just return early success
           return { status: 'success', message: 'No items to upsert' };
@@ -547,8 +562,8 @@ export class EncryptedIndex {
         finalItems = ids.map((id, index) => ({
           id: id.toString(),
           vector: vectors[index],
-          contents: undefined,
-          metadata: undefined
+          contents: contents?.[index] ?? undefined,
+          metadata: metadata?.[index] ?? undefined
         }));
       } else {
         throw new Error("Invalid upsert call: Must provide either 'items' or both 'ids' and 'vectors'");
@@ -795,6 +810,9 @@ export class EncryptedIndex {
         // Assume vectors is already flattened: n_vectors * dimension
         if (ids.length === 0) {
           return { status: 'success', message: 'No items to upsert' };
+        }
+        if (vectors.length % ids.length !== 0) {
+          throw new Error(`Float32Array length (${vectors.length}) must be evenly divisible by number of ids (${ids.length})`);
         }
         dimension = vectors.length / ids.length;
         float32Vectors = vectors;
