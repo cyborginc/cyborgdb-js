@@ -806,6 +806,14 @@ export class EncryptedIndex {
     contents?: (string | null)[];
   }): Promise<UpsertResponse> {
     try {
+      // Validate metadata and contents length if provided
+      if (metadata !== undefined && metadata.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`);
+      }
+      if (contents !== undefined && contents.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
+      }
+
       const keyHex = Buffer.from(this.indexKey).toString('hex');
 
       // Convert vectors to Float32Array if needed and get dimension
