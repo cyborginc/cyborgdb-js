@@ -18,7 +18,7 @@ import { mapValues } from '../runtime';
  * 
  * Attributes:
  *     type (str): Index type identifier. Defaults to "ivfsq".
- *     sq_bits (int): Number of bits per dimension for scalar quantization. Defaults to 8.
+ *     sq_bits (int): Number of bits per dimension for scalar quantization. Defaults to 16.
  * @export
  * @interface IndexIVFSQModel
  */
