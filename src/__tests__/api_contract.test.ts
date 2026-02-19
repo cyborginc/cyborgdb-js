@@ -754,7 +754,91 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('16 - EncryptedIndex.train()', () => {
+  describe('16 - Binary Data Upsert and Query', () => {
+    const binaryTestIds = ['binary_1', 'binary_2', 'binary_3'];
+    let binaryTestData: Uint8Array[];
+
+    beforeAll(() => {
+      // Generate random binary data (simulating non-text data like images or binary blobs)
+      binaryTestData = binaryTestIds.map((_, i) => {
+        const data = new Uint8Array(256);
+        for (let j = 0; j < 256; j++) {
+          data[j] = (i * 37 + j * 13) % 256; // Deterministic pattern for verification
+        }
+        return data;
+      });
+    });
+
+    it('should upsert items with binary contents', async () => {
+      const items = binaryTestIds.map((id, i) => ({
+        id,
+        vector: testVectors[i % testVectors.length],
+        metadata: { type: 'binary', index: i },
+        contents: Buffer.from(binaryTestData[i])
+      }));
+
+      const result = await testIndex.upsert({ items });
+      expect(result).toBeDefined();
+      expect(result.status).toBe('success');
+
+      await sleep(1000);
+    });
+
+    it('should retrieve binary contents via get()', async () => {
+      const results = await testIndex.get({
+        ids: binaryTestIds,
+        include: ['contents', 'metadata', 'vector']
+      });
+
+      expect(Array.isArray(results)).toBe(true);
+      expect(results.length).toBe(binaryTestIds.length);
+
+      results.forEach((result: any, idx: number) => {
+        expect(result.id).toBe(binaryTestIds[idx]);
+        expect(result.metadata).toEqual({ type: 'binary', index: idx });
+
+        // Contents should be present
+        expect(result.contents).toBeDefined();
+        expect(result.contents).not.toBeNull();
+      });
+    });
+
+    it('should return binary contents in query results', async () => {
+      const response = await testIndex.query({
+        queryVectors: testVectors[0],
+        topK: 10,
+        filters: { type: 'binary' },
+        include: ['contents', 'metadata']
+      });
+
+      expect(response).toBeDefined();
+      expect(response.results).toBeDefined();
+
+      const results = Array.isArray(response.results) ? response.results : [response.results];
+      if (results.length > 0) {
+        const queryResults = Array.isArray(results[0]) ? results[0] : results;
+
+        // Should find at least one binary item
+        const binaryResults = queryResults.filter((r: any) =>
+          r.metadata && r.metadata.type === 'binary'
+        );
+        expect(binaryResults.length).toBeGreaterThan(0);
+
+        binaryResults.forEach((result: any) => {
+          expect(result.contents).toBeDefined();
+          expect(result.metadata.type).toBe('binary');
+        });
+      }
+    });
+
+    it('should clean up binary test data', async () => {
+      const result = await testIndex.delete({ ids: binaryTestIds });
+      expect(result.status).toBe('success');
+      await sleep(1000);
+    });
+  });
+
+  describe('17 - EncryptedIndex.train()', () => {
     it('should train with default parameters', async () => {
       const result = await testIndex.train();
       expect(result).toBeDefined();
@@ -781,7 +865,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('17 - EncryptedIndex.delete()', () => {
+  describe('18 - EncryptedIndex.delete()', () => {
     it('should delete vectors by IDs', async () => {
       const idsToDelete = ['0', '5'];
       const result = await testIndex.delete({ ids: idsToDelete });
@@ -805,7 +889,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('18 - Client.loadIndex()', () => {
+  describe('19 - Client.loadIndex()', () => {
     it('should load existing index', async () => {
       const loaded = await client.loadIndex({
         indexName: testIndexName,
@@ -848,7 +932,7 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('19 - EncryptedIndex.deleteIndex()', () => {
+  describe('20 - EncryptedIndex.deleteIndex()', () => {
     it('should delete the index', async () => {
       const result = await testIndex.deleteIndex();
       expect(result).toBeDefined();
