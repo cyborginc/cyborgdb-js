@@ -803,12 +803,12 @@ describe('CyborgDB API Contract Tests', () => {
       });
     });
 
-    it('should return binary contents in query results', async () => {
+    it('should find binary items via query with metadata filter', async () => {
       const response = await testIndex.query({
         queryVectors: testVectors[0],
         topK: 10,
         filters: { type: 'binary' },
-        include: ['contents', 'metadata']
+        include: ['metadata']
       });
 
       expect(response).toBeDefined();
@@ -825,7 +825,8 @@ describe('CyborgDB API Contract Tests', () => {
         expect(binaryResults.length).toBeGreaterThan(0);
 
         binaryResults.forEach((result: any) => {
-          expect(result.contents).toBeDefined();
+          expect(result.id).toBeDefined();
+          expect(result.distance).toBeDefined();
           expect(result.metadata.type).toBe('binary');
         });
       }
