@@ -755,10 +755,33 @@ describe('CyborgDB API Contract Tests', () => {
   });
 
   describe('16 - EncryptedIndex.train()', () => {
-    it('should train with default parameters', async () => {
+    const validTrainStatuses = ['success', 'queued', 'in_progress'];
+
+    const waitForTrainingComplete = async (indexName: string, maxRetries: number = 30): Promise<boolean> => {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        await sleep(2000);
+
+        const trainingStatus = await client.isTraining();
+        const isCurrentlyTraining = trainingStatus.training_indexes.includes(indexName);
+
+        if (!isCurrentlyTraining) {
+          const trained = await testIndex.isTrained();
+          if (trained) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    it('should train with default parameters and wait for completion', async () => {
       const result = await testIndex.train();
       expect(result).toBeDefined();
-      expect(result.status).toBe('success');
+      expect(validTrainStatuses).toContain(result.status);
+
+      // Wait for training to complete
+      const trained = await waitForTrainingComplete(testIndexName);
+      expect(trained).toBe(true);
     });
 
     it('should train with custom parameters', async () => {
@@ -768,14 +791,14 @@ describe('CyborgDB API Contract Tests', () => {
         maxIters: 50,
         tolerance: 1e-5
       });
-      expect(result.status).toBe('success');
+      expect(validTrainStatuses).toContain(result.status);
     });
 
     it('should train with partial parameters', async () => {
       const result = await testIndex.train({
         nLists: 5
       });
-      expect(result.status).toBe('success');
+      expect(validTrainStatuses).toContain(result.status);
 
       await sleep(2000);
     });
