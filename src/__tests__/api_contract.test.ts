@@ -754,7 +754,58 @@ describe('CyborgDB API Contract Tests', () => {
     });
   });
 
-  describe('16 - Binary Data Upsert and Query', () => {
+  describe('16 - EncryptedIndex.train()', () => {
+    it('should train with default parameters', async () => {
+      const result = await testIndex.train();
+      expect(result).toBeDefined();
+      expect(result.status).toBe('success');
+    });
+
+    it('should train with custom parameters', async () => {
+      const result = await testIndex.train({
+        nLists: 10,
+        batchSize: 512,
+        maxIters: 50,
+        tolerance: 1e-5
+      });
+      expect(result.status).toBe('success');
+    });
+
+    it('should train with partial parameters', async () => {
+      const result = await testIndex.train({
+        nLists: 5
+      });
+      expect(result.status).toBe('success');
+      
+      await sleep(2000);
+    });
+  });
+
+  describe('17 - EncryptedIndex.delete()', () => {
+    it('should delete vectors by IDs', async () => {
+      const idsToDelete = ['0', '5'];
+      const result = await testIndex.delete({ ids: idsToDelete });
+      
+      expect(result).toBeDefined();
+      expect(result.status).toBe('success');
+      
+      await sleep(1000);
+      
+      const listResult = await testIndex.listIds();
+      idsToDelete.forEach(id => {
+        expect(listResult.ids).not.toContain(id);
+      });
+    });
+
+    it('should delete additional vector', async () => {
+      const result = await testIndex.delete({ ids: ['9'] });
+      expect(result.status).toBe('success');
+
+      await sleep(1000);
+    });
+  });
+
+  describe('18 - Binary Data Upsert and Query', () => {
     const binaryTestIds = ['binary_1', 'binary_2', 'binary_3'];
     let binaryTestData: Uint8Array[];
 
@@ -835,57 +886,6 @@ describe('CyborgDB API Contract Tests', () => {
     it('should clean up binary test data', async () => {
       const result = await testIndex.delete({ ids: binaryTestIds });
       expect(result.status).toBe('success');
-      await sleep(1000);
-    });
-  });
-
-  describe('17 - EncryptedIndex.train()', () => {
-    it('should train with default parameters', async () => {
-      const result = await testIndex.train();
-      expect(result).toBeDefined();
-      expect(result.status).toBe('success');
-    });
-
-    it('should train with custom parameters', async () => {
-      const result = await testIndex.train({
-        nLists: 10,
-        batchSize: 512,
-        maxIters: 50,
-        tolerance: 1e-5
-      });
-      expect(result.status).toBe('success');
-    });
-
-    it('should train with partial parameters', async () => {
-      const result = await testIndex.train({
-        nLists: 5
-      });
-      expect(result.status).toBe('success');
-      
-      await sleep(2000);
-    });
-  });
-
-  describe('18 - EncryptedIndex.delete()', () => {
-    it('should delete vectors by IDs', async () => {
-      const idsToDelete = ['0', '5'];
-      const result = await testIndex.delete({ ids: idsToDelete });
-      
-      expect(result).toBeDefined();
-      expect(result.status).toBe('success');
-      
-      await sleep(1000);
-      
-      const listResult = await testIndex.listIds();
-      idsToDelete.forEach(id => {
-        expect(listResult.ids).not.toContain(id);
-      });
-    });
-
-    it('should delete additional vector', async () => {
-      const result = await testIndex.delete({ ids: ['9'] });
-      expect(result.status).toBe('success');
-      
       await sleep(1000);
     });
   });
