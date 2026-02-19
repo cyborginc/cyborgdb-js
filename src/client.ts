@@ -4,7 +4,7 @@ import {
   CreateIndexRequest,
   IndexIVFPQModel as IndexIVFPQ,
   IndexIVFFlatModel as IndexIVFFlat,
-  IndexIVFModel as IndexIVF,
+  IndexIVFSQModel as IndexIVFSQ,
   IndexOperationRequest,
   ErrorResponseModel,
   HTTPValidationError,
@@ -216,7 +216,7 @@ export class CyborgDB {
   }: {
     indexName: string;
     indexKey: Uint8Array;
-    indexConfig?: IndexIVFPQ | IndexIVFFlat | IndexIVF;
+    indexConfig?: IndexIVFPQ | IndexIVFFlat | IndexIVFSQ;
     metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
     embeddingModel?: string;
   }) {
@@ -226,11 +226,11 @@ export class CyborgDB {
 
       // Create the request using the proper snake_case property names
       // Use default IndexIVFFlat if no config provided
-      const finalConfig: IndexIVFFlat | IndexIVFPQ | IndexIVF = indexConfig || {
+      const finalConfig: IndexIVFFlat | IndexIVFPQ | IndexIVFSQ = indexConfig || {
         type: 'ivfflat',
         dimension: undefined
       };
-      
+
       // Create proper IndexConfig object
       const baseConfig = {
         dimension: finalConfig.dimension || undefined,
@@ -238,13 +238,21 @@ export class CyborgDB {
         ...(metric && { metric })
       };
 
-      const indexConfigObj: IndexConfig = finalConfig.type === 'ivfpq'
-        ? {
-            ...baseConfig,
-            pqDim: (finalConfig as IndexIVFPQ).pqDim ?? 32,
-            pqBits: (finalConfig as IndexIVFPQ).pqBits ?? 8
-          }
-        : baseConfig as IndexConfig;
+      let indexConfigObj: IndexConfig;
+      if (finalConfig.type === 'ivfpq') {
+        indexConfigObj = {
+          ...baseConfig,
+          pqDim: (finalConfig as IndexIVFPQ).pqDim ?? 32,
+          pqBits: (finalConfig as IndexIVFPQ).pqBits ?? 8
+        };
+      } else if (finalConfig.type === 'ivfsq') {
+        indexConfigObj = {
+          ...baseConfig,
+          sqBits: (finalConfig as IndexIVFSQ).sqBits ?? 16
+        } as IndexConfig;
+      } else {
+        indexConfigObj = baseConfig as IndexConfig;
+      }
       
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
@@ -270,7 +278,7 @@ export class CyborgDB {
    * operational parameters.
    * 
    * **Information Retrieved:**
-   * - Index name and type (ivfflat, ivfpq, ivf)
+   * - Index name and type (ivfflat, ivfpq, ivfsq)
    * - Current training status (trained/untrained)
    * - Index configuration (dimensions, metrics, clustering parameters)
    * - Vector count and other operational statistics

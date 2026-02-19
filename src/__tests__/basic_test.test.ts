@@ -1,4 +1,4 @@
-import { Client, IndexIVFPQ, EncryptedIndex, QueryResponse } from '../index';
+import { Client, IndexIVFFlat, IndexIVFPQ, IndexIVFSQ, EncryptedIndex, QueryResponse } from '../index';
 
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
@@ -7,12 +7,12 @@ import * as dotenv from 'dotenv';
 
 /**
  * Basic Integration Tests for All CyborgDB Index Types
- * 
- * This test suite covers all three index types:
+ *
+ * This test suite covers all four index types:
  * 1. IVF_FLAT - Basic inverted file index
  * 2. IVFPQ - Inverted file with product quantization
- * 3. IVF - Standard inverted file index
- * 
+ * 3. IVFSQ - Inverted file with scalar quantization
+ *
  * To run the integration tests:
  * 1. Start the CyborgDB service locally or on a server
  * 2. Copy the API key from the service terminal and set it in a .env file
@@ -37,6 +37,7 @@ const JSON_DATASET_PATH = path.join(__dirname, 'wiki_data_sample.json');
 const N_LISTS = 100;
 const PQ_DIM = 32;
 const PQ_BITS = 8;
+const SQ_BITS = 8;
 const METRIC = "euclidean";
 const TOP_K = 5;
 const N_PROBES = 10;
@@ -118,6 +119,140 @@ beforeAll(async () => {
     throw error;
   }
 }, 60000);
+
+// ===== IVFFlat TESTS =====
+describe('IVFFlatBasicIntegrationTest', () => {
+  const client = new Client({ baseUrl: API_URL, apiKey: CYBORGDB_API_KEY, verifySsl: false });
+  let indexName: string;
+  let indexKey: Uint8Array;
+  let dimension: number;
+  let trainData: number[][];
+  let testData: number[][];
+  let index: EncryptedIndex;
+
+  // Set up shared test data
+  beforeAll(() => {
+    if (sharedData) {
+      dimension = sharedData.train[0].length;
+      trainData = sharedData.train.slice(0, 100);
+      testData = sharedData.test.slice(0, 10);
+    } else {
+      throw new Error("Shared data not available");
+    }
+  });
+
+  // Set up for each test
+  beforeEach(async () => {
+    indexName = generateIndexName('ivfflat');
+    indexKey = generateRandomKey();
+
+    const indexConfig: IndexIVFFlat = {
+          dimension: dimension,
+          type: "ivfflat"
+    };
+    console.log(`Creating IVFFlat index with dimension ${dimension}`);
+    console.log(`IVFFlat config: metric=${METRIC}, nLists=${N_LISTS}`);
+
+    // This should succeed - if it fails, the test should fail
+    index = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
+    console.log(`✓ IVFFlat index created successfully: ${indexName}`);
+  }, 30000);
+
+  // Clean up after each test
+  afterEach(async () => {
+    if (index) {
+      try {
+        await index.deleteIndex();
+        console.log(`✓ Cleaned up IVFFlat index: ${indexName}`);
+      } catch (error) {
+        console.error(`Error cleaning up IVFFlat index: ${error}`);
+      }
+    }
+  }, 15000);
+
+  test('should create IVFFlat index successfully', async () => {
+    expect(index).toBeDefined();
+    expect(await index.getIndexName()).toBe(indexName);
+    expect(await index.getIndexType()).toBe("ivfflat");
+  });
+
+  test('should list IDs from the index', async () => {
+    // First, add some vectors to the index
+    const testIds = ['vec1', 'vec2', 'vec3', 'vec4', 'vec5'];
+    const vectors = trainData.slice(0, 5);
+
+    // Upsert vectors with specific IDs
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+
+    console.log('✓ Added 5 vectors to the index');
+
+    // Now test listIds
+    const result = await index.listIds();
+
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(5);
+    expect(result.ids.length).toBe(5);
+
+    // Check that all our IDs are in the result
+    for (const id of testIds) {
+      expect(result.ids).toContain(id);
+    }
+
+    console.log(`✓ listIds returned ${result.count} IDs: ${result.ids.join(', ')}`);
+  });
+
+  test('should return empty list for empty index', async () => {
+    // Test listIds on an empty index
+    const result = await index.listIds();
+
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(0);
+    expect(result.ids.length).toBe(0);
+
+    console.log('✓ listIds correctly returned empty list for empty index');
+  });
+
+  test('should update list after deletions', async () => {
+    // Add vectors
+    const testIds = ['del1', 'del2', 'del3', 'keep1', 'keep2'];
+    const vectors = trainData.slice(0, 5);
+
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+
+    // Verify all are present
+    let result = await index.listIds();
+    expect(result.count).toBe(5);
+
+    // Delete some vectors
+    await index.delete({ ids: ['del1', 'del2', 'del3'] });
+    console.log('✓ Deleted 3 vectors from the index');
+
+    // Check listIds after deletion
+    result = await index.listIds();
+
+    expect(result.count).toBe(2);
+    expect(result.ids.length).toBe(2);
+    expect(result.ids).toContain('keep1');
+    expect(result.ids).toContain('keep2');
+    expect(result.ids).not.toContain('del1');
+    expect(result.ids).not.toContain('del2');
+    expect(result.ids).not.toContain('del3');
+
+    console.log(`✓ listIds correctly updated after deletion: ${result.ids.join(', ')}`);
+  });
+});
 
 // ===== IVFPQ TESTS =====
 describe('IVFPQBasicIntegrationTest', () => {
@@ -256,5 +391,140 @@ describe('IVFPQBasicIntegrationTest', () => {
   });
 
 
+});
+
+// ===== IVFSQ TESTS =====
+describe('IVFSQBasicIntegrationTest', () => {
+  const client = new Client({ baseUrl: API_URL, apiKey: CYBORGDB_API_KEY, verifySsl: false });
+  let indexName: string;
+  let indexKey: Uint8Array;
+  let dimension: number;
+  let trainData: number[][];
+  let testData: number[][];
+  let index: EncryptedIndex;
+
+  // Set up shared test data
+  beforeAll(() => {
+    if (sharedData) {
+      dimension = sharedData.train[0].length;
+      trainData = sharedData.train.slice(0, 100);
+      testData = sharedData.test.slice(0, 10);
+    } else {
+      throw new Error("Shared data not available");
+    }
+  });
+
+  // Set up for each test
+  beforeEach(async () => {
+    indexName = generateIndexName('ivfsq');
+    indexKey = generateRandomKey();
+
+    const indexConfig: IndexIVFSQ = {
+          dimension: dimension,
+          type: "ivfsq",
+          sqBits: SQ_BITS
+    };
+    console.log(`Creating IVFSQ index with dimension ${dimension}`);
+    console.log(`IVFSQ config: metric=${METRIC}, nLists=${N_LISTS}, sqBits=${SQ_BITS}`);
+
+    // This should succeed - if it fails, the test should fail
+    index = await client.createIndex({ indexName, indexKey, indexConfig, metric: METRIC });
+    console.log(`✓ IVFSQ index created successfully: ${indexName}`);
+  }, 30000);
+
+  // Clean up after each test
+  afterEach(async () => {
+    if (index) {
+      try {
+        await index.deleteIndex();
+        console.log(`✓ Cleaned up IVFSQ index: ${indexName}`);
+      } catch (error) {
+        console.error(`Error cleaning up IVFSQ index: ${error}`);
+      }
+    }
+  }, 15000);
+
+  test('should create IVFSQ index successfully', async () => {
+    expect(index).toBeDefined();
+    expect(await index.getIndexName()).toBe(indexName);
+    expect(await index.getIndexType()).toBe("ivfsq");
+  });
+
+  test('should list IDs from the index', async () => {
+    // First, add some vectors to the index
+    const testIds = ['vec1', 'vec2', 'vec3', 'vec4', 'vec5'];
+    const vectors = trainData.slice(0, 5);
+
+    // Upsert vectors with specific IDs
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+
+    console.log('✓ Added 5 vectors to the index');
+
+    // Now test listIds
+    const result = await index.listIds();
+
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(5);
+    expect(result.ids.length).toBe(5);
+
+    // Check that all our IDs are in the result
+    for (const id of testIds) {
+      expect(result.ids).toContain(id);
+    }
+
+    console.log(`✓ listIds returned ${result.count} IDs: ${result.ids.join(', ')}`);
+  });
+
+  test('should return empty list for empty index', async () => {
+    // Test listIds on an empty index
+    const result = await index.listIds();
+
+    expect(result).toBeDefined();
+    expect(result.ids).toBeDefined();
+    expect(result.count).toBeDefined();
+    expect(Array.isArray(result.ids)).toBe(true);
+    expect(result.count).toBe(0);
+    expect(result.ids.length).toBe(0);
+
+    console.log('✓ listIds correctly returned empty list for empty index');
+  });
+
+  test('should update list after deletions', async () => {
+    // Add vectors
+    const testIds = ['del1', 'del2', 'del3', 'keep1', 'keep2'];
+    const vectors = trainData.slice(0, 5);
+
+    await index.upsert({
+      ids: testIds,
+      vectors: vectors
+    });
+
+    // Verify all are present
+    let result = await index.listIds();
+    expect(result.count).toBe(5);
+
+    // Delete some vectors
+    await index.delete({ ids: ['del1', 'del2', 'del3'] });
+    console.log('✓ Deleted 3 vectors from the index');
+
+    // Check listIds after deletion
+    result = await index.listIds();
+
+    expect(result.count).toBe(2);
+    expect(result.ids.length).toBe(2);
+    expect(result.ids).toContain('keep1');
+    expect(result.ids).toContain('keep2');
+    expect(result.ids).not.toContain('del1');
+    expect(result.ids).not.toContain('del2');
+    expect(result.ids).not.toContain('del3');
+
+    console.log(`✓ listIds correctly updated after deletion: ${result.ids.join(', ')}`);
+  });
 });
 

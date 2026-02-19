@@ -12,12 +12,16 @@ import {
     ErrorResponseModel,
     HTTPValidationError,
     IndexIVFFlatModel,
-    IndexIVFModel,
     IndexIVFPQModel,
+    IndexIVFSQModel,
     IndexInfoResponseModel,
     Request,
     ListIDsRequest,
     ListIDsResponse,
+    BinaryUpsertRequest,
+    BinaryQueryRequest,
+    BinaryVectorBatch,
+    BinaryQueryBatch,
   } from './models';
 import {
   UpsertResponse,
@@ -192,21 +196,28 @@ export class EncryptedIndex {
 
     // Normalize camelCase keys from potential snake_case input
     // Only copy properties we want to keep, handling both camelCase and snake_case
-    const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number };
+    const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number; sq_bits?: number };
     const isIVFPQ = indexConfig.type?.toLowerCase() === 'ivfpq';
+    const isIVFSQ = indexConfig.type?.toLowerCase() === 'ivfsq';
 
     // Build config with only necessary properties
     const normalizedConfig: IndexConfig = {
       dimension: indexConfig.dimension,
       type: indexConfig.type,
       pqDim: 0,  // Default values
-      pqBits: 0
+      pqBits: 0,
+      sqBits: 0
     };
 
     // Only add pqDim and pqBits for IVFPQ index type
     if (isIVFPQ) {
       normalizedConfig.pqDim = indexConfig.pqDim ?? legacyConfig.pq_dim ?? 0;
       normalizedConfig.pqBits = indexConfig.pqBits ?? legacyConfig.pq_bits ?? 0;
+    }
+
+    // Only add sqBits for IVFSQ index type
+    if (isIVFSQ) {
+      normalizedConfig.sqBits = indexConfig.sqBits ?? legacyConfig.sq_bits ?? 0;
     }
 
     this.indexConfig = normalizedConfig;
@@ -245,16 +256,16 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         return response.isTrained;
     }
-    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFModel | IndexIVFPQModel> {
+    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFPQModel | IndexIVFSQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         this.indexConfig = response.indexConfig as IndexConfig;
         // Return a copy to prevent external modification
-        if (this.indexConfig.type === 'ivf_flat') {
-            return { ...this.indexConfig } as IndexIVFFlatModel;
-        } else if (this.indexConfig.type === 'ivf_pq') {
+        if (this.indexConfig.type === 'ivf_pq') {
             return { ...this.indexConfig } as IndexIVFPQModel;
+        } else if (this.indexConfig.type === 'ivf_sq') {
+            return { ...this.indexConfig } as IndexIVFSQModel;
         } else {
-            return { ...this.indexConfig } as IndexIVFModel;
+            return { ...this.indexConfig } as IndexIVFFlatModel;
     }}
     /**
      * Delete an index
@@ -409,12 +420,30 @@ export class EncryptedIndex {
   async upsert({
     items,
     ids,
-    vectors
+    vectors,
+    metadata,
+    contents
   }: {
     items?: VectorItem[];
     ids?: string[];
-    vectors?: number[][];
+    vectors?: number[][] | Float32Array;
+    metadata?: (Record<string, unknown> | null)[];
+    contents?: (string | null)[];
   }): Promise<UpsertResponse> {
+    // Route to binary endpoint if vectors is Float32Array
+    if (vectors instanceof Float32Array) {
+      if (!ids) {
+        throw new Error("Invalid upsert call: 'ids' is required when using Float32Array vectors");
+      }
+      if (metadata !== undefined && metadata.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`);
+      }
+      if (contents !== undefined && contents.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
+      }
+      return this._upsertBinary({ ids, vectors, metadata, contents });
+    }
+
     try {
       // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(this.indexKey).toString('hex');
@@ -494,6 +523,14 @@ export class EncryptedIndex {
           throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${vectors.length} vectors provided. The number of IDs must match the number of vectors.`);
         }
 
+        if (metadata !== undefined && metadata.length !== ids.length) {
+          throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`);
+        }
+
+        if (contents !== undefined && contents.length !== ids.length) {
+          throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
+        }
+
         if (ids.length === 0) {
           // Empty arrays are valid - just return early success
           return { status: 'success', message: 'No items to upsert' };
@@ -531,8 +568,8 @@ export class EncryptedIndex {
         finalItems = ids.map((id, index) => ({
           id: id.toString(),
           vector: vectors[index],
-          contents: undefined,
-          metadata: undefined
+          contents: contents?.[index] ?? undefined,
+          metadata: metadata?.[index] ?? undefined
         }));
       } else {
         throw new Error("Invalid upsert call: Must provide either 'items' or both 'ids' and 'vectors'");
@@ -612,16 +649,26 @@ export class EncryptedIndex {
     nProbes,
     filters,
     include,
-    greedy
+    greedy,
+    dimension
   }: {
-    queryVectors?: number[] | number[][];
+    queryVectors?: number[] | number[][] | Float32Array;
     queryContents?: string;
     topK?: number;
     nProbes?: number;
     filters?: FilterExpression;
     include?: string[];
     greedy?: boolean;
+    dimension?: number;
   }): Promise<QueryResponse> {
+    // Route to binary endpoint if queryVectors is Float32Array
+    if (queryVectors instanceof Float32Array) {
+      if (!dimension) {
+        throw new Error("Invalid query call: 'dimension' is required when using Float32Array queryVectors");
+      }
+      return this._queryBinary({ queryVectors, topK, nProbes, filters, include, greedy, dimension });
+    }
+
     const keyHex = Buffer.from(this.indexKey).toString('hex');
     let isSingleQuery = false;
 
@@ -742,4 +789,176 @@ export class EncryptedIndex {
           this.handleApiError(error);
         }
       }
+
+  /**
+   * Internal method: Add or update vectors using binary format for efficiency.
+   * Called automatically by upsert() when Float32Array is passed.
+   */
+  private async _upsertBinary({
+    ids,
+    vectors,
+    metadata,
+    contents
+  }: {
+    ids: string[];
+    vectors: number[][] | Float32Array;
+    metadata?: (Record<string, unknown> | null)[];
+    contents?: (string | null)[];
+  }): Promise<UpsertResponse> {
+    try {
+      // Validate metadata and contents length if provided
+      if (metadata !== undefined && metadata.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`);
+      }
+      if (contents !== undefined && contents.length !== ids.length) {
+        throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
+      }
+
+      const keyHex = Buffer.from(this.indexKey).toString('hex');
+
+      // Convert vectors to Float32Array if needed and get dimension
+      let float32Vectors: Float32Array;
+      let dimension: number;
+
+      if (vectors instanceof Float32Array) {
+        // Assume vectors is already flattened: n_vectors * dimension
+        if (ids.length === 0) {
+          return { status: 'success', message: 'No items to upsert' };
+        }
+        if (vectors.length % ids.length !== 0) {
+          throw new Error(`Float32Array length (${vectors.length}) must be evenly divisible by number of ids (${ids.length})`);
+        }
+        dimension = vectors.length / ids.length;
+        float32Vectors = vectors;
+      } else {
+        // vectors is number[][]
+        if (vectors.length === 0 || ids.length === 0) {
+          return { status: 'success', message: 'No items to upsert' };
+        }
+
+        if (ids.length !== vectors.length) {
+          throw new Error(`Number of ids (${ids.length}) must match number of vectors (${vectors.length})`);
+        }
+
+        dimension = vectors[0].length;
+
+        // Flatten to Float32Array
+        float32Vectors = new Float32Array(vectors.length * dimension);
+        for (let i = 0; i < vectors.length; i++) {
+          if (vectors[i].length !== dimension) {
+            throw new Error(`All vectors must have the same dimension. Vector at index ${i} has dimension ${vectors[i].length}, expected ${dimension}`);
+          }
+          for (let j = 0; j < dimension; j++) {
+            float32Vectors[i * dimension + j] = vectors[i][j];
+          }
+        }
+      }
+
+      // Convert Float32Array to base64
+      const vectorsB64 = Buffer.from(float32Vectors.buffer).toString('base64');
+
+      // Build the batch
+      const batch: BinaryVectorBatch = {
+        ids,
+        vectorsB64,
+        dimension,
+        metadata: metadata ?? undefined,
+        // Cast contents to expected type - the API accepts string | null for each item
+        contents: contents as BinaryVectorBatch['contents']
+      };
+
+      const binaryUpsertRequest: BinaryUpsertRequest = {
+        indexName: this.indexName,
+        indexKey: keyHex,
+        batch
+      };
+
+      const response = await this.api.upsertVectorsBinaryV1VectorsUpsertBinaryPost({binaryUpsertRequest});
+      return response as UpsertResponse;
+    } catch (error: unknown) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Internal method: Query vectors using binary format for efficiency.
+   * Called automatically by query() when Float32Array is passed.
+   */
+  private async _queryBinary({
+    queryVectors,
+    topK,
+    nProbes,
+    filters,
+    include,
+    greedy,
+    dimension: providedDimension
+  }: {
+    queryVectors: number[][] | Float32Array;
+    topK?: number;
+    nProbes?: number;
+    filters?: FilterExpression;
+    include?: string[];
+    greedy?: boolean;
+    dimension?: number;
+  }): Promise<QueryResponse> {
+    try {
+      const keyHex = Buffer.from(this.indexKey).toString('hex');
+
+      // Convert vectors to Float32Array if needed and get dimension
+      let float32Vectors: Float32Array;
+      let dimension: number;
+
+      if (queryVectors instanceof Float32Array) {
+        if (!providedDimension) {
+          throw new Error('dimension is required when using Float32Array for queryVectors');
+        }
+        float32Vectors = queryVectors;
+        dimension = providedDimension;
+      } else {
+        // queryVectors is number[][]
+        if (queryVectors.length === 0) {
+          throw new Error('queryVectors cannot be empty');
+        }
+
+        const numQueries = queryVectors.length;
+        dimension = queryVectors[0].length;
+
+        // Flatten to Float32Array
+        float32Vectors = new Float32Array(numQueries * dimension);
+        for (let i = 0; i < numQueries; i++) {
+          if (queryVectors[i].length !== dimension) {
+            throw new Error(`All query vectors must have the same dimension. Vector at index ${i} has dimension ${queryVectors[i].length}, expected ${dimension}`);
+          }
+          for (let j = 0; j < dimension; j++) {
+            float32Vectors[i * dimension + j] = queryVectors[i][j];
+          }
+        }
+      }
+
+      // Convert Float32Array to base64
+      const vectorsB64 = Buffer.from(float32Vectors.buffer).toString('base64');
+
+      // Build the batch
+      const batch: BinaryQueryBatch = {
+        vectorsB64,
+        dimension
+      };
+
+      const binaryQueryRequest: BinaryQueryRequest = {
+        indexName: this.indexName,
+        indexKey: keyHex,
+        batch,
+        topK: topK ?? undefined,
+        nProbes: nProbes ?? undefined,
+        greedy: greedy ?? undefined,
+        filters: filters ?? undefined,
+        include: include ?? undefined
+      };
+
+      const response = await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({binaryQueryRequest});
+      return response;
+    } catch (error: unknown) {
+      this.handleApiError(error);
+    }
+  }
   }

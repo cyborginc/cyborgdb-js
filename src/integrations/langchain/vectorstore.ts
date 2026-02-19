@@ -22,7 +22,7 @@ export interface CyborgVectorStoreConfig {
   apiKey: string;
   baseUrl: string;
   embedding: EmbeddingsInterface;
-  indexType?: 'ivfflat' | 'ivf' | 'ivfpq';
+  indexType?: 'ivfflat' | 'ivfpq' | 'ivfsq';
   indexConfigParams?: Record<string, any>;
   dimension?: number;
   metric?: 'cosine' | 'euclidean' | 'squared_euclidean';

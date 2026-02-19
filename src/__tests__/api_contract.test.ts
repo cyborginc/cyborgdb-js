@@ -199,14 +199,6 @@ describe('CyborgDB API Contract Tests', () => {
   });
 
   describe('06 - Index Config Classes', () => {
-    it('should create IndexIVF config object', () => {
-      const config = {
-        dimension: 0,
-        type: 'ivf' as const
-      };
-      expect(config.type).toBe('ivf');
-    });
-
     it('should create IndexIVFFlat config object with dimension', () => {
       const config = {
         dimension,
@@ -227,6 +219,17 @@ describe('CyborgDB API Contract Tests', () => {
       expect(config.dimension).toBe(dimension);
       expect(config.pqDim).toBe(64);
       expect(config.pqBits).toBe(8);
+    });
+
+    it('should create IndexIVFSQ config object with required parameters', () => {
+      const config = {
+        dimension,
+        type: 'ivfsq' as const,
+        sqBits: 8
+      };
+      expect(config.type).toBe('ivfsq');
+      expect(config.dimension).toBe(dimension);
+      expect(config.sqBits).toBe(8);
     });
   });
 
@@ -258,48 +261,47 @@ describe('CyborgDB API Contract Tests', () => {
       await sleep(1000); // Backend has eventual consistency for deletions
     });
 
-    it('should create index with IndexIVF config', async () => {
-      const tempIndexName = `temp_ivf_${Date.now().toString(36)}`;
-      const tempIndexKey = Client.generateKey();
-      
-      const indexConfig = {
-        dimension: 0,
-        type: 'ivf' as const
-      };
-      
-      const index = await client.createIndex({
-        indexName: tempIndexName,
-        indexKey: tempIndexKey,
-        indexConfig,
-        metric: 'squared_euclidean'
-      });
-      
-      expect(index).toBeDefined();
-      expect(await index.getIndexType()).toBe('ivf');
-      
-      await index.deleteIndex();
-      await sleep(1000); // Backend has eventual consistency for deletions
-    });
-
     it('should create index with IndexIVFPQ config', async () => {
       const tempIndexName = `temp_ivfpq_${Date.now().toString(36)}`;
       const tempIndexKey = Client.generateKey();
-      
+
       const indexConfig = {
         dimension: 0,
         type: 'ivfpq' as const,
         pqDim: 32,
         pqBits: 8
       };
-      
+
       const index = await client.createIndex({
         indexName: tempIndexName,
         indexKey: tempIndexKey,
         indexConfig
       });
-      
+
       expect(await index.getIndexType()).toBe('ivfpq');
-      
+
+      await index.deleteIndex();
+      await sleep(1000); // Backend has eventual consistency for deletions
+    });
+
+    it('should create index with IndexIVFSQ config', async () => {
+      const tempIndexName = `temp_ivfsq_${Date.now().toString(36)}`;
+      const tempIndexKey = Client.generateKey();
+
+      const indexConfig = {
+        dimension: 0,
+        type: 'ivfsq' as const,
+        sqBits: 8
+      };
+
+      const index = await client.createIndex({
+        indexName: tempIndexName,
+        indexKey: tempIndexKey,
+        indexConfig
+      });
+
+      expect(await index.getIndexType()).toBe('ivfsq');
+
       await index.deleteIndex();
       await sleep(1000); // Backend has eventual consistency for deletions
     });
