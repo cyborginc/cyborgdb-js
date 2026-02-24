@@ -40,7 +40,7 @@ jobs:
         id: compute
         run: |
           # For tags, determine based on tag pattern
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
             TAG="${{ github.ref_name }}"
             if [[ "$TAG" == *"rc"* ]]; then
               echo "env=staging" >> $GITHUB_OUTPUT
