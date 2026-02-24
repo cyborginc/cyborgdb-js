@@ -40,7 +40,7 @@ jobs:
         id: compute
         run: |
           # For tags, determine based on tag pattern
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
             TAG="${{ github.ref_name }}"
             if [[ "$TAG" == *"rc"* ]]; then
               echo "env=staging" >> $GITHUB_OUTPUT
@@ -309,7 +309,15 @@ jobs:
           ls -la *.tgz
           npm pack --dry-run
       
+      - name: Load NPM token from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TOKEN }}
+          NPM_TOKEN: "op://CyborgDB/CyborgDB Prod/NPM_ACCESS_TOKEN"
+
       - name: Publish to NPM
         run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
