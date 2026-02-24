@@ -39,11 +39,16 @@ jobs:
       - name: Compute environment
         id: compute
         run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "env=prod" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "env=staging" >> $GITHUB_OUTPUT
+          # For tags, determine based on tag pattern
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+            if [[ "$TAG" == *"rc"* ]]; then
+              echo "env=staging" >> $GITHUB_OUTPUT
+            else
+              echo "env=prod" >> $GITHUB_OUTPUT
+            fi
           else
+            # Default to dev for PRs and main branch
             echo "env=dev" >> $GITHUB_OUTPUT
           fi
 
