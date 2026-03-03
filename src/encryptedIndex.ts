@@ -12,8 +12,11 @@ import {
     ErrorResponseModel,
     HTTPValidationError,
     IndexIVFFlatModel,
+    IndexIVFFlatModelFromJSON,
     IndexIVFPQModel,
+    IndexIVFPQModelFromJSON,
     IndexIVFSQModel,
+    IndexIVFSQModelFromJSON,
     IndexInfoResponseModel,
     Request,
     ListIDsRequest,
@@ -258,14 +261,20 @@ export class EncryptedIndex {
     }
     public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFPQModel | IndexIVFSQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
-        this.indexConfig = response.indexConfig as IndexConfig;
-        // Return a copy to prevent external modification
-        if (this.indexConfig.type === 'ivfpq') {
-            return { ...this.indexConfig } as IndexIVFPQModel;
-        } else if (this.indexConfig.type === 'ivfsq') {
-            return { ...this.indexConfig } as IndexIVFSQModel;
+        const rawConfig = response.indexConfig;
+        // Convert snake_case fields to camelCase using model converters
+        if (rawConfig.type === 'ivfpq') {
+            const converted = IndexIVFPQModelFromJSON(rawConfig);
+            this.indexConfig = converted as IndexConfig;
+            return { ...converted };
+        } else if (rawConfig.type === 'ivfsq') {
+            const converted = IndexIVFSQModelFromJSON(rawConfig);
+            this.indexConfig = converted as IndexConfig;
+            return { ...converted };
         } else {
-            return { ...this.indexConfig } as IndexIVFFlatModel;
+            const converted = IndexIVFFlatModelFromJSON(rawConfig);
+            this.indexConfig = converted as IndexConfig;
+            return { ...converted };
     }}
     /**
      * Delete an index
