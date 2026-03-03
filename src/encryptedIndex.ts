@@ -260,9 +260,9 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         this.indexConfig = response.indexConfig as IndexConfig;
         // Return a copy to prevent external modification
-        if (this.indexConfig.type === 'ivf_pq') {
+        if (this.indexConfig.type === 'ivfpq') {
             return { ...this.indexConfig } as IndexIVFPQModel;
-        } else if (this.indexConfig.type === 'ivf_sq') {
+        } else if (this.indexConfig.type === 'ivfsq') {
             return { ...this.indexConfig } as IndexIVFSQModel;
         } else {
             return { ...this.indexConfig } as IndexIVFFlatModel;
