@@ -99,7 +99,7 @@ export class EncryptedIndex {
       if (typeof errorBody === 'string') {
         try {
           errorBody = JSON.parse(errorBody);
-        } catch (e) {
+        } catch (_e) {
           // Keep as string if not valid JSON
         }
       }
@@ -348,7 +348,7 @@ export class EncryptedIndex {
                 try {
                   // Decode base64 to string (UTF-8)
                   result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
-                } catch (e) {
+                } catch (_e) {
                   // If decoding fails, use it as is
                   result.contents = item.contents;
                 }
