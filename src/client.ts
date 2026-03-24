@@ -74,7 +74,7 @@ export class CyborgDB {
         };
 
         console.warn('SSL verification disabled in Node.js environment');
-      } catch (_e) {
+      } catch {
         // Fallback: warn that SSL verification can't be disabled
         console.warn('Could not configure SSL verification - using default fetch');
       }
@@ -144,7 +144,7 @@ export class CyborgDB {
     if (typeof errorBody === 'string') {
       try {
         errorBody = JSON.parse(errorBody);
-      } catch (_e) {
+      } catch {
         // Keep as string if not valid JSON
       }
     }
