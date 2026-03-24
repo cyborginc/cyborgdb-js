@@ -152,7 +152,7 @@ describe('ConcurrentUpserts', () => {
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch {}
+    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
   });
 
   test('concurrent upserts no data loss', async () => {
@@ -237,7 +237,7 @@ describe('ConcurrentReadsAndWrites', () => {
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch {}
+    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
   });
 
   test('queries during upserts', async () => {
@@ -392,7 +392,7 @@ describe('ErrorIsolationUnderLoad', () => {
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch {}
+    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
   });
 
   test('bad worker doesnt break good workers', async () => {
@@ -465,7 +465,7 @@ describe('MultiIndexIsolation', () => {
 
   afterAll(async () => {
     for (const { index } of indexes) {
-      try { await index.deleteIndex(); } catch {}
+      try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
     }
   });
 
@@ -555,7 +555,7 @@ describe('MixedIndexTypesOneClient', () => {
 
   afterAll(async () => {
     for (const { index } of Object.values(indexes)) {
-      try { await index.deleteIndex(); } catch {}
+      try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
     }
   });
 
@@ -742,7 +742,7 @@ describe('ConcurrentMultiIndexWrites', () => {
 
   afterAll(async () => {
     for (const { index } of indexes) {
-      try { await index.deleteIndex(); } catch {}
+      try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
     }
   });
 
@@ -809,7 +809,7 @@ describe('StressHighConcurrency', () => {
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch {}
+    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
   });
 
   test('20 workers 200 vectors each', async () => {
