@@ -258,15 +258,17 @@ export class EncryptedIndex {
     }
     public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFPQModel | IndexIVFSQModel> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
-        this.indexConfig = response.indexConfig as IndexConfig;
+        const rawConfig = response.indexConfig;
+        // index_type is at the top level of response, not inside index_config
+        const indexType = response.indexType;
+        // Add camelCase sqBits from snake_case sq_bits for IVFSQ indexes
+        if (indexType === 'ivfsq' && rawConfig.sq_bits !== undefined) {
+            rawConfig.sqBits = rawConfig.sq_bits;
+        }
+        this.indexConfig = rawConfig as IndexConfig;
         // Return a copy to prevent external modification
-        if (this.indexConfig.type === 'ivf_pq') {
-            return { ...this.indexConfig } as IndexIVFPQModel;
-        } else if (this.indexConfig.type === 'ivf_sq') {
-            return { ...this.indexConfig } as IndexIVFSQModel;
-        } else {
-            return { ...this.indexConfig } as IndexIVFFlatModel;
-    }}
+        return { ...rawConfig };
+    }
     /**
      * Delete an index
      * @returns Promise with the result of the operation

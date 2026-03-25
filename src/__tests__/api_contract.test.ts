@@ -306,6 +306,30 @@ describe('CyborgDB API Contract Tests', () => {
       await sleep(1000); // Backend has eventual consistency for deletions
     });
 
+    it('should create index with default IndexIVFSQ config (sqBits defaults to 16)', async () => {
+      const tempIndexName = `temp_ivfsq_default_${Date.now().toString(36)}`;
+      const tempIndexKey = Client.generateKey();
+
+      const indexConfig = {
+        dimension: 0,
+        type: 'ivfsq' as const
+      };
+
+      const index = await client.createIndex({
+        indexName: tempIndexName,
+        indexKey: tempIndexKey,
+        indexConfig
+      });
+
+      expect(await index.getIndexType()).toBe('ivfsq');
+
+      const config = await index.getIndexConfig() as any;
+      expect(config.sqBits).toBe(16);
+
+      await index.deleteIndex();
+      await sleep(1000); // Backend has eventual consistency for deletions
+    });
+
     it('should create index with embedding model', async () => {
       embeddingIndex = await client.createIndex({
         indexName: embeddingIndexName,
