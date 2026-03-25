@@ -51,6 +51,7 @@
 
 import { Client, EncryptedIndex, QueryResultItem } from '../index';
 import type { IndexIVFFlat, IndexIVFPQ, IndexIVFSQ } from '../index';
+import type { Results } from '../models/Results';
 import { randomBytes, randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 
@@ -115,6 +116,13 @@ async function upsertBatch(
   return { ids, vectors };
 }
 
+/**
+ * Check whether two vectors are element-wise equal within a relative tolerance.
+ * @param a - First vector.
+ * @param b - Second vector (must be same length as `a`).
+ * @param rtol - Maximum allowed relative difference per element (default 1e-5).
+ * @returns `true` if every pair of elements satisfies |a[i] - b[i]| <= rtol * max(|a[i]|, |b[i]|) + 1e-8.
+ */
 function vectorsApproxEqual(a: number[], b: number[], rtol = 1e-5): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -129,8 +137,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Poll `condition` every `intervalMs` until it returns true or `timeoutMs` elapses. */
+async function waitUntil(
+  condition: () => Promise<boolean>,
+  timeoutMs = 10_000,
+  intervalMs = 250,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await sleep(intervalMs);
+  }
+  throw new Error(`waitUntil timed out after ${timeoutMs}ms`);
+}
+
 /** Extract flat array of QueryResultItem from query response results. */
-function flattenResults(results: any): QueryResultItem[] {
+function flattenResults(results: Results | QueryResultItem[] | QueryResultItem[][]): QueryResultItem[] {
   if (!results) return [];
   if (Array.isArray(results) && results.length > 0 && Array.isArray(results[0])) {
     return (results as QueryResultItem[][]).flat();
@@ -152,7 +174,7 @@ describe('ConcurrentUpserts', () => {
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+    try { await index.deleteIndex(); } catch { /* cleanup */ }
   });
 
   test('concurrent upserts no data loss', async () => {
@@ -174,7 +196,10 @@ describe('ConcurrentUpserts', () => {
     await Promise.all(workers);
     expect(errors).toEqual([]);
 
-    await sleep(2000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return ids.length >= allIds.length;
+    });
 
     const { ids: storedIds } = await index.listIds();
     const storedSet = new Set(storedIds);
@@ -193,7 +218,7 @@ describe('ConcurrentUpserts', () => {
     for (const id of sharedIDs) writtenVectors[id] = [];
     const errors: Error[] = [];
 
-    const workers = Array.from({ length: numWorkers }, async (_, g) => {
+    const workers = Array.from({ length: numWorkers }, async () => {
       try {
         const vectors = generateRandomVectors(numIDs, DIMENSION);
         for (let i = 0; i < numIDs; i++) {
@@ -207,7 +232,11 @@ describe('ConcurrentUpserts', () => {
 
     await Promise.all(workers);
     expect(errors).toEqual([]);
-    await sleep(2000);
+
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return sharedIDs.every((id) => ids.includes(id));
+    });
 
     const items = await index.get({ ids: sharedIDs, include: ['vector'] });
     expect(items.length).toBe(numIDs);
@@ -233,11 +262,14 @@ describe('ConcurrentReadsAndWrites', () => {
     client = makeClient();
     ({ index } = await makeIndex(client, 'conc_rw'));
     await upsertBatch(index, 'seed', 100);
-    await sleep(1000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return ids.length >= 100;
+    });
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+    try { await index.deleteIndex(); } catch { /* cleanup */ }
   });
 
   test('queries during upserts', async () => {
@@ -286,7 +318,10 @@ describe('ConcurrentReadsAndWrites', () => {
     const deleteIDs = Array.from({ length: deleteCount }, (_, i) => `del_${i}`);
     const deleteVectors = generateRandomVectors(deleteCount, DIMENSION);
     await index.upsert({ ids: deleteIDs, vectors: deleteVectors });
-    await sleep(1000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return deleteIDs.every((id) => ids.includes(id));
+    });
 
     const errors: Array<[string, any, Error]> = [];
 
@@ -331,7 +366,10 @@ describe('ConcurrentReadsAndWrites', () => {
     const targetIDs = Array.from({ length: targetCount }, (_, i) => `race_${i}`);
     const vectors = generateRandomVectors(targetCount, DIMENSION);
     await index.upsert({ ids: targetIDs, vectors });
-    await sleep(1000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return targetIDs.every((id) => ids.includes(id));
+    });
 
     const errors: Array<[string, number, Error]> = [];
 
@@ -361,7 +399,10 @@ describe('ConcurrentReadsAndWrites', () => {
     await Promise.all([...upserters, ...deleters]);
     expect(errors).toEqual([]);
 
-    await sleep(1000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return ids.length > 0;
+    });
 
     const { ids: storedIds } = await index.listIds();
     expect(storedIds.length).toBeGreaterThan(0);
@@ -388,11 +429,14 @@ describe('ErrorIsolationUnderLoad', () => {
     client = makeClient();
     ({ index } = await makeIndex(client, 'conc_errisolation'));
     await upsertBatch(index, 'base', 50);
-    await sleep(1000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return ids.length >= 50;
+    });
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+    try { await index.deleteIndex(); } catch { /* cleanup */ }
   });
 
   test('bad worker doesnt break good workers', async () => {
@@ -460,12 +504,18 @@ describe('MultiIndexIsolation', () => {
       indexData[name] = new Set(ids);
     }
 
-    await sleep(2000);
+    await waitUntil(async () => {
+      for (const { index } of indexes) {
+        const { ids } = await index.listIds();
+        if (ids.length < 30) return false;
+      }
+      return true;
+    });
   });
 
   afterAll(async () => {
     for (const { index } of indexes) {
-      try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+      try { await index.deleteIndex(); } catch { /* cleanup */ }
     }
   });
 
@@ -505,7 +555,10 @@ describe('MultiIndexIsolation', () => {
     expect(targetIds.length).toBeGreaterThan(0);
     const toDelete = targetIds.slice(0, Math.min(15, targetIds.length));
     await indexes[0].index.delete({ ids: toDelete });
-    await sleep(1000);
+    await waitUntil(async () => {
+      const { ids } = await indexes[0].index.listIds();
+      return toDelete.every((id) => !ids.includes(id));
+    });
 
     for (let i = 1; i < indexes.length; i++) {
       const { ids: currentIds } = await indexes[i].index.listIds();
@@ -555,7 +608,7 @@ describe('MixedIndexTypesOneClient', () => {
 
   afterAll(async () => {
     for (const { index } of Object.values(indexes)) {
-      try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+      try { await index.deleteIndex(); } catch { /* cleanup */ }
     }
   });
 
@@ -576,7 +629,13 @@ describe('MixedIndexTypesOneClient', () => {
       perTypeIds[typeName] = new Set(ids);
     }
 
-    await sleep(2000);
+    await waitUntil(async () => {
+      for (const { index } of Object.values(indexes)) {
+        const { ids } = await index.listIds();
+        if (ids.length < 20) return false;
+      }
+      return true;
+    });
 
     for (const [typeName, { index, name }] of Object.entries(indexes)) {
       const indexType = await index.getIndexType();
@@ -611,7 +670,14 @@ describe('MixedIndexTypesOneClient', () => {
 
     await Promise.all(workers);
     expect(errors).toEqual([]);
-    await sleep(2000);
+
+    await waitUntil(async () => {
+      for (const typeName of Object.keys(perTypeData)) {
+        const { ids } = await indexes[typeName].index.listIds();
+        if (ids.length < perTypeData[typeName].ids.length) return false;
+      }
+      return true;
+    });
 
     for (const [typeName, { ids, vectors }] of Object.entries(perTypeData)) {
       const idx = indexes[typeName].index;
@@ -654,7 +720,13 @@ describe('MixedIndexTypesOneClient', () => {
     const sqVecs = generateRandomVectors(20, DIMENSION);
     await indexes['sq'].index.upsert({ ids: sqIds, vectors: sqVecs });
 
-    await sleep(2000);
+    await waitUntil(async () => {
+      for (const { index } of Object.values(indexes)) {
+        const { ids } = await index.listIds();
+        if (ids.length < 20) return false;
+      }
+      return true;
+    });
 
     const flatIdx = indexes['flat'].index;
     const pqIdx = indexes['pq'].index;
@@ -688,7 +760,10 @@ describe('MixedIndexTypesOneClient', () => {
       expect(item.id.startsWith('il_sq_')).toBe(false);
     }
 
-    await sleep(2000);
+    await waitUntil(async () => {
+      const { ids } = await sqIdx.listIds();
+      return sqIds.slice(0, 10).every((id) => !ids.includes(id));
+    });
 
     // Step 3: Verify SQ deletes actually took effect (not applied to flat or PQ)
     const { ids: sqStored } = await sqIdx.listIds();
@@ -742,7 +817,7 @@ describe('ConcurrentMultiIndexWrites', () => {
 
   afterAll(async () => {
     for (const { index } of indexes) {
-      try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+      try { await index.deleteIndex(); } catch { /* cleanup */ }
     }
   });
 
@@ -767,7 +842,14 @@ describe('ConcurrentMultiIndexWrites', () => {
 
     await Promise.all(workers);
     expect(errors).toEqual([]);
-    await sleep(2000);
+
+    await waitUntil(async () => {
+      for (let i = 0; i < numIndexes; i++) {
+        const { ids } = await indexes[i].index.listIds();
+        if (ids.length < 20) return false;
+      }
+      return true;
+    });
 
     // Verify: each index has ONLY its own data, and vectors are intact
     for (const [gIDStr, data] of Object.entries(perWorkerData)) {
@@ -809,7 +891,7 @@ describe('StressHighConcurrency', () => {
   });
 
   afterAll(async () => {
-    try { await index.deleteIndex(); } catch (_) { /* cleanup */ }
+    try { await index.deleteIndex(); } catch { /* cleanup */ }
   });
 
   test('20 workers 200 vectors each', async () => {
@@ -844,7 +926,10 @@ describe('StressHighConcurrency', () => {
     await Promise.all(workers);
     expect(errors).toEqual([]);
 
-    await sleep(3000);
+    await waitUntil(async () => {
+      const { ids } = await index.listIds();
+      return ids.length >= allIds.length;
+    }, 15_000);
 
     const { ids: storedIds } = await index.listIds();
     const storedSet = new Set(storedIds);
