@@ -638,7 +638,7 @@ describe('CyborgDB API Contract Tests', () => {
   describe('14 - EncryptedIndex.query()', () => {
     it('should query with single vector (flat array) and return flat results', async () => {
       const queryVector = testVectors[0];
-      const response = await testIndex.query({ queryVectors: queryVector });
+      const response = await testIndex.query({ queryVectors: queryVector, include: ['distance'] });
       
       expect(response).toBeDefined();
       expect(response).toHaveProperty('results');
@@ -697,20 +697,19 @@ describe('CyborgDB API Contract Tests', () => {
       const response = await testIndex.query({
         queryVectors: testVectors[0],
         topK: 5,
-        include: ['metadata']
+        include: ['distance', 'metadata']
       });
-      
+
       const results = Array.isArray(response.results) ? response.results : [response.results];
       if (results.length > 0) {
         const firstResults = Array.isArray(results[0]) ? results[0] : results;
         if (firstResults.length > 0) {
           const firstResult = firstResults[0];
-          // Distance should ALWAYS be present in query results
           const expectedKeys = new Set(['id', 'distance', 'metadata']);
           validateExactKeys(
             firstResult,
             expectedKeys,
-            'query() with include=[metadata]'
+            'query() with include=[distance, metadata]'
           );
         }
       }
@@ -912,7 +911,7 @@ describe('CyborgDB API Contract Tests', () => {
         queryVectors: testVectors[0],
         topK: 10,
         filters: { type: 'binary' },
-        include: ['metadata']
+        include: ['distance', 'metadata']
       });
 
       expect(response).toBeDefined();

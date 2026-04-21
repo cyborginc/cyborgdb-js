@@ -294,7 +294,7 @@ describe('ConcurrentReadsAndWrites', () => {
       try {
         for (let q = 0; q < queryCount; q++) {
           const qv = generateRandomVectors(1, DIMENSION)[0];
-          const response = await index.query({ queryVectors: qv, topK: 5 });
+          const response = await index.query({ queryVectors: qv, topK: 5, include: ['distance'] });
           const items = flattenResults(response.results);
           for (const item of items) {
             expect(item.id).toBeTruthy();
@@ -341,7 +341,7 @@ describe('ConcurrentReadsAndWrites', () => {
       try {
         for (let i = 0; i < 15; i++) {
           const qv = generateRandomVectors(1, DIMENSION)[0];
-          const response = await index.query({ queryVectors: qv, topK: 10 });
+          const response = await index.query({ queryVectors: qv, topK: 10, include: ['distance'] });
           const items = flattenResults(response.results);
           for (const item of items) {
             expect(item.id).toBeTruthy();
@@ -910,7 +910,7 @@ describe('StressHighConcurrency', () => {
         // Each worker also queries to validate responses under load
         for (let q = 0; q < 5; q++) {
           const qv = generateRandomVectors(1, DIMENSION)[0];
-          const response = await index.query({ queryVectors: qv, topK: 10 });
+          const response = await index.query({ queryVectors: qv, topK: 10, include: ['distance'] });
           const items = flattenResults(response.results);
           for (const item of items) {
             expect(item.id).toBeTruthy();
