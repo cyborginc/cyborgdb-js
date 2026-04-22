@@ -693,6 +693,27 @@ describe('CyborgDB API Contract Tests', () => {
       });
     });
 
+    it('should not return distance by default (no include param)', async () => {
+      const response = await testIndex.query({
+        queryVectors: testVectors[0],
+        topK: 5,
+      });
+
+      const results = Array.isArray(response.results) ? response.results : [response.results];
+      const flat = results.length > 0 && Array.isArray(results[0])
+        ? (results as any[]).flat()
+        : results;
+
+      expect(flat.length).toBeGreaterThan(0);
+      flat.forEach((match: any) => {
+        validateExactKeys(
+          match,
+          new Set(['id']),
+          'query() result item with default include'
+        );
+      });
+    });
+
     it('should query with specific include parameter', async () => {
       const response = await testIndex.query({
         queryVectors: testVectors[0],
