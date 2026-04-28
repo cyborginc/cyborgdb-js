@@ -4,7 +4,7 @@ module.exports = {
     testEnvironment: 'node',
     testMatch: [
         "**/*.test.ts",
-        "**/src/__tests__/**/*.ts"
+        "**/src/__tests__/**/*.test.ts"
       ],
     verbose: true,
     testTimeout: 600000, // Default timeout of 60 seconds for all tests
