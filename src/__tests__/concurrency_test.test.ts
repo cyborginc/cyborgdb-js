@@ -49,9 +49,9 @@
  *     and performance cliffs under high concurrency (20 workers, 4,000 vectors).
  */
 
-import { Client, EncryptedIndex, QueryResultItem } from '../index';
+import { Client, EncryptedIndex } from '../index';
 import type { IndexIVFFlat, IndexIVFPQ, IndexIVFSQ } from '../index';
-import type { Results } from '../models/Results';
+import { flattenResults } from './test-helpers';
 import { randomBytes, randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 
@@ -149,15 +149,6 @@ async function waitUntil(
     await sleep(intervalMs);
   }
   throw new Error(`waitUntil timed out after ${timeoutMs}ms`);
-}
-
-/** Extract flat array of QueryResultItem from query response results. */
-function flattenResults(results: Results | QueryResultItem[] | QueryResultItem[][]): QueryResultItem[] {
-  if (!results) return [];
-  if (Array.isArray(results) && results.length > 0 && Array.isArray(results[0])) {
-    return (results as QueryResultItem[][]).flat();
-  }
-  return results as QueryResultItem[];
 }
 
 // ---------------------------------------------------------------------------

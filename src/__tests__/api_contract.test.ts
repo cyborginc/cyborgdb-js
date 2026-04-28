@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { Client } from '../index';
+import { flattenResults } from './test-helpers';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
@@ -699,10 +700,7 @@ describe('CyborgDB API Contract Tests', () => {
         topK: 5,
       });
 
-      const results = Array.isArray(response.results) ? response.results : [response.results];
-      const flat = results.length > 0 && Array.isArray(results[0])
-        ? (results as any[]).flat()
-        : results;
+      const flat = flattenResults(response.results);
 
       expect(flat.length).toBeGreaterThan(0);
       flat.forEach((match: any) => {
