@@ -81,7 +81,8 @@ await index.upsert({ items });
 const queryVector = [0.1, 0.2, 0.3, /* ... 128 dimensions */];
 const results = await index.query({
   queryVectors: queryVector,
-  topK: 10
+  topK: 10,
+  include: ['distance']
 });
 
 // Print the results

@@ -49,9 +49,9 @@
  *     and performance cliffs under high concurrency (20 workers, 4,000 vectors).
  */
 
-import { Client, EncryptedIndex, QueryResultItem } from '../index';
+import { Client, EncryptedIndex } from '../index';
 import type { IndexIVFFlat, IndexIVFPQ, IndexIVFSQ } from '../index';
-import type { Results } from '../models/Results';
+import { flattenResults } from './test-helpers';
 import { randomBytes, randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 
@@ -149,15 +149,6 @@ async function waitUntil(
     await sleep(intervalMs);
   }
   throw new Error(`waitUntil timed out after ${timeoutMs}ms`);
-}
-
-/** Extract flat array of QueryResultItem from query response results. */
-function flattenResults(results: Results | QueryResultItem[] | QueryResultItem[][]): QueryResultItem[] {
-  if (!results) return [];
-  if (Array.isArray(results) && results.length > 0 && Array.isArray(results[0])) {
-    return (results as QueryResultItem[][]).flat();
-  }
-  return results as QueryResultItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +285,7 @@ describe('ConcurrentReadsAndWrites', () => {
       try {
         for (let q = 0; q < queryCount; q++) {
           const qv = generateRandomVectors(1, DIMENSION)[0];
-          const response = await index.query({ queryVectors: qv, topK: 5 });
+          const response = await index.query({ queryVectors: qv, topK: 5, include: ['distance'] });
           const items = flattenResults(response.results);
           for (const item of items) {
             expect(item.id).toBeTruthy();
@@ -341,7 +332,7 @@ describe('ConcurrentReadsAndWrites', () => {
       try {
         for (let i = 0; i < 15; i++) {
           const qv = generateRandomVectors(1, DIMENSION)[0];
-          const response = await index.query({ queryVectors: qv, topK: 10 });
+          const response = await index.query({ queryVectors: qv, topK: 10, include: ['distance'] });
           const items = flattenResults(response.results);
           for (const item of items) {
             expect(item.id).toBeTruthy();
@@ -910,7 +901,7 @@ describe('StressHighConcurrency', () => {
         // Each worker also queries to validate responses under load
         for (let q = 0; q < 5; q++) {
           const qv = generateRandomVectors(1, DIMENSION)[0];
-          const response = await index.query({ queryVectors: qv, topK: 10 });
+          const response = await index.query({ queryVectors: qv, topK: 10, include: ['distance'] });
           const items = flattenResults(response.results);
           for (const item of items) {
             expect(item.id).toBeTruthy();

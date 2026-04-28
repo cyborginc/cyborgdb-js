@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import { Client } from '../index';
+import { flattenResults } from './test-helpers';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
@@ -638,7 +639,7 @@ describe('CyborgDB API Contract Tests', () => {
   describe('14 - EncryptedIndex.query()', () => {
     it('should query with single vector (flat array) and return flat results', async () => {
       const queryVector = testVectors[0];
-      const response = await testIndex.query({ queryVectors: queryVector });
+      const response = await testIndex.query({ queryVectors: queryVector, include: ['distance'] });
       
       expect(response).toBeDefined();
       expect(response).toHaveProperty('results');
@@ -693,24 +694,41 @@ describe('CyborgDB API Contract Tests', () => {
       });
     });
 
+    it('should not return distance by default (no include param)', async () => {
+      const response = await testIndex.query({
+        queryVectors: testVectors[0],
+        topK: 5,
+      });
+
+      const flat = flattenResults(response.results);
+
+      expect(flat.length).toBeGreaterThan(0);
+      flat.forEach((match: any) => {
+        validateExactKeys(
+          match,
+          new Set(['id']),
+          'query() result item with default include'
+        );
+      });
+    });
+
     it('should query with specific include parameter', async () => {
       const response = await testIndex.query({
         queryVectors: testVectors[0],
         topK: 5,
-        include: ['metadata']
+        include: ['distance', 'metadata']
       });
-      
+
       const results = Array.isArray(response.results) ? response.results : [response.results];
       if (results.length > 0) {
         const firstResults = Array.isArray(results[0]) ? results[0] : results;
         if (firstResults.length > 0) {
           const firstResult = firstResults[0];
-          // Distance should ALWAYS be present in query results
           const expectedKeys = new Set(['id', 'distance', 'metadata']);
           validateExactKeys(
             firstResult,
             expectedKeys,
-            'query() with include=[metadata]'
+            'query() with include=[distance, metadata]'
           );
         }
       }
@@ -912,7 +930,7 @@ describe('CyborgDB API Contract Tests', () => {
         queryVectors: testVectors[0],
         topK: 10,
         filters: { type: 'binary' },
-        include: ['metadata']
+        include: ['distance', 'metadata']
       });
 
       expect(response).toBeDefined();
