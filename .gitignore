@@ -205,3 +205,5 @@ $RECYCLE.BIN/
 .openapi-generator
 wwwroot/*.js
 typings
+# Local Claude Code settings
+.claude/
