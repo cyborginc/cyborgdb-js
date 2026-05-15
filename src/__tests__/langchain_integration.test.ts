@@ -122,7 +122,6 @@ describe('CyborgDB LangChain Integration', () => {
         apiKey,
         baseUrl,
         embedding: new MockEmbeddings(384),
-        indexType: 'ivfflat',
         dimension: 384,
         metric: 'cosine',
         verifySsl: false

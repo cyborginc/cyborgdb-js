@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { CachePolicyModel } from './CachePolicyModel';
+import {
+    CachePolicyModelFromJSON,
+    CachePolicyModelFromJSONTyped,
+    CachePolicyModelToJSON,
+    CachePolicyModelToJSONTyped,
+} from './CachePolicyModel';
+
 /**
  * Request model for creating a new encrypted DiskIVF index.
  * 
@@ -23,6 +31,9 @@ import { mapValues } from '../runtime';
  *         from the first upsert if omitted.
  *     embedding_model (Optional[str]): Optional embedding model name.
  *     metric (Optional[str]): Optional distance metric.
+ *     cache_policy (Optional[CachePolicyModel]): Per-keystore RAM cache policy.
+ *     storage_precision (Optional[Literal["float32", "float16"]]): On-disk
+ *         rerank-vector dtype. Defaults to float32 in core.
  * @export
  * @interface CreateIndexRequest
  */
@@ -57,7 +68,30 @@ export interface CreateIndexRequest {
      * @memberof CreateIndexRequest
      */
     metric?: string | null;
+    /**
+     * 
+     * @type {CachePolicyModel}
+     * @memberof CreateIndexRequest
+     */
+    cachePolicy?: CachePolicyModel | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateIndexRequest
+     */
+    storagePrecision?: CreateIndexRequestStoragePrecisionEnum | null;
 }
+
+
+/**
+ * @export
+ */
+export const CreateIndexRequestStoragePrecisionEnum = {
+    Float32: 'float32',
+    Float16: 'float16'
+} as const;
+export type CreateIndexRequestStoragePrecisionEnum = typeof CreateIndexRequestStoragePrecisionEnum[keyof typeof CreateIndexRequestStoragePrecisionEnum];
+
 
 /**
  * Check if a given object implements the CreateIndexRequest interface.
@@ -83,6 +117,8 @@ export function CreateIndexRequestFromJSONTyped(json: any, ignoreDiscriminator: 
         'dimension': json['dimension'] == null ? undefined : json['dimension'],
         'embeddingModel': json['embedding_model'] == null ? undefined : json['embedding_model'],
         'metric': json['metric'] == null ? undefined : json['metric'],
+        'cachePolicy': json['cache_policy'] == null ? undefined : CachePolicyModelFromJSON(json['cache_policy']),
+        'storagePrecision': json['storage_precision'] == null ? undefined : json['storage_precision'],
     };
 }
 
@@ -102,6 +138,8 @@ export function CreateIndexRequestToJSONTyped(value?: CreateIndexRequest | null,
         'dimension': value['dimension'],
         'embedding_model': value['embeddingModel'],
         'metric': value['metric'],
+        'cache_policy': CachePolicyModelToJSON(value['cachePolicy']),
+        'storage_precision': value['storagePrecision'],
     };
 }
 

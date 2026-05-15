@@ -22,8 +22,6 @@ export interface CyborgVectorStoreConfig {
   apiKey: string;
   baseUrl: string;
   embedding: EmbeddingsInterface;
-  indexType?: 'ivfflat' | 'ivfpq' | 'ivfsq';
-  indexConfigParams?: Record<string, any>;
   dimension?: number;
   metric?: 'cosine' | 'euclidean' | 'squared_euclidean';
   verifySsl?: boolean;
@@ -146,6 +144,7 @@ export class CyborgVectorStore extends VectorStore {
         this.index = await this.client.createIndex({
           indexName: this.indexName,
           indexKey: this.indexKey,
+          dimension: this.dimension,
           metric: this.metric as any
         });
       }

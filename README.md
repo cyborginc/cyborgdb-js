@@ -14,7 +14,7 @@ This SDK provides an interface to [`cyborgdb-service`](https://pypi.org/project/
 - **Zero-Trust Design**: Novel architecture keeps confidential inference data secure
 - **Full TypeScript Support**: Complete type definitions and IntelliSense support
 - **Batch Operations**: Efficient batch queries and upserts for high-throughput applications
-- **Flexible Indexing**: Support for multiple index types (IVFFlat, IVFPQ, etc.) with customizable parameters
+- **DiskIVF Indexing**: Two-stage inverted-file index with float32 reranking for high-recall search
 
 ## Getting Started
 

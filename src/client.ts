@@ -1,14 +1,12 @@
 import { DefaultApi } from './apis/DefaultApi';
 import { Configuration } from './runtime';
 import {
+  CachePolicyModel,
   CreateIndexRequest,
-  IndexIVFPQModel as IndexIVFPQ,
-  IndexIVFFlatModel as IndexIVFFlat,
-  IndexIVFSQModel as IndexIVFSQ,
+  CreateIndexRequestStoragePrecisionEnum,
   IndexOperationRequest,
   ErrorResponseModel,
   HTTPValidationError,
-  IndexConfig,
   IndexInfoResponseModel
 } from './models';
 import { EncryptedIndex } from './encryptedIndex';
@@ -199,72 +197,48 @@ export class CyborgDB {
   }
 
   /**
-   * Create a new encrypted index
+   * Create a new encrypted DiskIVF index
    * @param indexName Name of the index
    * @param indexKey 32-byte encryption key
-   * @param indexConfig Configuration for the index (optional)
+   * @param dimension Vector dimensionality (auto-detected from the first upsert if omitted)
    * @param metric Distance metric for the index (optional)
    * @param embeddingModel Optional name of embedding model
+   * @param cachePolicy Optional per-keystore RAM caching policy
+   * @param storagePrecision Optional on-disk rerank-vector precision ('float32' | 'float16')
    * @returns Promise with the created index
    */
   async createIndex({
     indexName,
     indexKey,
-    indexConfig,
+    dimension,
     metric,
-    embeddingModel
+    embeddingModel,
+    cachePolicy,
+    storagePrecision
   }: {
     indexName: string;
     indexKey: Uint8Array;
-    indexConfig?: IndexIVFPQ | IndexIVFFlat | IndexIVFSQ;
+    dimension?: number;
     metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
     embeddingModel?: string;
+    cachePolicy?: CachePolicyModel;
+    storagePrecision?: 'float32' | 'float16';
   }) {
     try {
-      // Convert indexKey to hex string for transmission
       const keyHex = Buffer.from(indexKey).toString('hex');
 
-      // Create the request using the proper snake_case property names
-      // Use default IndexIVFFlat if no config provided
-      const finalConfig: IndexIVFFlat | IndexIVFPQ | IndexIVFSQ = indexConfig || {
-        type: 'ivfflat',
-        dimension: undefined
-      };
-
-      // Create proper IndexConfig object
-      const baseConfig = {
-        dimension: finalConfig.dimension || undefined,
-        type: finalConfig.type || 'ivfflat',
-        ...(metric && { metric })
-      };
-
-      let indexConfigObj: IndexConfig;
-      if (finalConfig.type === 'ivfpq') {
-        indexConfigObj = {
-          ...baseConfig,
-          pqDim: (finalConfig as IndexIVFPQ).pqDim ?? 32,
-          pqBits: (finalConfig as IndexIVFPQ).pqBits ?? 8
-        };
-      } else if (finalConfig.type === 'ivfsq') {
-        indexConfigObj = {
-          ...baseConfig,
-          sqBits: (finalConfig as IndexIVFSQ).sqBits ?? 16
-        } as IndexConfig;
-      } else {
-        indexConfigObj = baseConfig as IndexConfig;
-      }
-      
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
         indexKey: keyHex,
-        indexConfig: indexConfigObj,
+        dimension: dimension,
         embeddingModel: embeddingModel,
-        metric: metric
+        metric: metric,
+        cachePolicy: cachePolicy,
+        storagePrecision: storagePrecision as CreateIndexRequestStoragePrecisionEnum | undefined
       };
-      
+
       await this.api.createIndexV1IndexesCreatePost({ createIndexRequest: createRequest });
-      return new EncryptedIndex(
-        indexName, indexKey, createRequest.indexConfig!, this.api, embeddingModel)
+      return new EncryptedIndex(indexName, indexKey, this.api, embeddingModel);
     } catch (error: unknown) {
       this.handleApiError(error);
     }
@@ -278,7 +252,7 @@ export class CyborgDB {
    * operational parameters.
    * 
    * **Information Retrieved:**
-   * - Index name and type (ivfflat, ivfpq, ivfsq)
+   * - Index name and type (disk_ivf)
    * - Current training status (trained/untrained)
    * - Index configuration (dimensions, metrics, clustering parameters)
    * - Vector count and other operational statistics
@@ -373,19 +347,13 @@ export class CyborgDB {
     indexKey: Uint8Array;
   }) : Promise<EncryptedIndex> {
     try {
-      // Retrieve comprehensive index information and validate access
+      // Validate that the index exists and the key is correct
       const response = await this.describeIndex(indexName, indexKey);
 
-      // Extract index configuration for initialization
-      const indexConfig = response.indexConfig as IndexConfig;
-
-      // Create and return fully initialized EncryptedIndex instance
-      // This object provides all vector database operations (query, upsert, delete, etc.)
       const loadedIndex: EncryptedIndex = new EncryptedIndex(
-        response.indexName,  // Use server-confirmed index name
-        indexKey,           // Keep original binary key for future operations
-        indexConfig,        // Configuration metadata for validation and optimization
-        this.api           // Shared API client for server communication
+        response.indexName,
+        indexKey,
+        this.api
       );
 
       return loadedIndex;

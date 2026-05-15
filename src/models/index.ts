@@ -6,6 +6,7 @@ export * from './BinaryQueryRequest';
 export * from './BinaryUpsertRequest';
 export * from './BinaryVectorBatch';
 export * from './BinaryVectorBatchContentsInner';
+export * from './CachePolicyModel';
 export * from './Contents';
 export * from './CreateIndexRequest';
 export * from './CyborgdbServiceApiSchemasIndexSuccessResponseModel';
