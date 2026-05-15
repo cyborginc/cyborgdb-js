@@ -21,3 +21,16 @@
 #docs/*.md
 # Then explicitly reverse the ignore rule for a single file:
 #!docs/README.md
+
+# NOTE: the generator reads the copy of this file inside the output dir
+# (src/.openapi-generator-ignore). This root-level copy is kept in sync
+# for discoverability — edit both when adding patterns.
+#
+# Hand-written SDK surface — must not be overwritten by the generator.
+index.ts
+client.ts
+encryptedIndex.ts
+demo.ts
+types.ts
+integrations/**
+__tests__/**

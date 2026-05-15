@@ -21,3 +21,13 @@
 #docs/*.md
 # Then explicitly reverse the ignore rule for a single file:
 #!docs/README.md
+
+# Hand-written SDK surface — must not be overwritten by the generator.
+# Patterns are relative to the generator's output dir (src/).
+index.ts
+client.ts
+encryptedIndex.ts
+demo.ts
+types.ts
+integrations/**
+__tests__/**

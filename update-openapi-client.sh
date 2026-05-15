@@ -12,7 +12,7 @@ fi
 
 # Clean existing generated files
 echo "Cleaning old generated files..."
-rm -rf src/model src/api
+rm -rf src/models src/apis
 
 # Generate TypeScript client using typescript-fetch generator
 # Using OpenAPI Generator version 7.12.0
@@ -36,13 +36,12 @@ openapi-generator-cli generate \
 
 echo "Generated TypeScript client"
 
-# Test build
-echo "Testing build..."
-if npm run build > /dev/null 2>&1; then
-    echo "Build successful!"
-else
-    echo "Build completed with warnings (this is normal)"
-fi
+# Verify the result actually builds and typechecks. Errors here usually mean
+# the hand-written SDK surface (client.ts, encryptedIndex.ts) needs to be
+# adapted to model/API changes in the new spec.
+echo ""
+echo "Running build (bundles + type declarations)..."
+npm run build
 
 echo ""
 echo "Code generation complete!"

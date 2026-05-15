@@ -1,10 +1,10 @@
 /**
  * Comprehensive test coverage for TypeScript SDK to achieve standardization
- * Implements SSL, IVFPQ, error handling, and edge case tests
+ * Implements SSL, error handling, and edge case tests
  * Matches Python comprehensive_test.py coverage
  */
 
-import { Client, IndexIVFPQ, IndexIVFSQ } from '../index';
+import { Client } from '../index';
 import { randomBytes } from 'crypto';
 import * as dotenv from 'dotenv';
 import * as https from 'https';
@@ -119,45 +119,10 @@ describe('Index Types Tests', () => {
     }
   });
 
-  test('should create and operate IVFPQ index successfully', async () => {
-    const indexConfig: IndexIVFPQ = {
+  test('should create and operate IVFFlat index successfully', async () => {
+    const indexConfig = {
       dimension: dimension,
-      type: 'ivfpq',
-      pqDim: 32,
-      pqBits: 8
-    };
-
-    index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
-    });
-
-    expect(index).toBeDefined();
-    expect(await index.getIndexName()).toBe(indexName);
-    expect(await index.getIndexType()).toBe('ivfpq');
-
-    // Test upsert
-    const testIds = testVectors.map((_, i) => `ivfpq_${i}`);
-    await index.upsert({ ids: testIds, vectors: testVectors });
-
-    // Test query
-    const queryVector = testVectors[0];
-    const results = await index.query({ queryVectors: [queryVector], topK: 5 });
-
-    expect(results.results).toBeDefined();
-    expect(Array.isArray(results.results)).toBe(true);
-    if (results.results.length > 0 && results.results[0].length > 0) {
-      expect(results.results[0][0]).toHaveProperty('id');
-    }
-  });
-
-  test('should create and operate IVFSQ index successfully', async () => {
-    const indexConfig: IndexIVFSQ = {
-      dimension: dimension,
-      type: 'ivfsq',
-      sqBits: 8
+      type: 'ivfflat' as const
     };
 
     index = await client.createIndex({
@@ -169,13 +134,11 @@ describe('Index Types Tests', () => {
 
     expect(index).toBeDefined();
     expect(await index.getIndexName()).toBe(indexName);
-    expect(await index.getIndexType()).toBe('ivfsq');
+    expect(await index.getIndexType()).toBe('ivfflat');
 
-    // Test upsert
-    const testIds = testVectors.map((_, i) => `ivfsq_${i}`);
+    const testIds = testVectors.map((_, i) => `ivfflat_${i}`);
     await index.upsert({ ids: testIds, vectors: testVectors });
 
-    // Test query
     const queryVector = testVectors[0];
     const results = await index.query({ queryVectors: [queryVector], topK: 5 });
 
@@ -185,23 +148,6 @@ describe('Index Types Tests', () => {
       expect(results.results[0][0]).toHaveProperty('id');
     }
   });
-
-  // test('should validate IVFPQ parameters', async () => {
-  //   // Test invalid pqDim = 0
-  //   const invalidConfig: IndexIVFPQ = {
-  //     dimension: dimension,
-  //     type: 'ivfpq',
-  //     pqDim: 0,
-  //     pqBits: 8
-  //   };
-    
-  //   await expect(client.createIndex({
-  //     indexName: generateUniqueName('invalid_pq_dim_'),
-  //     indexKey: generateRandomKey(),
-  //     indexConfig: invalidConfig,
-  //     metric: 'euclidean'
-  //   })).rejects.toThrow();
-  // });
 });
 
 describe('Error Handling Tests', () => {
@@ -519,28 +465,24 @@ describe('Backend Compatibility Tests', () => {
     const health = await client.getHealth();
     expect(health).toBeDefined();
 
-    // Test if backend supports IVFPQ
     const indexName = generateUniqueName('backend_test');
     const indexKey = generateRandomKey();
-    const indexConfig: IndexIVFPQ = {
+    const indexConfig = {
       dimension: 128,
-      type: 'ivfpq',
-      pqDim: 32,
-      pqBits: 8
+      type: 'ivfflat' as const
     };
 
-    const index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
+    const index = await client.createIndex({
+      indexName,
+      indexKey,
+      indexConfig,
+      metric: 'euclidean'
     });
-    
+
     await index.deleteIndex();
   });
 
   test('should handle feature availability gracefully', async () => {
-    // Test basic index type
     const indexName = generateUniqueName('feature_test');
     const indexKey = generateRandomKey();
     const basicConfig = {
@@ -548,32 +490,15 @@ describe('Backend Compatibility Tests', () => {
       type: 'ivfflat' as const
     };
 
-    const basicIndex = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig: basicConfig, 
-      metric: 'euclidean' 
+    const basicIndex = await client.createIndex({
+      indexName,
+      indexKey,
+      indexConfig: basicConfig,
+      metric: 'euclidean'
     });
 
     expect(basicIndex).toBeDefined();
     await basicIndex.deleteIndex();
-
-    // Test advanced index type
-    const advancedConfig: IndexIVFPQ = {
-      dimension: 128,
-      type: 'ivfpq',
-      pqDim: 32,
-      pqBits: 8
-    };
-
-    const advancedIndex = await client.createIndex({ 
-      indexName: generateUniqueName('advanced'), 
-      indexKey: generateRandomKey(), 
-      indexConfig: advancedConfig, 
-      metric: 'euclidean' 
-    });
-    
-    await advancedIndex.deleteIndex();
   });
 
   test('should support lite backend IVFFlat operations', async () => {

@@ -18,7 +18,19 @@ import { Document, DocumentInterface } from "@langchain/core/documents";
 
 export interface CyborgVectorStoreConfig {
   indexName: string;
-  indexKey: string | Uint8Array;
+  /**
+   * 32-byte encryption key (raw bytes or base64-encoded string).
+   * Required for legacy (SDK-managed) indexes and for KMS-tracked
+   * indexes whose registry entry uses `provider: none`.
+   * Omit when `kmsName` references a real KMS provider — the service
+   * generates and manages the KEK internally.
+   */
+  indexKey?: string | Uint8Array;
+  /**
+   * Optional name of a `kms.registry` entry in the service config.
+   * Enables KMS-backed key management.
+   */
+  kmsName?: string;
   apiKey: string;
   baseUrl: string;
   embedding: EmbeddingsInterface;
@@ -31,11 +43,12 @@ export interface CyborgVectorStoreConfig {
 
 export class CyborgVectorStore extends VectorStore {
   declare FilterType: Record<string, any>;
-  
+
   private client: CyborgDB;
   private index?: EncryptedIndex;
   private indexName: string;
-  private indexKey: Uint8Array;
+  private indexKey?: Uint8Array;
+  private kmsName?: string;
   private dimension?: number;
   private metric: string;
   
@@ -50,8 +63,11 @@ export class CyborgVectorStore extends VectorStore {
     super(embeddings, config);
     
     this.indexName = config.indexName;
+    this.kmsName = config.kmsName;
     // Convert string to Uint8Array if necessary
-    if (typeof config.indexKey === 'string') {
+    if (config.indexKey === undefined) {
+      this.indexKey = undefined;
+    } else if (typeof config.indexKey === 'string') {
       // Handle base64 encoded string
       const base64 = config.indexKey;
       const binaryString = atob(base64);
@@ -130,10 +146,9 @@ export class CyborgVectorStore extends VectorStore {
         : (existingIndexes as any).indices?.includes(this.indexName) || false;
 
       if (indexExists) {
-        // Load existing index using loadIndex method
         this.index = await this.client.loadIndex({
           indexName: this.indexName,
-          indexKey: this.indexKey
+          ...(this.indexKey !== undefined && { indexKey: this.indexKey })
         });
       } else {
         // Detect dimension if not provided
@@ -142,11 +157,11 @@ export class CyborgVectorStore extends VectorStore {
           this.dimension = Array.isArray(dummy) ? dummy.length : 0;
         }
 
-        // Create new index
         this.index = await this.client.createIndex({
           indexName: this.indexName,
-          indexKey: this.indexKey,
-          metric: this.metric as any
+          metric: this.metric as any,
+          ...(this.indexKey !== undefined && { indexKey: this.indexKey }),
+          ...(this.kmsName !== undefined && { kmsName: this.kmsName })
         });
       }
     } catch (error) {
