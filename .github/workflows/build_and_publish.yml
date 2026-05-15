@@ -92,7 +92,7 @@ jobs:
           python-version: '3.13'
 
       - name: Load secrets from 1Password
-        uses: 1password/load-secrets-action@v2
+        uses: 1password/load-secrets-action@v4
         with:
           export-env: true
         env:
@@ -101,7 +101,7 @@ jobs:
 
       - name: Load CodeArtifact account ID from 1Password
         if: needs.compute_version.outputs.env != 'prod'
-        uses: 1password/load-secrets-action@v2
+        uses: 1password/load-secrets-action@v4
         with:
           export-env: true
         env:
@@ -324,7 +324,7 @@ jobs:
           npm pack --dry-run
       
       - name: Load NPM token from 1Password
-        uses: 1password/load-secrets-action@v2
+        uses: 1password/load-secrets-action@v4
         with:
           export-env: true
         env:
