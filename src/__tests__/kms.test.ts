@@ -10,12 +10,14 @@
  *
  * These tests are opt-in via env vars because they require the cyborgdb-service
  * to be configured with specific kms.registry entries:
- *   - CYBORGDB_KMS_NAME_REAL — name of a registry entry with a real provider
- *     (e.g. aws-kms, gcp-kms). Exercises mode 3.
+ *   - CYBORGDB_KMS_NAME_REAL — name of a registry entry with provider `aws-kms`
+ *     (HSM-backed). Exercises mode 3 against the AWS KMS path.
+ *   - CYBORGDB_KMS_NAME_SM   — name of a registry entry with provider `aws`
+ *     (Secrets Manager). Exercises mode 3 against the Secrets Manager path.
  *   - CYBORGDB_KMS_NAME_NONE — name of a registry entry with `provider: none`.
  *     Exercises mode 2.
  *
- * Without either env var, the whole suite is skipped (not failed).
+ * Each suite is gated independently; missing env vars skip just their suite.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
@@ -28,6 +30,7 @@ jest.setTimeout(120000);
 const BASE_URL = process.env.CYBORGDB_BASE_URL || 'http://localhost:8000';
 const API_KEY = process.env.CYBORGDB_API_KEY;
 const KMS_REAL = process.env.CYBORGDB_KMS_NAME_REAL;
+const KMS_SM = process.env.CYBORGDB_KMS_NAME_SM;
 const KMS_NONE = process.env.CYBORGDB_KMS_NAME_NONE;
 
 const dimension = 128;
@@ -45,7 +48,7 @@ function makeVectors(n: number, d: number): number[][] {
 
 const describeIfConfigured = API_KEY ? describe : describe.skip;
 
-describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed)', () => {
+describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed via aws-kms / HSM)', () => {
   if (!KMS_REAL) {
     it.skip('skipped: CYBORGDB_KMS_NAME_REAL not set', () => undefined);
     return;
@@ -82,6 +85,59 @@ describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed)', () => {
   it('upserts and queries without an SDK-side key', async () => {
     const vectors = makeVectors(5, dimension);
     const items = vectors.map((v, i) => ({ id: `kms_${i}`, vector: v }));
+
+    const upsertResult = await index.upsert({ items });
+    expect(upsertResult.status).toBe('success');
+    await sleep(1000);
+
+    const response = await index.query({ queryVectors: vectors[0], topK: 3 });
+    expect(response).toBeDefined();
+    expect(response.results).toBeDefined();
+  });
+
+  it('loadIndex resolves the KEK from the KMS cache (no indexKey needed)', async () => {
+    const reloaded = await client.loadIndex({ indexName });
+    expect(await reloaded.getIndexName()).toBe(indexName);
+  });
+});
+
+describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed via aws / Secrets Manager)', () => {
+  if (!KMS_SM) {
+    it.skip('skipped: CYBORGDB_KMS_NAME_SM not set', () => undefined);
+    return;
+  }
+
+  let client: Client;
+  let indexName: string;
+  let index: any;
+
+  beforeAll(() => {
+    client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY!, verifySsl: false });
+    indexName = `kms_sm_${Date.now().toString(36)}`;
+  });
+
+  afterAll(async () => {
+    try { if (index) await index.deleteIndex(); } catch (e) { /* ignore */ }
+  });
+
+  it('creates an index with kmsName and no indexKey', async () => {
+    index = await client.createIndex({
+      indexName,
+      kmsName: KMS_SM,
+      indexConfig: { dimension, type: 'ivfflat' }
+    });
+    expect(index).toBeDefined();
+    expect(await index.getIndexName()).toBe(indexName);
+  });
+
+  it('appears in listIndexes', async () => {
+    const names = await client.listIndexes();
+    expect(names).toContain(indexName);
+  });
+
+  it('upserts and queries without an SDK-side key', async () => {
+    const vectors = makeVectors(5, dimension);
+    const items = vectors.map((v, i) => ({ id: `sm_${i}`, vector: v }));
 
     const upsertResult = await index.upsert({ items });
     expect(upsertResult.status).toBe('success');
