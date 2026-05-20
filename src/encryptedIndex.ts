@@ -304,18 +304,9 @@ export class EncryptedIndex {
 
             if (item.vector) result.vector = item.vector;
             if (item.contents) {
-              // Check if it's a string that looks like base64
-              if (typeof item.contents === 'string') {
-                try {
-                  // Decode base64 to string (UTF-8)
-                  result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
-                } catch {
-                  // If decoding fails, use it as is
-                  result.contents = item.contents;
-                }
-              } else if (item.contents instanceof Buffer) {
-                result.contents = item.contents;
-              } else {
+              try {
+                result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
+              } catch {
                 result.contents = item.contents;
               }
             }
