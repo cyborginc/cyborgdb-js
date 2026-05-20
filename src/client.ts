@@ -1,7 +1,6 @@
 import { DefaultApi } from './apis/DefaultApi';
 import { Configuration } from './runtime';
 import {
-  CachePolicyModel,
   CreateIndexRequest,
   CreateIndexRequestStoragePrecisionEnum,
   IndexOperationRequest,
@@ -203,7 +202,6 @@ export class CyborgDB {
    * @param dimension Vector dimensionality (auto-detected from the first upsert if omitted)
    * @param metric Distance metric for the index (optional)
    * @param embeddingModel Optional name of embedding model
-   * @param cachePolicy Optional per-keystore RAM caching policy
    * @param storagePrecision Optional on-disk rerank-vector precision ('float32' | 'float16')
    * @returns Promise with the created index
    */
@@ -213,7 +211,6 @@ export class CyborgDB {
     dimension,
     metric,
     embeddingModel,
-    cachePolicy,
     storagePrecision
   }: {
     indexName: string;
@@ -221,7 +218,6 @@ export class CyborgDB {
     dimension?: number;
     metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
     embeddingModel?: string;
-    cachePolicy?: CachePolicyModel;
     storagePrecision?: 'float32' | 'float16';
   }) {
     try {
@@ -233,7 +229,6 @@ export class CyborgDB {
         dimension: dimension,
         embeddingModel: embeddingModel,
         metric: metric,
-        cachePolicy: cachePolicy,
         storagePrecision: storagePrecision as CreateIndexRequestStoragePrecisionEnum | undefined
       };
 

@@ -237,24 +237,6 @@ describe('CyborgDB API Contract Tests', () => {
       await sleep(1000); // Backend has eventual consistency for deletions
     });
 
-    it('should create DiskIVF index with cachePolicy', async () => {
-      const tempIndexName = `temp_cache_${Date.now().toString(36)}`;
-      const tempIndexKey = Client.generateKey();
-
-      const index = await client.createIndex({
-        indexName: tempIndexName,
-        indexKey: tempIndexKey,
-        dimension,
-        metric: 'cosine',
-        cachePolicy: { vectors: true, metadata: true, ids: false }
-      });
-
-      expect(await index.getIndexType()).toBe('disk_ivf');
-
-      await index.deleteIndex();
-      await sleep(1000);
-    });
-
     it('should create DiskIVF index with float16 storagePrecision', async () => {
       const tempIndexName = `temp_fp16_${Date.now().toString(36)}`;
       const tempIndexKey = Client.generateKey();
