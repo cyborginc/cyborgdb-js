@@ -8,12 +8,8 @@ import {
     VectorItem,
     GetResponseModel,
     QueryResponse,
-    IndexConfig,
     ErrorResponseModel,
     HTTPValidationError,
-    IndexIVFFlatModel,
-    IndexIVFPQModel,
-    IndexIVFSQModel,
     IndexInfoResponseModel,
     Request,
     ListIDsRequest,
@@ -35,7 +31,6 @@ import {
 export class EncryptedIndex {
     private indexName: string = "";
     private indexKey: Uint8Array;
-    private indexConfig: IndexConfig;
     private api: DefaultApi;
 
     private handleApiError(error: unknown): never {
@@ -189,38 +184,10 @@ export class EncryptedIndex {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
-    constructor(indexName: string, indexKey: Uint8Array, indexConfig: IndexConfig, api: DefaultApi, _embeddingModel?: string) {
+    constructor(indexName: string, indexKey: Uint8Array, api: DefaultApi, _embeddingModel?: string) {
     this.indexName = indexName;
     this.indexKey = indexKey;
     this.api = api;
-
-    // Normalize camelCase keys from potential snake_case input
-    // Only copy properties we want to keep, handling both camelCase and snake_case
-    const legacyConfig = indexConfig as IndexConfig & { pq_dim?: number; pq_bits?: number; sq_bits?: number };
-    const isIVFPQ = indexConfig.type?.toLowerCase() === 'ivfpq';
-    const isIVFSQ = indexConfig.type?.toLowerCase() === 'ivfsq';
-
-    // Build config with only necessary properties
-    const normalizedConfig: IndexConfig = {
-      dimension: indexConfig.dimension,
-      type: indexConfig.type,
-      pqDim: 0,  // Default values
-      pqBits: 0,
-      sqBits: 0
-    };
-
-    // Only add pqDim and pqBits for IVFPQ index type
-    if (isIVFPQ) {
-      normalizedConfig.pqDim = indexConfig.pqDim ?? legacyConfig.pq_dim ?? 0;
-      normalizedConfig.pqBits = indexConfig.pqBits ?? legacyConfig.pq_bits ?? 0;
-    }
-
-    // Only add sqBits for IVFSQ index type
-    if (isIVFSQ) {
-      normalizedConfig.sqBits = indexConfig.sqBits ?? legacyConfig.sq_bits ?? 0;
-    }
-
-    this.indexConfig = normalizedConfig;
   }
 
 
@@ -256,18 +223,10 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName, this.indexKey);
         return response.isTrained;
     }
-    public async getIndexConfig(): Promise<IndexIVFFlatModel | IndexIVFPQModel | IndexIVFSQModel> {
+    public async getIndexConfig(): Promise<Record<string, any>> {
         const response = await this.describeIndex(this.indexName, this.indexKey);
-        const rawConfig = response.indexConfig;
-        // index_type is at the top level of response, not inside index_config
-        const indexType = response.indexType;
-        // Add camelCase sqBits from snake_case sq_bits for IVFSQ indexes
-        if (indexType === 'ivfsq' && rawConfig.sq_bits !== undefined) {
-            rawConfig.sqBits = rawConfig.sq_bits;
-        }
-        this.indexConfig = rawConfig as IndexConfig;
         // Return a copy to prevent external modification
-        return { ...rawConfig };
+        return { ...response.indexConfig };
     }
     /**
      * Delete an index
@@ -345,18 +304,9 @@ export class EncryptedIndex {
 
             if (item.vector) result.vector = item.vector;
             if (item.contents) {
-              // Check if it's a string that looks like base64
-              if (typeof item.contents === 'string') {
-                try {
-                  // Decode base64 to string (UTF-8)
-                  result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
-                } catch {
-                  // If decoding fails, use it as is
-                  result.contents = item.contents;
-                }
-              } else if (item.contents instanceof Buffer) {
-                result.contents = item.contents;
-              } else {
+              try {
+                result.contents = Buffer.from(item.contents, 'base64').toString('utf-8');
+              } catch {
                 result.contents = item.contents;
               }
             }

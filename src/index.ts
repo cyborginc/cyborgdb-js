@@ -19,9 +19,6 @@ export {
   QueryResponse,
   ErrorResponseModel,
   HTTPValidationError,
-  IndexIVFFlatModel as IndexIVFFlat,
-  IndexIVFPQModel as IndexIVFPQ,
-  IndexIVFSQModel as IndexIVFSQ,
   QueryResultItem
 } from './models';
 

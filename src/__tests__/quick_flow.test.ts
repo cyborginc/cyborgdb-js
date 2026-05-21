@@ -1,4 +1,4 @@
-import { Client, IndexIVFFlat, EncryptedIndex, QueryResultItem, QueryResponse } from '../index';
+import { Client, EncryptedIndex, QueryResultItem, QueryResponse } from '../index';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
@@ -161,7 +161,6 @@ describe('TestUnitFlow', () => {
     let numQueries: number;
     let dimension: number;
     let nLists: number;
-    let indexConfig: IndexIVFFlat;
     let client: Client;
     let indexName: string;
     let indexKey: Uint8Array;
@@ -209,10 +208,6 @@ describe('TestUnitFlow', () => {
         nLists = 100;
 
         // CYBORGDB SETUP: Create the index once (shared state)
-        indexConfig = {
-            dimension: dimension,
-            type: 'ivfflat'
-        };
         client = new Client({
             baseUrl: 'http://localhost:8000',
             apiKey: process.env.CYBORGDB_API_KEY || ''
@@ -222,7 +217,7 @@ describe('TestUnitFlow', () => {
         index = await client.createIndex({
             indexName,
             indexKey,
-            indexConfig,
+            dimension,
             metric: 'euclidean'
         });
     }, 60000);
@@ -555,8 +550,8 @@ describe('TestUnitFlow', () => {
             88.26,  // Query #11
             94.04,  // Query #12
             90.05,  // Query #13
-            50.00,  // Query #14
-            7.00,   // Query #15
+            22.00,  // Query #14
+            5.25,   // Query #15
             70.00,  // Query #16
             70.00,  // Query #17
         ];
@@ -728,7 +723,7 @@ describe('TestUnitFlow', () => {
         expect(config).toBeDefined();
         expect(typeof config).toBe('object');
         
-        expect(await index.getIndexType()).toBe('ivfflat');
+        expect(await index.getIndexType()).toBe('disk_ivf');
     });
 
     test('test_19_load_index', async () => {

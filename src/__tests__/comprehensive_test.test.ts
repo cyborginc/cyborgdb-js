@@ -1,14 +1,11 @@
 /**
  * Comprehensive test coverage for TypeScript SDK to achieve standardization
- * Implements SSL, IVFPQ, error handling, and edge case tests
- * Matches Python comprehensive_test.py coverage
+ * Covers SSL, error handling, edge cases for the DiskIVF index.
  */
 
-import { Client, IndexIVFPQ, IndexIVFSQ } from '../index';
+import { Client } from '../index';
 import { randomBytes } from 'crypto';
 import * as dotenv from 'dotenv';
-import * as https from 'https';
-import * as http from 'http';
 
 // Load environment variables from .env.local
 dotenv.config({ path: '.env.local' });
@@ -35,10 +32,10 @@ function generateRandomKey(): Uint8Array {
  * Create a CyborgDB client - simplified for reliable local testing
  */
 function createClient(): any {
-  return new Client({ 
+  return new Client({
     baseUrl: API_URL,
-    apiKey: CYBORGDB_API_KEY, 
-    verifySsl: false 
+    apiKey: CYBORGDB_API_KEY,
+    verifySsl: false
   });
 }
 
@@ -50,7 +47,7 @@ describe('SSL Verification Tests', () => {
   test('should handle SSL auto-detection for localhost URLs', async () => {
     const client = new Client({ baseUrl: localhostUrl, apiKey, verifySsl: false });
     expect(client).toBeDefined();
-    
+
     // Basic connectivity test
     const health = await client.getHealth();
     expect(typeof health).toBeTruthy();
@@ -68,18 +65,18 @@ describe('SSL Verification Tests', () => {
 
   test('should handle SSL certificate validation scenarios', async () => {
     const client = new Client({ baseUrl: productionUrl, apiKey, verifySsl: true });
-    
+
     try {
       await client.getHealth();
       expect(true).toBe(true);
     } catch (error: any) {
       const networkErrors = ['ENOTFOUND', 'ECONNREFUSED', 'Network Error', 'timeout', 'getaddrinfo'];
-      const hasNetworkError = networkErrors.some(errorType => 
+      const hasNetworkError = networkErrors.some(errorType =>
         error.message?.includes(errorType) || error.code === errorType
       );
-      
+
       const hasSSLError = error.message?.includes('SSL') || error.message?.includes('certificate');
-      
+
       expect(hasNetworkError || hasSSLError).toBe(true);
     }
   });
@@ -93,7 +90,7 @@ describe('SSL Verification Tests', () => {
   });
 });
 
-describe('Index Types Tests', () => {
+describe('DiskIVF Index Tests', () => {
   const client = createClient();
   const dimension = 128;
   let index: any;
@@ -104,7 +101,7 @@ describe('Index Types Tests', () => {
   beforeEach(async () => {
     indexName = generateUniqueName();
     indexKey = generateRandomKey();
-    testVectors = Array(10).fill(0).map(() => 
+    testVectors = Array(10).fill(0).map(() =>
       Array(dimension).fill(0).map(() => Math.random())
     );
   });
@@ -119,63 +116,21 @@ describe('Index Types Tests', () => {
     }
   });
 
-  test('should create and operate IVFPQ index successfully', async () => {
-    const indexConfig: IndexIVFPQ = {
-      dimension: dimension,
-      type: 'ivfpq',
-      pqDim: 32,
-      pqBits: 8
-    };
-
-    index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
-    });
-
-    expect(index).toBeDefined();
-    expect(await index.getIndexName()).toBe(indexName);
-    expect(await index.getIndexType()).toBe('ivfpq');
-
-    // Test upsert
-    const testIds = testVectors.map((_, i) => `ivfpq_${i}`);
-    await index.upsert({ ids: testIds, vectors: testVectors });
-
-    // Test query
-    const queryVector = testVectors[0];
-    const results = await index.query({ queryVectors: [queryVector], topK: 5 });
-
-    expect(results.results).toBeDefined();
-    expect(Array.isArray(results.results)).toBe(true);
-    if (results.results.length > 0 && results.results[0].length > 0) {
-      expect(results.results[0][0]).toHaveProperty('id');
-    }
-  });
-
-  test('should create and operate IVFSQ index successfully', async () => {
-    const indexConfig: IndexIVFSQ = {
-      dimension: dimension,
-      type: 'ivfsq',
-      sqBits: 8
-    };
-
+  test('should create and operate DiskIVF index successfully', async () => {
     index = await client.createIndex({
       indexName,
       indexKey,
-      indexConfig,
+      dimension,
       metric: 'euclidean'
     });
 
     expect(index).toBeDefined();
     expect(await index.getIndexName()).toBe(indexName);
-    expect(await index.getIndexType()).toBe('ivfsq');
+    expect(await index.getIndexType()).toBe('disk_ivf');
 
-    // Test upsert
-    const testIds = testVectors.map((_, i) => `ivfsq_${i}`);
+    const testIds = testVectors.map((_, i) => `vec_${i}`);
     await index.upsert({ ids: testIds, vectors: testVectors });
 
-    // Test query
     const queryVector = testVectors[0];
     const results = await index.query({ queryVectors: [queryVector], topK: 5 });
 
@@ -186,39 +141,37 @@ describe('Index Types Tests', () => {
     }
   });
 
-  // test('should validate IVFPQ parameters', async () => {
-  //   // Test invalid pqDim = 0
-  //   const invalidConfig: IndexIVFPQ = {
-  //     dimension: dimension,
-  //     type: 'ivfpq',
-  //     pqDim: 0,
-  //     pqBits: 8
-  //   };
-    
-  //   await expect(client.createIndex({
-  //     indexName: generateUniqueName('invalid_pq_dim_'),
-  //     indexKey: generateRandomKey(),
-  //     indexConfig: invalidConfig,
-  //     metric: 'euclidean'
-  //   })).rejects.toThrow();
-  // });
+  test('should create DiskIVF index without explicit dimension', async () => {
+    index = await client.createIndex({
+      indexName,
+      indexKey,
+      metric: 'euclidean'
+    });
+
+    expect(await index.getIndexType()).toBe('disk_ivf');
+
+    const testIds = testVectors.map((_, i) => `auto_${i}`);
+    await index.upsert({ ids: testIds, vectors: testVectors });
+
+    const results = await index.query({ queryVectors: [testVectors[0]], topK: 5 });
+    expect(results.results).toBeDefined();
+  });
 });
 
 describe('Error Handling Tests', () => {
   const client = createClient();
 
   test('should handle invalid API key', async () => {
-    const invalidClient = new Client({ 
-      baseUrl: API_URL, 
+    const invalidClient = new Client({
+      baseUrl: API_URL,
       apiKey: 'invalid-key-12345',
-      verifySsl: false 
+      verifySsl: false
     });
 
-    // Try to create an index - this should require authentication
     await expect(invalidClient.createIndex({
       indexName: generateUniqueName(),
       indexKey: generateRandomKey(),
-      indexConfig: { dimension: 128, type: 'ivfflat' as const },
+      dimension: 128,
       metric: 'euclidean'
     })).rejects.toThrow();
   });
@@ -227,66 +180,52 @@ describe('Error Handling Tests', () => {
     const indexName = generateUniqueName();
     const indexKey = generateRandomKey();
 
-    // Test invalid dimension
-    const invalidConfig = {
-      dimension: -1,
-      type: 'ivfflat' as const
-    };
-    
+    // Negative dimension should be rejected by the server
     await expect(client.createIndex({
       indexName,
       indexKey,
-      indexConfig: invalidConfig,
+      dimension: -1,
       metric: 'euclidean'
     })).rejects.toThrow();
 
-    // Test invalid metric
-    const validConfig = {
-      dimension: 128,
-      type: 'ivfflat' as const
-    };
-    
+    // Invalid metric should be rejected
     await expect(client.createIndex({
       indexName: generateUniqueName(),
       indexKey: generateRandomKey(),
-      indexConfig: validConfig,
-      metric: 'invalid_metric'
+      dimension: 128,
+      metric: 'invalid_metric' as any
     })).rejects.toThrow();
   });
 
   test('should handle network connectivity issues', async () => {
-    const unreachableClient = new Client({ 
-      baseUrl: 'http://non-existent-server:8000', 
+    const unreachableClient = new Client({
+      baseUrl: 'http://non-existent-server:8000',
       apiKey: 'test-key',
-      verifySsl: false 
+      verifySsl: false
     });
 
     await expect(unreachableClient.getHealth()).rejects.toThrow();
   });
 
   test('should handle invalid vector dimensions', async () => {
-    const indexConfig = {
-      dimension: 128,
-      type: 'ivfflat' as const
-    };
     const indexName = generateUniqueName();
     const indexKey = generateRandomKey();
 
-    const index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
+    const index = await client.createIndex({
+      indexName,
+      indexKey,
+      dimension: 128,
+      metric: 'euclidean'
     });
 
     try {
       const wrongDimVector = Array(64).fill(0).map(() => Math.random());
-      
+
       await expect(index.upsert({
         ids: ['wrong_dim'],
         vectors: [wrongDimVector]
       })).rejects.toThrow();
-      
+
     } finally {
       await index.deleteIndex();
     }
@@ -294,16 +233,12 @@ describe('Error Handling Tests', () => {
 
   test('should handle server error responses', async () => {
     const indexKey = generateRandomKey();
-    const indexConfig = {
-      dimension: 128,
-      type: 'ivfflat' as const
-    };
 
     // Test empty index name
     await expect(client.createIndex({
       indexName: '',
       indexKey,
-      indexConfig,
+      dimension: 128,
       metric: 'euclidean'
     })).rejects.toThrow();
 
@@ -312,7 +247,7 @@ describe('Error Handling Tests', () => {
     await expect(client.createIndex({
       indexName: generateUniqueName(),
       indexKey: shortKey,
-      indexConfig: { dimension: 128, type: 'ivfflat' as const },
+      dimension: 128,
       metric: 'euclidean'
     })).rejects.toThrow();
   });
@@ -327,16 +262,12 @@ describe('Edge Cases Tests', () => {
   beforeEach(async () => {
     indexName = generateUniqueName('edge');
     indexKey = generateRandomKey();
-    const indexConfig = {
-      dimension: 128,
-      type: 'ivfflat' as const
-    };
 
-    index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
+    index = await client.createIndex({
+      indexName,
+      indexKey,
+      dimension: 128,
+      metric: 'euclidean'
     });
   });
 
@@ -362,12 +293,11 @@ describe('Edge Cases Tests', () => {
   });
 
   test('should validate mismatched parameter lengths', async () => {
-    const vectors = Array(3).fill(0).map(() => 
+    const vectors = Array(3).fill(0).map(() =>
       Array(128).fill(0).map(() => Math.random())
     );
     const ids = ['id1', 'id2']; // Fewer IDs than vectors
 
-    // Upsert with mismatched lengths should fail
     await expect(index.upsert({
       ids: ids,
       vectors: vectors
@@ -396,28 +326,24 @@ describe('Edge Cases Tests', () => {
     expect(results.length).toBe(1);
     const retrieved = results[0];
     expect(retrieved.id).toBe('preserve_test');
-    
+
     expect(retrieved.vector.length).toBe(originalVector.length);
     for (let i = 0; i < originalVector.length; i++) {
       expect(retrieved.vector[i]).toBeCloseTo(originalVector[i], 5);
     }
-    
+
     expect(retrieved.metadata).toEqual(originalMetadata);
   });
 
   test('should handle index cleanup errors', async () => {
     const testIndexName = generateUniqueName('cleanup');
     const testIndexKey = generateRandomKey();
-    const testConfig = {
-      dimension: 128,
-      type: 'ivfflat' as const
-    };
 
-    const testIndex = await client.createIndex({ 
-      indexName: testIndexName, 
-      indexKey: testIndexKey, 
-      indexConfig: testConfig, 
-      metric: 'euclidean' 
+    const testIndex = await client.createIndex({
+      indexName: testIndexName,
+      indexKey: testIndexKey,
+      dimension: 128,
+      metric: 'euclidean'
     });
 
     await testIndex.deleteIndex();
@@ -468,9 +394,9 @@ describe('Edge Cases Tests', () => {
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    const results = await index.query({ 
-      queryVectors: [zeroVector], 
-      topK: 2 
+    const results = await index.query({
+      queryVectors: [zeroVector],
+      topK: 2
     });
 
     expect(results.results).toBeDefined();
@@ -491,7 +417,7 @@ describe('Edge Cases Tests', () => {
     };
 
     const vector = Array(128).fill(0).map(() => Math.random());
-    
+
     await index.upsert({
       items: [{
         id: 'large_metadata',
@@ -519,79 +445,30 @@ describe('Backend Compatibility Tests', () => {
     const health = await client.getHealth();
     expect(health).toBeDefined();
 
-    // Test if backend supports IVFPQ
     const indexName = generateUniqueName('backend_test');
     const indexKey = generateRandomKey();
-    const indexConfig: IndexIVFPQ = {
-      dimension: 128,
-      type: 'ivfpq',
-      pqDim: 32,
-      pqBits: 8
-    };
 
-    const index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
+    const index = await client.createIndex({
+      indexName,
+      indexKey,
+      dimension: 128,
+      metric: 'euclidean'
     });
-    
+
     await index.deleteIndex();
   });
 
-  test('should handle feature availability gracefully', async () => {
-    // Test basic index type
-    const indexName = generateUniqueName('feature_test');
-    const indexKey = generateRandomKey();
-    const basicConfig = {
-      dimension: 128,
-      type: 'ivfflat' as const
-    };
-
-    const basicIndex = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig: basicConfig, 
-      metric: 'euclidean' 
-    });
-
-    expect(basicIndex).toBeDefined();
-    await basicIndex.deleteIndex();
-
-    // Test advanced index type
-    const advancedConfig: IndexIVFPQ = {
-      dimension: 128,
-      type: 'ivfpq',
-      pqDim: 32,
-      pqBits: 8
-    };
-
-    const advancedIndex = await client.createIndex({ 
-      indexName: generateUniqueName('advanced'), 
-      indexKey: generateRandomKey(), 
-      indexConfig: advancedConfig, 
-      metric: 'euclidean' 
-    });
-    
-    await advancedIndex.deleteIndex();
-  });
-
-  test('should support lite backend IVFFlat operations', async () => {
+  test('should support basic DiskIVF operations', async () => {
     const indexName = generateUniqueName('lite_test');
     const indexKey = generateRandomKey();
-    
-    const indexConfig = {
+
+    const index = await client.createIndex({
+      indexName,
+      indexKey,
       dimension: 128,
-      type: 'ivfflat' as const
-    };
-    
-    const index = await client.createIndex({ 
-      indexName, 
-      indexKey, 
-      indexConfig, 
-      metric: 'euclidean' 
+      metric: 'euclidean'
     });
-    
+
     try {
       const testVector = Array(128).fill(0).map(() => Math.random());
       await index.upsert({
@@ -601,12 +478,12 @@ describe('Backend Compatibility Tests', () => {
           metadata: { backend: 'test' }
         }]
       });
-      
+
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       const results = await index.query({ queryVectors: [testVector], topK: 1 });
       expect(results.results).toBeDefined();
-      
+
     } finally {
       await index.deleteIndex();
     }

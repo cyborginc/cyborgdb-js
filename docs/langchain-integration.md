@@ -41,7 +41,6 @@ const vectorStore = new CyborgVectorStore(
     apiKey: 'your-api-key',
     baseUrl: 'http://localhost:8000',
     embedding: yourEmbeddingModel,
-    indexType: 'ivfflat',
     dimension: 384, // Your embedding dimension
     metric: 'cosine',
     verifySsl: false
@@ -186,11 +185,10 @@ const vectorStore = await CyborgVectorStore.fromExistingIndex(
 
 ## Configuration Options
 
-### Index Types
+### Index Type
 
-- `ivfflat`: IVF with flat quantization (default)
-- `ivf`: Standard IVF index
-- `ivfpq`: IVF with product quantization
+The integration always creates a DiskIVF index — a two-stage inverted-file
+index with float32 reranking — so no `indexType` option is required.
 
 ### Distance Metrics
 
@@ -207,11 +205,6 @@ const config = {
   apiKey: 'your-api-key',
   baseUrl: 'http://localhost:8000',
   embedding: embeddings,
-  indexType: 'ivfpq',
-  indexConfigParams: {
-    pq_dim: 8,  // For IVFPQ: number of sub-quantizers
-    pq_bits: 8  // For IVFPQ: bits per sub-quantizer
-  },
   dimension: 768,
   metric: 'cosine',
   verifySsl: true
@@ -267,9 +260,8 @@ class CustomEmbeddings implements Embeddings {
    });
    ```
 
-4. **Index Configuration**: Choose the appropriate index type based on your use case:
-   - Use `ivfflat` for smaller datasets or when accuracy is critical
-   - Use `ivfpq` for larger datasets where memory efficiency is important
+4. **Index Configuration**: The DiskIVF index handles both small and large
+   datasets — set `dimension` to match your embedding model's output size.
 
 ## Error Handling
 
