@@ -366,3 +366,115 @@ describeIfConfigured('CyborgDB KMS — negative paths (provider:none contract)',
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tier 2 — mixed-mode concurrency.  Fires createIndex against all three
+// providers in parallel and checks each request lands on the right slot
+// without cross-contamination.  Exercises the service's registry handle
+// lookup, KEK cache, and (for `none`) the SDK-supplied-key fast path
+// under concurrent load — the kind of race a sequential test would miss.
+// ---------------------------------------------------------------------------
+
+describeIfConfigured('CyborgDB KMS — mixed-mode concurrency', () => {
+  if (!KMS_REAL || !KMS_SM || !KMS_NONE) {
+    it.skip('skipped: requires all three of CYBORGDB_KMS_NAME_{REAL,SM,NONE}', () => undefined);
+    return;
+  }
+
+  let client: Client;
+  const createdNames: string[] = [];
+
+  beforeAll(() => {
+    client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY!, verifySsl: false });
+  });
+
+  // Backstop cleanup in case an assertion failure short-circuits the
+  // inline cleanup inside each test.  Best-effort — ignore errors.
+  afterAll(async () => {
+    for (const name of createdNames) {
+      try {
+        const idx = await client.loadIndex({ indexName: name });
+        await idx.deleteIndex();
+      } catch (e) { /* ignore */ }
+    }
+  });
+
+  it('creates indexes against aws-kms, aws/SM, and none providers in parallel', async () => {
+    const stamp = Date.now().toString(36);
+    const kmsKmsName = `cc_kms_${stamp}`;
+    const kmsSmName  = `cc_sm_${stamp}`;
+    const kmsNoneName = `cc_none_${stamp}`;
+    const noneKey = Client.generateKey();
+
+    createdNames.push(kmsKmsName, kmsSmName, kmsNoneName);
+
+    // Fire all three in parallel — Promise.all rejects on the first error,
+    // which is what we want: any provider mishandling a concurrent request
+    // surfaces as a thrown promise here.
+    const [kmsIdx, smIdx, noneIdx] = await Promise.all([
+      client.createIndex({
+        indexName: kmsKmsName,
+        kmsName: KMS_REAL,
+        indexConfig: { dimension, type: 'ivfflat' }
+      }),
+      client.createIndex({
+        indexName: kmsSmName,
+        kmsName: KMS_SM,
+        indexConfig: { dimension, type: 'ivfflat' }
+      }),
+      client.createIndex({
+        indexName: kmsNoneName,
+        indexKey: noneKey,
+        kmsName: KMS_NONE,
+        indexConfig: { dimension, type: 'ivfflat' }
+      }),
+    ]);
+
+    // Each returned index should bear the name we asked for — proves no
+    // cross-talk in the service's request handling.
+    expect(await kmsIdx.getIndexName()).toBe(kmsKmsName);
+    expect(await smIdx.getIndexName()).toBe(kmsSmName);
+    expect(await noneIdx.getIndexName()).toBe(kmsNoneName);
+
+    // Confirm all three landed in the catalog.
+    const listed = await client.listIndexes();
+    expect(listed).toEqual(expect.arrayContaining([kmsKmsName, kmsSmName, kmsNoneName]));
+
+    // Inline cleanup so afterAll has less to do.  In parallel, since
+    // delete is provider-independent.
+    await Promise.all([kmsIdx.deleteIndex(), smIdx.deleteIndex(), noneIdx.deleteIndex()]);
+  });
+
+  it('loads pre-existing indexes across all three providers in parallel', async () => {
+    const stamp = Date.now().toString(36);
+    const kmsKmsName = `cc_load_kms_${stamp}`;
+    const kmsSmName  = `cc_load_sm_${stamp}`;
+    const kmsNoneName = `cc_load_none_${stamp}`;
+    const noneKey = Client.generateKey();
+
+    createdNames.push(kmsKmsName, kmsSmName, kmsNoneName);
+
+    // Setup phase — serial create (concurrency of create is covered above).
+    const created = await Promise.all([
+      client.createIndex({ indexName: kmsKmsName, kmsName: KMS_REAL, indexConfig: { dimension, type: 'ivfflat' } }),
+      client.createIndex({ indexName: kmsSmName, kmsName: KMS_SM, indexConfig: { dimension, type: 'ivfflat' } }),
+      client.createIndex({ indexName: kmsNoneName, indexKey: noneKey, kmsName: KMS_NONE, indexConfig: { dimension, type: 'ivfflat' } }),
+    ]);
+
+    try {
+      // Concurrent loads — exercises the KEK cache (hits for the first
+      // two, SDK-supplied-key fast path for `none`).
+      const [kmsLoaded, smLoaded, noneLoaded] = await Promise.all([
+        client.loadIndex({ indexName: kmsKmsName }),
+        client.loadIndex({ indexName: kmsSmName }),
+        client.loadIndex({ indexName: kmsNoneName, indexKey: noneKey }),
+      ]);
+
+      expect(await kmsLoaded.getIndexName()).toBe(kmsKmsName);
+      expect(await smLoaded.getIndexName()).toBe(kmsSmName);
+      expect(await noneLoaded.getIndexName()).toBe(kmsNoneName);
+    } finally {
+      await Promise.all(created.map(idx => idx.deleteIndex().catch(() => undefined)));
+    }
+  });
+});
