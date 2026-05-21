@@ -1,8 +1,6 @@
 import { Client, EncryptedIndex, QueryResponse } from '../index';
 
 import { randomBytes } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as dotenv from 'dotenv';
 
 /**
@@ -25,19 +23,10 @@ if (!CYBORGDB_API_KEY) {
   throw new Error("CYBORGDB_API_KEY environment variable is not set");
 }
 
-// Dataset path
-const JSON_DATASET_PATH = path.join(__dirname, 'wiki_data_sample.json');
-
 // Test parameters - conservative for basic testing
 const N_LISTS = 100;
 const METRIC = "euclidean";
 const TOP_K = 5;
-
-// Recall thresholds - lenient for basic functionality testing
-const RECALL_THRESHOLDS = {
-  "untrained": 0.1,  // 10%
-  "trained": 0.4     // 40%
-};
 
 // Shared data cache to avoid reloading for every test
 let sharedData: {
@@ -59,43 +48,13 @@ function generateIndexName(indexType: string, prefix = "test"): string {
   return `${prefix}_${indexType}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 }
 
-// Compute recall between query results and ground truth
-function computeRecall(_results: QueryResponse[], _groundTruth: number[][]): number {
-  // Simplified recall computation - in production you'd match IDs properly
-  return RECALL_THRESHOLDS.trained + 0.05;
-}
-
-// Load dataset once before all tests
 beforeAll(async () => {
-  try {
-    console.log('Loading dataset for basic integration tests...');
-    if (fs.existsSync(JSON_DATASET_PATH)) {
-      sharedData = JSON.parse(fs.readFileSync(JSON_DATASET_PATH, 'utf8'));
-      console.log('Real dataset loaded successfully');
-    } else {
-      console.log('Dataset file not found, generating synthetic data...');
-      // Create minimal synthetic data as fallback
-      const dimension = 128; // Conservative dimension for basic tests
-      sharedData = {
-        train: Array(200).fill(0).map(() => Array(dimension).fill(0).map(() => Math.random())),
-        test: Array(20).fill(0).map(() => Array(dimension).fill(0).map(() => Math.random())),
-        neighbors: Array(20).fill(0).map(() => Array(TOP_K).fill(0).map(() => Math.floor(Math.random() * 200)))
-      };
-    }
-
-    if (sharedData) {
-      const dimension = sharedData.train[0]?.length;
-      console.log(`Dataset loaded: ${sharedData.train.length} training vectors, ${sharedData.test.length} test vectors`);
-      console.log(`Vector dimension: ${dimension}`);
-
-      if (!dimension || dimension === 0) {
-        throw new Error('Invalid dataset: vectors have zero dimensions');
-      }
-    }
-  } catch (error) {
-    console.error('Error loading dataset:', error);
-    throw error;
-  }
+  const dimension = 128;
+  sharedData = {
+    train: Array(200).fill(0).map(() => Array(dimension).fill(0).map(() => Math.random())),
+    test: Array(20).fill(0).map(() => Array(dimension).fill(0).map(() => Math.random())),
+    neighbors: Array(20).fill(0).map(() => Array(TOP_K).fill(0).map(() => Math.floor(Math.random() * 200)))
+  };
 }, 60000);
 
 describe('DiskIVFBasicIntegrationTest', () => {
