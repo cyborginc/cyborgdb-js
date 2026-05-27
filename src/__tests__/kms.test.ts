@@ -3,21 +3,21 @@
  *
  * The service supports three modes for index encryption keys:
  *   1. Legacy / SDK-managed: client provides `indexKey`, no `kmsName`.
- *   2. KMS-tracked + SDK-supplied KEK: `kmsName` references a registry entry
- *      whose provider is `none`; client also supplies `indexKey`.
- *   3. KMS-fully-managed: `kmsName` references a real KMS provider; service
+ *   2. KMS-fully-managed: `kmsName` references a real KMS provider; service
  *      generates and wraps the KEK internally. Client does NOT supply `indexKey`.
+ *   3. KMS-tracked + SDK-supplied KEK: `kmsName` references a registry entry
+ *      whose provider is `none`; client also supplies `indexKey`.
  *
  * The "offline contract" suite at the top runs with no service — it asserts the
  * SDK's local guard and the request shape (which fields hit the wire). The live
  * suites below are opt-in via env vars because they require the cyborgdb-service
  * to be configured with specific kms.registry entries:
  *   - CYBORGDB_KMS_NAME_REAL — a registry entry with provider `aws-kms`
- *     (HSM-backed). Exercises mode 3 against the AWS KMS path.
+ *     (HSM-backed). Exercises mode 2 against the AWS KMS path.
  *   - CYBORGDB_KMS_NAME_SM   — a registry entry with provider `aws`
- *     (Secrets Manager). Exercises mode 3 against the Secrets Manager path.
+ *     (Secrets Manager). Exercises mode 2 against the Secrets Manager path.
  *   - CYBORGDB_KMS_NAME_NONE — a registry entry with `provider: none`.
- *     Exercises mode 2.
+ *     Exercises mode 3.
  *
  * Each live suite is gated independently; missing env vars skip just their suite.
  */
@@ -74,6 +74,8 @@ function captureApi() {
     queryVectorsV1VectorsQueryPost: rec('query', { results: [] }),
     deleteVectorsV1VectorsDeletePost: rec('delete', { status: 'success' }),
     listIdsV1VectorsListIdsPost: rec('listIds', { ids: [], count: 0 }),
+    upsertVectorsBinaryV1VectorsUpsertBinaryPost: rec('upsertBinary', { status: 'success' }),
+    queryVectorsBinaryV1VectorsQueryBinaryPost: rec('queryBinary', { results: [] }),
   };
   return { api, calls };
 }
@@ -89,6 +91,31 @@ describe('CyborgDB KMS — offline contract (no service)', () => {
   it('createIndex rejects a non-32-byte indexKey', async () => {
     await expect(offlineClient().createIndex({ indexName: 'idx', indexKey: new Uint8Array(10) }))
       .rejects.toThrow(/32 bytes/);
+  });
+
+  it('loadIndex rejects a non-32-byte indexKey', async () => {
+    await expect(offlineClient().loadIndex({ indexName: 'idx', indexKey: new Uint8Array(10) }))
+      .rejects.toThrow(/32 bytes/);
+  });
+
+  it('loadIndex without a key builds a keyless describe request', async () => {
+    const { api, calls } = captureApi();
+    const client = offlineClient();
+    (client as any).api = api;
+
+    await client.loadIndex({ indexName: 'idx' });
+    expect(calls['describe']).toBeDefined();
+    expect(calls['describe'].indexKey).toBeUndefined();
+  });
+
+  it('loadIndex with a key includes the hex key on the describe request', async () => {
+    const { api, calls } = captureApi();
+    const client = offlineClient();
+    (client as any).api = api;
+    const key = Client.generateKey();
+
+    await client.loadIndex({ indexName: 'idx', indexKey: key });
+    expect(calls['describe'].indexKey).toBe(Buffer.from(key).toString('hex'));
   });
 
   it('CreateIndexRequest with only kmsName omits index_key on the wire', () => {
@@ -129,6 +156,33 @@ describe('CyborgDB KMS — offline contract (no service)', () => {
     expect(calls['listIds'].indexKey).toBe(Buffer.from(key).toString('hex'));
   });
 
+  it('binary upsert/query honor the key contract (Float32Array path)', async () => {
+    // Float32Array inputs route through _upsertBinary / _queryBinary, which
+    // build their requests via the same withKey() helper. Two vectors, dim 2.
+    const upsertVecs = () => new Float32Array([0.1, 0.2, 0.3, 0.4]);
+    const queryVec = () => new Float32Array([0.1, 0.2]);
+
+    // Keyless → binary endpoints must omit indexKey.
+    const keyless = captureApi();
+    const keylessIndex = new EncryptedIndex('idx', undefined, keyless.api);
+    await keylessIndex.upsert({ ids: ['a', 'b'], vectors: upsertVecs() });
+    await keylessIndex.query({ queryVectors: queryVec(), dimension: 2 });
+    expect(keyless.calls['upsertBinary']).toBeDefined();
+    expect(keyless.calls['upsertBinary'].indexKey).toBeUndefined();
+    expect(keyless.calls['queryBinary']).toBeDefined();
+    expect(keyless.calls['queryBinary'].indexKey).toBeUndefined();
+
+    // Keyed → binary endpoints must include the hex key.
+    const key = Client.generateKey();
+    const keyed = captureApi();
+    const keyedIndex = new EncryptedIndex('idx', key, keyed.api);
+    await keyedIndex.upsert({ ids: ['a', 'b'], vectors: upsertVecs() });
+    await keyedIndex.query({ queryVectors: queryVec(), dimension: 2 });
+    const hex = Buffer.from(key).toString('hex');
+    expect(keyed.calls['upsertBinary'].indexKey).toBe(hex);
+    expect(keyed.calls['queryBinary'].indexKey).toBe(hex);
+  });
+
   it('getIndexName is callable on a keyless index', async () => {
     const { api } = captureApi();
     const index = new EncryptedIndex('idx', undefined, api);
@@ -143,7 +197,7 @@ describe('CyborgDB KMS — offline contract (no service)', () => {
 
 const describeIfConfigured = API_KEY ? describe : describe.skip;
 
-describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed via aws-kms / HSM)', () => {
+describeIfConfigured('CyborgDB KMS — mode 2 (fully KMS-managed via aws-kms / HSM)', () => {
   if (!KMS_REAL) {
     it.skip('skipped: CYBORGDB_KMS_NAME_REAL not set', () => undefined);
     return;
@@ -196,7 +250,7 @@ describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed via aws-kms / H
   });
 });
 
-describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed via aws / Secrets Manager)', () => {
+describeIfConfigured('CyborgDB KMS — mode 2 (fully KMS-managed via aws / Secrets Manager)', () => {
   if (!KMS_SM) {
     it.skip('skipped: CYBORGDB_KMS_NAME_SM not set', () => undefined);
     return;
@@ -249,7 +303,7 @@ describeIfConfigured('CyborgDB KMS — mode 3 (fully KMS-managed via aws / Secre
   });
 });
 
-describeIfConfigured('CyborgDB KMS — mode 2 (provider:none + SDK-supplied KEK)', () => {
+describeIfConfigured('CyborgDB KMS — mode 3 (provider:none + SDK-supplied KEK)', () => {
   if (!KMS_NONE) {
     it.skip('skipped: CYBORGDB_KMS_NAME_NONE not set', () => undefined);
     return;
@@ -335,10 +389,10 @@ describeIfConfigured('CyborgDB KMS — negative paths (real-provider contract)',
     client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY!, verifySsl: false });
   });
 
-  // Strict rejection is the target contract (in-flight cyborgdb-service
-  // change).  Today's accept-and-warn behaviour at indexes.py:104-113
-  // will be replaced with a hard error so ambiguous signals can't pass
-  // silently.  This test will be red until that change lands.
+  // For a real-provider slot the service generates the KEK itself, so a
+  // caller-supplied index_key is contradictory and the service rejects it
+  // with a 400 ("index_key must not be supplied alongside kms_name=...").
+  // The SDK forwards both fields untouched; the rejection is the server's.
   it('rejects createIndex when kmsName (real) and indexKey are both supplied', async () => {
     const indexName = `neg_both_${Date.now().toString(36)}`;
     const extraneous = Client.generateKey();

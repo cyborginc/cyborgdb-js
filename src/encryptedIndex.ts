@@ -8,8 +8,6 @@ import {
     VectorItem,
     GetResponseModel,
     QueryResponse,
-    ErrorResponseModel,
-    HTTPValidationError,
     IndexInfoResponseModel,
     Request,
     ListIDsRequest,
@@ -24,195 +22,46 @@ import {
   DeleteResponse,
   TrainResponse,
   GetResultItem,
-  FilterExpression,
-  isError
+  FilterExpression
 } from './types';
+import { handleApiError, extractErrorDetail } from './errors';
 
 export class EncryptedIndex {
     private indexName: string = "";
-    private indexKey?: Uint8Array;
+    // Hex-encoded key, computed once in the constructor since the key never
+    // changes (mirrors py's `_index_key_hex` / go's stored `indexKey *string`).
+    // undefined when this index is fully KMS-managed (the server resolves the
+    // KEK from its own KMSBlob snapshot).
+    private readonly indexKeyHex?: string;
     private api: DefaultApi;
 
-    // Hex-encoded key, or undefined when this index is fully KMS-managed
-    // (the server resolves the KEK from its own KMSBlob snapshot).
-    private keyHex(): string | undefined {
-      return this.indexKey ? Buffer.from(this.indexKey).toString('hex') : undefined;
-    }
+    // Permanently cached describe-derived metadata. Index type and config are
+    // immutable for the life of an index, so they're fetched once and reused
+    // (mirrors py's `_index_type_cached` / `_index_config` and go's cached
+    // `indexType`). Training status is NOT cached — it changes server-side.
+    private indexTypeCached?: string;
+    private indexConfigCached?: Record<string, any>;
 
     // Spread into a request body to conditionally include indexKey.
     private withKey<T extends object>(body: T): T & { indexKey?: string } {
-      const hex = this.keyHex();
-      return hex !== undefined ? { ...body, indexKey: hex } : body;
+      return this.indexKeyHex !== undefined ? { ...body, indexKey: this.indexKeyHex } : body;
     }
 
-    private handleApiError(error: unknown): never {
-      console.error("Full error object:", JSON.stringify(error, null, 2));
-
-      // Type guards for error handling
-      const hasResponse = (err: unknown): err is { response: { statusCode?: number; status?: number; headers?: unknown; body?: unknown; data?: unknown } } => {
-        return typeof err === 'object' && err !== null && 'response' in err;
-      };
-
-      const hasBody = (err: unknown): err is { body: unknown } => {
-        return typeof err === 'object' && err !== null && 'body' in err;
-      };
-
-      const hasMessage = (err: unknown): err is { message: string } => {
-        return typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string';
-      };
-
-      const hasCause = (err: unknown): err is { cause: unknown } => {
-        return typeof err === 'object' && err !== null && 'cause' in err;
-      };
-
-      const hasCode = (err: unknown): err is { code: string } => {
-        return typeof err === 'object' && err !== null && 'code' in err;
-      };
-
-      const hasStack = (err: unknown): err is { stack: string } => {
-        return typeof err === 'object' && err !== null && 'stack' in err;
-      };
-
-      // Handle different error formats from typescript-fetch generator
-      if (hasResponse(error)) {
-        console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
-        console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-        console.error("Response Body:", hasBody(error) ? error.body : error.response.body || error.response.data);
-      } else if (hasBody(error)) {
-        console.error("Error Body:", error.body);
-      } else {
-        console.error("No response from server");
-        if (hasMessage(error)) {
-          console.error("Error message:", error.message);
-        }
-        // Log additional error details if available
-        if (hasCause(error)) {
-          console.error("Error cause:", error.cause);
-          // Log more details about the cause if it's an object
-          if (typeof error.cause === 'object' && error.cause !== null) {
-            console.error("Cause details:", JSON.stringify(error.cause, null, 2));
-          }
-        }
-        if (hasCode(error)) {
-          console.error("Error code:", error.code);
-        }
-        if (hasStack(error)) {
-          console.error("Error stack trace:", error.stack);
-        }
-      }
-
-      // Try to extract error details from different possible locations
-      let errorBody: unknown = hasBody(error) ? error.body : hasResponse(error) ? error.response.body || error.response.data : undefined;
-      if (typeof errorBody === 'string') {
-        try {
-          errorBody = JSON.parse(errorBody);
-        } catch {
-          // Keep as string if not valid JSON
-        }
-      }
-
-      if (errorBody) {
-        try {
-          if (typeof errorBody === 'object' && errorBody !== null && 'detail' in errorBody) {
-            const detailValue = (errorBody as { detail: unknown }).detail;
-            if (Array.isArray(detailValue)) {
-              const err = errorBody as HTTPValidationError;
-              throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-            } else {
-              const err = errorBody as ErrorResponseModel;
-              const statusCode = err.statusCode || (hasResponse(error) ? error.response.statusCode || error.response.status : undefined) || 'Unknown status';
-              throw new Error(`${statusCode} - ${err.detail}`);
-            }
-          }
-        } catch (e) {
-          if (isError(e) && e.message.includes('Validation failed')) {
-            throw e;
-          }
-          throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
-        }
-      }
-
-      // Provide more detailed error message for fetch failures
-      const statusCode = hasResponse(error) ? error.response.statusCode || error.response.status : 'Unknown';
-      let errorMessage = hasMessage(error) ? error.message : 'Unknown error';
-
-      // Enhance error message with additional context if available
-      if (hasMessage(error) && error.message === 'fetch failed' && hasCause(error)) {
-        const causeMsg = hasMessage(error.cause) ? error.cause.message : String(error.cause);
-        errorMessage = `Network request failed: ${causeMsg}`;
-      } else if (hasCode(error)) {
-        errorMessage = `${errorMessage} (code: ${error.code})`;
-      }
-
-      throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
-    }
-
-    /**
-     * Type guard to check if value is an object
-     */
-    private isObject(value: unknown): value is Record<string, unknown> {
-      return typeof value === 'object' && value !== null;
-    }
-
-    /**
-     * Type guard to check if error has a response property
-     */
-    private hasResponseProperty(err: unknown): err is { response: unknown } {
-      return this.isObject(err) && 'response' in err;
-    }
-
-    /**
-     * Type guard to check if response has a body property
-     */
-    private hasBodyProperty(response: unknown): response is { body: unknown } {
-      return this.isObject(response) && 'body' in response;
-    }
-
-    /**
-     * Type guard to check if body has a detail property that is a string
-     */
-    private hasDetailString(body: unknown): body is { detail: string } {
-      return this.isObject(body) && 'detail' in body && typeof body.detail === 'string';
-    }
-
-    /**
-     * Safely extracts error detail string from nested error structure
-     * Returns the detail string if present, otherwise undefined
-     */
-    private extractErrorDetail(err: unknown): string | undefined {
-      if (!this.hasResponseProperty(err)) {
-        return undefined;
-      }
-
-      if (!this.hasBodyProperty(err.response)) {
-        return undefined;
-      }
-
-      if (!this.hasDetailString(err.response.body)) {
-        return undefined;
-      }
-
-      return err.response.body.detail;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
-    constructor(indexName: string, indexKey: Uint8Array | undefined, api: DefaultApi, _embeddingModel?: string) {
+    constructor(indexName: string, indexKey: Uint8Array | undefined, api: DefaultApi) {
     this.indexName = indexName;
-    this.indexKey = indexKey;
+    this.indexKeyHex = indexKey ? Buffer.from(indexKey).toString('hex') : undefined;
     this.api = api;
   }
 
 
   private async describeIndex(
-      indexName: string,
-      indexKey?: Uint8Array
+      indexName: string
     ): Promise<IndexInfoResponseModel> {
       try {
-        const keyHex = indexKey ? Buffer.from(indexKey).toString('hex') : undefined;
-        const request: IndexOperationRequest = {
-          indexName: indexName,
-          ...(keyHex !== undefined && { indexKey: keyHex })
-        }
+        // Omit indexKey for fully-KMS-managed indexes (server resolves the KEK).
+        const request: IndexOperationRequest = this.withKey({
+          indexName: indexName
+        });
 
         // Get the full response object
         const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
@@ -220,25 +69,34 @@ export class EncryptedIndex {
         // Extract the body which contains the IndexInfoResponseModel
         return apiResponse;
       } catch (error: unknown) {
-        this.handleApiError(error);
+        handleApiError(error);
       }
     }
     public async getIndexName(): Promise<string> {
-        const response = await this.describeIndex(this.indexName, this.indexKey);
-        return response.indexName;
+        // Known at construction — no API call (matches py/go).
+        return this.indexName;
     }
     public async getIndexType(): Promise<string|undefined> {
-        const response = await this.describeIndex(this.indexName, this.indexKey);
-        return response.indexType;
+        // Immutable — fetch once, then serve from cache.
+        if (this.indexTypeCached === undefined) {
+            const response = await this.describeIndex(this.indexName);
+            this.indexTypeCached = response.indexType;
+        }
+        return this.indexTypeCached;
     }
     public async isTrained(): Promise<boolean> {
-        const response = await this.describeIndex(this.indexName, this.indexKey);
+        // Not cached — training status changes server-side (matches py/go).
+        const response = await this.describeIndex(this.indexName);
         return response.isTrained;
     }
     public async getIndexConfig(): Promise<Record<string, any>> {
-        const response = await this.describeIndex(this.indexName, this.indexKey);
+        // Immutable — fetch once, then serve a defensive copy from cache.
+        if (this.indexConfigCached === undefined) {
+            const response = await this.describeIndex(this.indexName);
+            this.indexConfigCached = { ...response.indexConfig };
+        }
         // Return a copy to prevent external modification
-        return { ...response.indexConfig };
+        return { ...this.indexConfigCached };
     }
     /**
      * Delete an index
@@ -255,7 +113,7 @@ export class EncryptedIndex {
             await this.api.getIndexInfoV1IndexesDescribePost({indexOperationRequest: request});
             } catch (infoError: unknown) {
             // Check if the error is specifically about the index not existing
-            const errorDetail = this.extractErrorDetail(infoError);
+            const errorDetail = extractErrorDetail(infoError);
             if (errorDetail?.includes('not exist')) {
                 return { status: 'success', message: `Index '${this.indexName}' was already deleted` };
             }
@@ -267,7 +125,7 @@ export class EncryptedIndex {
 
             return response;
         } catch (error: unknown) {
-            this.handleApiError(error);
+            handleApiError(error);
         }
     }
 
@@ -302,8 +160,6 @@ export class EncryptedIndex {
           const responseBody: GetResponseModel = response;
           const items = responseBody.results || [];
 
-          console.log(`[DEBUG] Got ${items.length} items in response`);
-
           // Convert results to the expected format
           return items.map((item): GetResultItem => {
             const result: GetResultItem = { id: item.id };
@@ -320,7 +176,7 @@ export class EncryptedIndex {
             return result;
           });
         } catch (error: unknown) {
-          this.handleApiError(error);
+          handleApiError(error);
         }
       }
 
@@ -356,7 +212,7 @@ export class EncryptedIndex {
       const response = await this.api.trainIndexV1IndexesTrainPost({trainRequest});
       return response as TrainResponse;
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -670,18 +526,7 @@ export class EncryptedIndex {
 
       return finalResponse;
     } catch (error: unknown) {
-      // Type guards for logging
-      const hasResponse = (err: unknown): err is { response: { data?: unknown } } => {
-        return typeof err === 'object' && err !== null && 'response' in err;
-      };
-      const hasMessage = (err: unknown): err is { message: string } => {
-        return typeof err === 'object' && err !== null && 'message' in err &&
-               typeof (err as { message: unknown }).message === 'string';
-      };
-
-      const errorData = hasResponse(error) ? error.response.data : hasMessage(error) ? error.message : 'Unknown error';
-      console.error("Query error:", errorData);
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -704,7 +549,7 @@ export class EncryptedIndex {
           const response = await this.api.deleteVectorsV1VectorsDeletePost({deleteRequest});
           return response as DeleteResponse;
           } catch (error: unknown) {
-          this.handleApiError(error);
+          handleApiError(error);
           }
       }
 
@@ -726,7 +571,7 @@ export class EncryptedIndex {
             count: responseBody.count
           };
         } catch (error: unknown) {
-          this.handleApiError(error);
+          handleApiError(error);
         }
       }
 
@@ -813,7 +658,7 @@ export class EncryptedIndex {
       const response = await this.api.upsertVectorsBinaryV1VectorsUpsertBinaryPost({binaryUpsertRequest});
       return response as UpsertResponse;
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -892,7 +737,7 @@ export class EncryptedIndex {
       const response = await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({binaryQueryRequest});
       return response;
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
   }

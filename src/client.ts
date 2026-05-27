@@ -4,13 +4,12 @@ import {
   CreateIndexRequest,
   CreateIndexRequestStoragePrecisionEnum,
   IndexOperationRequest,
-  ErrorResponseModel,
-  HTTPValidationError,
   IndexInfoResponseModel
 } from './models';
 import { EncryptedIndex } from './encryptedIndex';
 import { randomBytes } from 'crypto';
-import { HealthResponse, TrainingStatus, isError } from './types';
+import { HealthResponse, TrainingStatus } from './types';
+import { handleApiError } from './errors';
 
 /**
  * CyborgDB TypeScript SDK
@@ -91,97 +90,6 @@ export class CyborgDB {
     this.api = new DefaultApi(config);
   }
 
-  private handleApiError(error: unknown): never {
-    console.error("Full error object:", JSON.stringify(error, null, 2));
-
-    // Type guards for error handling
-    const hasResponse = (err: unknown): err is { response: { statusCode?: number; status?: number; headers?: unknown; body?: unknown; data?: unknown } } => {
-      return typeof err === 'object' && err !== null && 'response' in err;
-    };
-
-    const hasBody = (err: unknown): err is { body: unknown } => {
-      return typeof err === 'object' && err !== null && 'body' in err;
-    };
-
-    const hasMessage = (err: unknown): err is { message: string } => {
-      return typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string';
-    };
-
-    const hasCause = (err: unknown): err is { cause: unknown } => {
-      return typeof err === 'object' && err !== null && 'cause' in err;
-    };
-
-    const hasCode = (err: unknown): err is { code: string } => {
-      return typeof err === 'object' && err !== null && 'code' in err;
-    };
-
-    // Handle different error formats from typescript-fetch generator
-    if (hasResponse(error)) {
-      console.error("HTTP Status Code:", error.response.statusCode || error.response.status);
-      console.error("Response Headers:", JSON.stringify(error.response.headers, null, 2));
-      console.error("Response Body:", hasBody(error) ? error.body : error.response.body || error.response.data);
-    } else if (hasBody(error)) {
-      console.error("Error Body:", error.body);
-    } else {
-      console.error("No response from server");
-      if (hasMessage(error)) {
-        console.error("Error message:", error.message);
-      }
-      // Log additional error details if available
-      if (hasCause(error)) {
-        console.error("Error cause:", error.cause);
-      }
-      if (hasCode(error)) {
-        console.error("Error code:", error.code);
-      }
-    }
-
-    // Try to extract error details from different possible locations
-    let errorBody: unknown = hasBody(error) ? error.body : hasResponse(error) ? error.response.body || error.response.data : undefined;
-    if (typeof errorBody === 'string') {
-      try {
-        errorBody = JSON.parse(errorBody);
-      } catch {
-        // Keep as string if not valid JSON
-      }
-    }
-
-    if (errorBody) {
-      try {
-        if (typeof errorBody === 'object' && errorBody !== null && 'detail' in errorBody) {
-          const detailValue = (errorBody as { detail: unknown }).detail;
-          if (Array.isArray(detailValue)) {
-            const err = errorBody as HTTPValidationError;
-            throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-          } else {
-            const err = errorBody as ErrorResponseModel;
-            const statusCode = err.statusCode || (hasResponse(error) ? error.response.statusCode || error.response.status : undefined) || 'Unknown status';
-            throw new Error(`${statusCode} - ${err.detail}`);
-          }
-        }
-      } catch (e) {
-        if (isError(e) && e.message.includes('Validation failed')) {
-          throw e;
-        }
-        throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
-      }
-    }
-
-    // Provide more detailed error message for fetch failures
-    const statusCode = hasResponse(error) ? error.response.statusCode || error.response.status : 'Unknown';
-    let errorMessage = hasMessage(error) ? error.message : 'Unknown error';
-
-    // Enhance error message with additional context if available
-    if (hasMessage(error) && error.message === 'fetch failed' && hasCause(error)) {
-      const causeMsg = hasMessage(error.cause) ? error.cause.message : String(error.cause);
-      errorMessage = `Network request failed: ${causeMsg}`;
-    } else if (hasCode(error)) {
-      errorMessage = `${errorMessage} (code: ${error.code})`;
-    }
-
-    throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
-  }
-
   /**
    * List all available indexes
    * @returns Promise with the list of index names
@@ -191,7 +99,18 @@ export class CyborgDB {
       const response = await this.api.listIndexesV1IndexesListGet();
       return response.indexes || [];
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
+    }
+  }
+
+  /**
+   * Validate an optional index key is exactly 32 bytes. No-op when undefined
+   * (KMS-managed indexes supply no key). Mirrors py's `_validate_index_key`
+   * and go's `keyBytesToHex` length check.
+   */
+  private validateKeyLength(indexKey?: Uint8Array): void {
+    if (indexKey !== undefined && indexKey.length !== 32) {
+      throw new Error(`indexKey must be 32 bytes, got ${indexKey.length}`);
     }
   }
 
@@ -240,9 +159,7 @@ export class CyborgDB {
       throw new Error('createIndex requires indexKey, kmsName, or both');
     }
     // Validate the key only when present (still must be 32 bytes).
-    if (indexKey !== undefined && indexKey.length !== 32) {
-      throw new Error(`indexKey must be 32 bytes, got ${indexKey.length}`);
-    }
+    this.validateKeyLength(indexKey);
 
     try {
       const keyHex = indexKey ? Buffer.from(indexKey).toString('hex') : undefined;
@@ -258,9 +175,9 @@ export class CyborgDB {
       };
 
       await this.api.createIndexV1IndexesCreatePost({ createIndexRequest: createRequest });
-      return new EncryptedIndex(indexName, indexKey, this.api, embeddingModel);
+      return new EncryptedIndex(indexName, indexKey, this.api);
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -317,7 +234,7 @@ export class CyborgDB {
       // Extract and return the structured response
       return apiResponse;
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -369,6 +286,8 @@ export class CyborgDB {
     indexName: string;
     indexKey?: Uint8Array;
   }) : Promise<EncryptedIndex> {
+    // Validate the key only when present (KMS-backed indexes supply none).
+    this.validateKeyLength(indexKey);
     try {
       // Validate that the index exists and the key is correct
       const response = await this.describeIndex(indexName, indexKey);
@@ -382,7 +301,7 @@ export class CyborgDB {
       return loadedIndex;
     } catch (error: unknown) {
       // Enhance error context with operation details
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -395,7 +314,7 @@ export class CyborgDB {
       const response = await this.api.healthCheckV1HealthGet();
       return response as HealthResponse;
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 
@@ -418,7 +337,7 @@ export class CyborgDB {
         retrain_threshold: response.retrainThreshold || 0
       };
     } catch (error: unknown) {
-      this.handleApiError(error);
+      handleApiError(error);
     }
   }
 }

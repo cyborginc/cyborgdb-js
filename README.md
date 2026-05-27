@@ -134,9 +134,10 @@ There are three key-management modes:
 
 ```typescript
 // Mode 1 — SDK-managed (default): the SDK supplies the 32-byte key.
+const indexKey = client.generateKey();
 const index = await client.createIndex({
   indexName: 'my-index',
-  indexKey: client.generateKey(),
+  indexKey,
 });
 // Loading requires the same key:
 await client.loadIndex({ indexName: 'my-index', indexKey });
