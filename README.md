@@ -130,7 +130,8 @@ cyborgdb-service YAML and referenced by name via `kmsName`. The SDK has no KMS
 management surface — see [`BYOK.md`](https://github.com/cyborginc/cyborgdb-service/blob/main/BYOK.md)
 for operator/customer setup.
 
-There are three key-management modes:
+There are two key-management modes — supply **exactly one** of `indexKey` /
+`kmsName`:
 
 ```typescript
 // Mode 1 — SDK-managed (default): the SDK supplies the 32-byte key.
@@ -142,26 +143,21 @@ const index = await client.createIndex({
 // Loading requires the same key:
 await client.loadIndex({ indexName: 'my-index', indexKey });
 
-// Mode 2 — KMS-fully-managed: the service generates and wraps the key.
-// Pass a `kmsName` that references a real-provider registry entry
-// (e.g. `aws-kms` or `aws`/Secrets Manager) and omit `indexKey`.
+// Mode 2 — KMS-managed: the service generates and wraps the key.
+// Pass a `kmsName` that references a registry entry (`aws-kms` or
+// `aws`/Secrets Manager) and omit `indexKey`.
 const kmsIndex = await client.createIndex({
   indexName: 'tenant-acme',
   kmsName: 'customer-acme',
 });
 // No key needed to load — the service resolves it from its KMS:
 await client.loadIndex({ indexName: 'tenant-acme' });
-
-// Mode 3 — provider:none + SDK-supplied key: the registry slot tracks the
-// index but the SDK still supplies the KEK on each request. Pass both.
-const trackedIndex = await client.createIndex({
-  indexName: 'tenant-beta',
-  indexKey: client.generateKey(),
-  kmsName: 'plain', // a `provider: none` registry entry
-});
 ```
 
-At least one of `indexKey` / `kmsName` is required on `createIndex`. The
+At least one of `indexKey` / `kmsName` is required on `createIndex`, and you
+must not supply both — the service rejects that with a 400 (the named slot
+already determines the key source). Mode 1 is recorded server-side as
+`provider: none`; `none` is not a registry slot you reference by name. The
 LangChain integration accepts the same `kmsName` option in its store config.
 
 ## Documentation

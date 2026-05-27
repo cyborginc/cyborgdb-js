@@ -117,16 +117,17 @@ export class CyborgDB {
   /**
    * Create a new encrypted DiskIVF index
    *
-   * Three key-management modes:
+   * Two key-management modes — pass exactly one of `indexKey` / `kmsName`:
    *   - SDK-managed (legacy): pass `indexKey`, omit `kmsName`. The SDK
-   *     supplies the 32-byte DEK directly.
-   *   - KMS-fully-managed: pass `kmsName` (referencing a real-provider
-   *     registry entry), omit `indexKey`. The service generates and wraps
-   *     the KEK internally; the SDK never holds a key.
-   *   - `provider: none` + SDK KEK: pass both `indexKey` and `kmsName`
-   *     (when the named registry entry uses `provider: none`).
+   *     supplies the 32-byte key directly; the service records this as
+   *     `provider: none`.
+   *   - KMS-managed: pass `kmsName` (referencing a registry entry), omit
+   *     `indexKey`. The service generates and wraps the KEK internally; the
+   *     SDK never holds a key.
    *
-   * At least one of `indexKey` / `kmsName` is required.
+   * At least one of `indexKey` / `kmsName` is required. Supplying both is
+   * rejected by the service with a 400 (the named slot already determines
+   * the key source); `none` is not a registry slot you reference by name.
    *
    * @param indexName Name of the index
    * @param indexKey 32-byte encryption key (required unless `kmsName` references a real KMS provider)

@@ -28,14 +28,15 @@ and referenced by name only.
 
 | Mode | `createIndex` args | `loadIndex` args | Who holds the key |
 | --- | --- | --- | --- |
-| **1. SDK-managed (legacy)** | `indexKey` only | `indexKey` | SDK supplies the 32-byte DEK directly; no envelope server-side. |
-| **2. KMS-fully-managed** | `kmsName` only (real provider: `aws-kms` / `aws`) | *(no key)* | Service generates + wraps the KEK; SDK never sees a key. |
-| **3. `provider: none` + SDK KEK** | both `indexKey` **and** `kmsName` | `indexKey` | Registry slot tracks the index but SDK supplies the KEK each call. |
+| **1. SDK-managed (legacy)** | `indexKey` only | `indexKey` | SDK supplies the 32-byte DEK directly; recorded server-side as `provider: none`. |
+| **2. KMS-managed** | `kmsName` only (`aws-kms` / `aws`) | *(no key)* | Service generates + wraps the KEK; SDK never sees a key. |
 
 Rule the SDK enforces locally: **at least one of `indexKey` / `kmsName` must
-be present** on `createIndex`. Everything else (whether a real-provider slot
-rejects a stray `indexKey`, whether `provider: none` requires one) is enforced
-server-side and surfaces as an HTTP error.
+be present** on `createIndex`. Supplying **both** is rejected by the service
+with a 400 for every provider — the named slot already determines the key
+source. Note `none` is not a registry slot type: the no-KMS path is Mode 1
+(`indexKey` only, `kmsName` omitted), which the service merely records as
+`provider: none`.
 
 ---
 
@@ -281,15 +282,15 @@ Gated by env vars (suite `it.skip`s itself when unset), matching py/go:
 Coverage (already drafted on the prior branch — port verbatim, fix the
 create-args shape):
 
-- **Mode 1 (`aws-kms`)** and **Mode 1 (`aws`/SM)**: create with `kmsName`
+- **Mode 2 (`aws-kms`)** and **Mode 2 (`aws`/SM)**: create with `kmsName`
   and no `indexKey`; assert it lists; upsert + query with no SDK key;
   `loadIndex` with no key resolves the KEK from the service cache.
-- **Mode 2 (`provider:none`)**: create with **both** `kmsName` and
-  `indexKey`; upsert/query with the SDK key; `loadIndex` still requires the key.
-- **Negative paths**: unknown `kmsName` rejected; real-provider slot rejects a
-  stray `indexKey` (create and load); `provider:none` rejects a missing key;
-  wrong key on a `provider:none` index fails at query; delete-and-recreate
-  with the same name + `kmsName`.
+- **Mode 1 (SDK-managed / no KMS)**: create with `indexKey` only and no
+  `kmsName`; upsert/query with the SDK key; `loadIndex` still requires the key.
+- **Negative paths**: unknown `kmsName` rejected; supplying `indexKey` +
+  `kmsName` together rejected with a 400 (every provider, create and load);
+  Mode 1 with neither field throws locally; wrong key on a Mode 1 index fails
+  at query; delete-and-recreate with the same name + `kmsName`.
 - **Mixed-mode concurrency**: create/load across all three providers in
   parallel to shake out cross-slot bleed.
 
