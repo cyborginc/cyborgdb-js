@@ -30,8 +30,20 @@ import {
 
 export class EncryptedIndex {
     private indexName: string = "";
-    private indexKey: Uint8Array;
+    private indexKey?: Uint8Array;
     private api: DefaultApi;
+
+    // Hex-encoded key, or undefined when this index is fully KMS-managed
+    // (the server resolves the KEK from its own KMSBlob snapshot).
+    private keyHex(): string | undefined {
+      return this.indexKey ? Buffer.from(this.indexKey).toString('hex') : undefined;
+    }
+
+    // Spread into a request body to conditionally include indexKey.
+    private withKey<T extends object>(body: T): T & { indexKey?: string } {
+      const hex = this.keyHex();
+      return hex !== undefined ? { ...body, indexKey: hex } : body;
+    }
 
     private handleApiError(error: unknown): never {
       console.error("Full error object:", JSON.stringify(error, null, 2));
@@ -184,7 +196,7 @@ export class EncryptedIndex {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
-    constructor(indexName: string, indexKey: Uint8Array, api: DefaultApi, _embeddingModel?: string) {
+    constructor(indexName: string, indexKey: Uint8Array | undefined, api: DefaultApi, _embeddingModel?: string) {
     this.indexName = indexName;
     this.indexKey = indexKey;
     this.api = api;
@@ -193,13 +205,13 @@ export class EncryptedIndex {
 
   private async describeIndex(
       indexName: string,
-      indexKey: Uint8Array
+      indexKey?: Uint8Array
     ): Promise<IndexInfoResponseModel> {
       try {
-        const keyHex = Buffer.from(indexKey).toString('hex');
+        const keyHex = indexKey ? Buffer.from(indexKey).toString('hex') : undefined;
         const request: IndexOperationRequest = {
           indexName: indexName,
-          indexKey: keyHex
+          ...(keyHex !== undefined && { indexKey: keyHex })
         }
 
         // Get the full response object
@@ -234,11 +246,9 @@ export class EncryptedIndex {
      */
     async deleteIndex() {
         try {
-            const keyHex = Buffer.from(this.indexKey).toString('hex');
-            const request: IndexOperationRequest = {
-              indexName: this.indexName,
-              indexKey: keyHex
-            };
+            const request: IndexOperationRequest = this.withKey({
+              indexName: this.indexName
+            });
 
             // Call the getIndexInfo API first
             try {
@@ -275,20 +285,16 @@ export class EncryptedIndex {
         include?: string[];
       }): Promise<GetResultItem[]> {
         try {
-          // Convert indexKey to hex string for transmission - matching other methods
-          const keyHex = Buffer.from(this.indexKey).toString('hex');
-
           const includeFields: string[] = [];
           if (include.includes("vector")) includeFields.push("vector");
           if (include.includes("contents")) includeFields.push("contents");
           if (include.includes("metadata")) includeFields.push("metadata");
 
-          const getRequest: GetRequest = {
+          const getRequest: GetRequest = this.withKey({
             indexName: this.indexName,
-            indexKey: keyHex,
             ids: ids,
             include: includeFields
-          };
+          });
 
           const response = await this.api.getVectorsV1VectorsGetPost({getRequest});
 
@@ -338,18 +344,14 @@ export class EncryptedIndex {
     tolerance?: number;
   } = {}): Promise<TrainResponse> {
     try {
-      // Convert indexKey to hex string to match other methods
-      const keyHex = Buffer.from(this.indexKey).toString('hex');
-
-      const trainRequest: TrainRequest = {
+      const trainRequest: TrainRequest = this.withKey({
         indexName: this.indexName,
-        indexKey: keyHex,
         batchSize: batchSize ?? undefined,
         maxIters: maxIters ?? undefined,
         tolerance: tolerance ?? undefined,
         nLists: nLists ?? undefined,
         maxMemory: undefined
-      };
+      });
 
       const response = await this.api.trainIndexV1IndexesTrainPost({trainRequest});
       return response as TrainResponse;
@@ -397,9 +399,6 @@ export class EncryptedIndex {
     }
 
     try {
-      // Convert indexKey to hex string for transmission
-      const keyHex = Buffer.from(this.indexKey).toString('hex');
-
       let finalItems: VectorItem[] = [];
 
       // Case 1: items provided
@@ -551,11 +550,10 @@ export class EncryptedIndex {
         };
       });
 
-      const upsertRequest: UpsertRequest = {
+      const upsertRequest: UpsertRequest = this.withKey({
         indexName: this.indexName,
-        indexKey: keyHex,
         items: processedItems
-      };
+      });
 
       const response = await this.api.upsertVectorsV1VectorsUpsertPost({upsertRequest});
       return response as UpsertResponse;
@@ -621,7 +619,6 @@ export class EncryptedIndex {
       return this._queryBinary({ queryVectors, topK, nProbes, filters, include, greedy, dimension });
     }
 
-    const keyHex = Buffer.from(this.indexKey).toString('hex');
     let isSingleQuery = false;
 
     let vectors2D: number[][] | undefined;
@@ -640,9 +637,8 @@ export class EncryptedIndex {
     }
 
     try {
-      const requestData: Request = {
+      const requestData: Request = this.withKey({
         indexName: this.indexName,
-        indexKey: keyHex,
         topK: topK ?? undefined,
         nProbes: nProbes ?? undefined,
         greedy: greedy ?? undefined,
@@ -652,7 +648,7 @@ export class EncryptedIndex {
           ? vectors2D.map(vector => vector.map(v => Number(v)))
           : [],
         queryContents: queryContents ?? undefined
-      };
+      });
 
       const response = await this.api.queryVectorsV1VectorsQueryPost({request: requestData});
 
@@ -700,14 +696,10 @@ export class EncryptedIndex {
         ids: string[];
       }): Promise<DeleteResponse> {
           try {
-          // Convert indexKey to hex string to match other methods
-          const keyHex = Buffer.from(this.indexKey).toString('hex');
-
-          const deleteRequest: DeleteRequest = {
+          const deleteRequest: DeleteRequest = this.withKey({
               indexName: this.indexName,
-              indexKey: keyHex,
               ids: ids
-          };
+          });
 
           const response = await this.api.deleteVectorsV1VectorsDeletePost({deleteRequest});
           return response as DeleteResponse;
@@ -722,13 +714,9 @@ export class EncryptedIndex {
        */
       async listIds(): Promise<{ ids: string[]; count: number }> {
         try {
-          // Convert indexKey to hex string for transmission
-          const keyHex = Buffer.from(this.indexKey).toString('hex');
-
-          const listIDsRequest: ListIDsRequest = {
-            indexName: this.indexName,
-            indexKey: keyHex
-          };
+          const listIDsRequest: ListIDsRequest = this.withKey({
+            indexName: this.indexName
+          });
 
           const response = await this.api.listIdsV1VectorsListIdsPost({listIDsRequest});
           const responseBody: ListIDsResponse = response;
@@ -765,8 +753,6 @@ export class EncryptedIndex {
       if (contents !== undefined && contents.length !== ids.length) {
         throw new Error(`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`);
       }
-
-      const keyHex = Buffer.from(this.indexKey).toString('hex');
 
       // Convert vectors to Float32Array if needed and get dimension
       let float32Vectors: Float32Array;
@@ -819,11 +805,10 @@ export class EncryptedIndex {
         contents: contents as BinaryVectorBatch['contents']
       };
 
-      const binaryUpsertRequest: BinaryUpsertRequest = {
+      const binaryUpsertRequest: BinaryUpsertRequest = this.withKey({
         indexName: this.indexName,
-        indexKey: keyHex,
         batch
-      };
+      });
 
       const response = await this.api.upsertVectorsBinaryV1VectorsUpsertBinaryPost({binaryUpsertRequest});
       return response as UpsertResponse;
@@ -854,8 +839,6 @@ export class EncryptedIndex {
     dimension?: number;
   }): Promise<QueryResponse> {
     try {
-      const keyHex = Buffer.from(this.indexKey).toString('hex');
-
       // Convert vectors to Float32Array if needed and get dimension
       let float32Vectors: Float32Array;
       let dimension: number;
@@ -896,16 +879,15 @@ export class EncryptedIndex {
         dimension
       };
 
-      const binaryQueryRequest: BinaryQueryRequest = {
+      const binaryQueryRequest: BinaryQueryRequest = this.withKey({
         indexName: this.indexName,
-        indexKey: keyHex,
         batch,
         topK: topK ?? undefined,
         nProbes: nProbes ?? undefined,
         greedy: greedy ?? undefined,
         filters: filters ?? undefined,
         include: include ?? undefined
-      };
+      });
 
       const response = await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({binaryQueryRequest});
       return response;

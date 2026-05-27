@@ -197,8 +197,21 @@ export class CyborgDB {
 
   /**
    * Create a new encrypted DiskIVF index
+   *
+   * Three key-management modes:
+   *   - SDK-managed (legacy): pass `indexKey`, omit `kmsName`. The SDK
+   *     supplies the 32-byte DEK directly.
+   *   - KMS-fully-managed: pass `kmsName` (referencing a real-provider
+   *     registry entry), omit `indexKey`. The service generates and wraps
+   *     the KEK internally; the SDK never holds a key.
+   *   - `provider: none` + SDK KEK: pass both `indexKey` and `kmsName`
+   *     (when the named registry entry uses `provider: none`).
+   *
+   * At least one of `indexKey` / `kmsName` is required.
+   *
    * @param indexName Name of the index
-   * @param indexKey 32-byte encryption key
+   * @param indexKey 32-byte encryption key (required unless `kmsName` references a real KMS provider)
+   * @param kmsName Optional name of a `kms.registry` entry in the service config
    * @param dimension Vector dimensionality (auto-detected from the first upsert if omitted)
    * @param metric Distance metric for the index (optional)
    * @param embeddingModel Optional name of embedding model
@@ -208,28 +221,40 @@ export class CyborgDB {
   async createIndex({
     indexName,
     indexKey,
+    kmsName,
     dimension,
     metric,
     embeddingModel,
     storagePrecision
   }: {
     indexName: string;
-    indexKey: Uint8Array;
+    indexKey?: Uint8Array;
+    kmsName?: string;
     dimension?: number;
     metric?: 'euclidean' | 'squared_euclidean' | 'cosine';
     embeddingModel?: string;
     storagePrecision?: 'float32' | 'float16';
   }) {
+    // Local guard mirrored from the py/go SDKs: at least one of the two.
+    if (indexKey === undefined && kmsName === undefined) {
+      throw new Error('createIndex requires indexKey, kmsName, or both');
+    }
+    // Validate the key only when present (still must be 32 bytes).
+    if (indexKey !== undefined && indexKey.length !== 32) {
+      throw new Error(`indexKey must be 32 bytes, got ${indexKey.length}`);
+    }
+
     try {
-      const keyHex = Buffer.from(indexKey).toString('hex');
+      const keyHex = indexKey ? Buffer.from(indexKey).toString('hex') : undefined;
 
       const createRequest: CreateIndexRequest = {
         indexName: indexName,
-        indexKey: keyHex,
         dimension: dimension,
         embeddingModel: embeddingModel,
         metric: metric,
-        storagePrecision: storagePrecision as CreateIndexRequestStoragePrecisionEnum | undefined
+        storagePrecision: storagePrecision as CreateIndexRequestStoragePrecisionEnum | undefined,
+        ...(keyHex !== undefined && { indexKey: keyHex }),
+        ...(kmsName !== undefined && { kmsName })
       };
 
       await this.api.createIndexV1IndexesCreatePost({ createIndexRequest: createRequest });
@@ -266,25 +291,26 @@ export class CyborgDB {
    * ```
    * 
    * @param indexName Name of the index to describe
-   * @param indexKey 32-byte encryption key used when index was created
+   * @param indexKey 32-byte encryption key (omit for fully-KMS-managed indexes)
    * @returns Promise resolving to complete index information and metadata
    * @throws Error if index doesn't exist, key is invalid, or server unreachable
    * @private Internal method - consider using loadIndex() for public access
    */
   private async describeIndex(
-    indexName: string, 
-    indexKey: Uint8Array
+    indexName: string,
+    indexKey?: Uint8Array
   ): Promise<IndexInfoResponseModel> {
     try {
-      // Convert binary key to hex string format expected by API
-      const keyHex = Buffer.from(indexKey).toString('hex');
-      
-      // Prepare request with index identifier and authentication key
+      // Convert binary key to hex string format expected by API. Omit it
+      // entirely for fully-KMS-managed indexes (server resolves the KEK).
+      const keyHex = indexKey ? Buffer.from(indexKey).toString('hex') : undefined;
+
+      // Prepare request with index identifier and (optional) authentication key
       const request: IndexOperationRequest = {
         indexName: indexName,
-        indexKey: keyHex
+        ...(keyHex !== undefined && { indexKey: keyHex })
       }
-      
+
       // Make API call to retrieve comprehensive index information
       const apiResponse = await this.api.getIndexInfoV1IndexesDescribePost({ indexOperationRequest: request });
 
@@ -325,12 +351,14 @@ export class CyborgDB {
 
   /**
    * Load and connect to an existing encrypted index
-   * 
-   * Establishes a connection to a previously created index using its name and encryption key.
-   * This is the primary method for accessing existing indexes and their data.
-   * 
+   *
+   * Establishes a connection to a previously created index using its name and
+   * (optionally) its encryption key. For fully-KMS-managed indexes the service
+   * resolves the KEK from its own cache, so `indexKey` is optional. For legacy
+   * (SDK-managed) indexes and `provider: none` KMS slots, `indexKey` is required.
+   *
    * @param indexName Name of the existing index to load
-   * @param indexKey The exact 32-byte encryption key used when creating the index  
+   * @param indexKey 32-byte encryption key (omit for fully-KMS-managed indexes)
    * @returns Promise resolving to EncryptedIndex instance ready for vector operations
    * @throws Error if index doesn't exist, key is incorrect, or connection fails
    */
@@ -339,7 +367,7 @@ export class CyborgDB {
     indexKey
   }: {
     indexName: string;
-    indexKey: Uint8Array;
+    indexKey?: Uint8Array;
   }) : Promise<EncryptedIndex> {
     try {
       // Validate that the index exists and the key is correct

@@ -122,6 +122,47 @@ const results = await index.query({
 });
 ```
 
+#### Bring Your Own KMS (BYOK) & Multi-Tenancy
+
+Indexes can be encrypted under a key managed by a KMS instead of one held by
+the SDK. The KMS entries (`kms.registry`) are configured **server-side** in the
+cyborgdb-service YAML and referenced by name via `kmsName`. The SDK has no KMS
+management surface — see [`BYOK.md`](https://github.com/cyborginc/cyborgdb-service/blob/main/BYOK.md)
+for operator/customer setup.
+
+There are three key-management modes:
+
+```typescript
+// Mode 1 — SDK-managed (default): the SDK supplies the 32-byte key.
+const index = await client.createIndex({
+  indexName: 'my-index',
+  indexKey: client.generateKey(),
+});
+// Loading requires the same key:
+await client.loadIndex({ indexName: 'my-index', indexKey });
+
+// Mode 2 — KMS-fully-managed: the service generates and wraps the key.
+// Pass a `kmsName` that references a real-provider registry entry
+// (e.g. `aws-kms` or `aws`/Secrets Manager) and omit `indexKey`.
+const kmsIndex = await client.createIndex({
+  indexName: 'tenant-acme',
+  kmsName: 'customer-acme',
+});
+// No key needed to load — the service resolves it from its KMS:
+await client.loadIndex({ indexName: 'tenant-acme' });
+
+// Mode 3 — provider:none + SDK-supplied key: the registry slot tracks the
+// index but the SDK still supplies the KEK on each request. Pass both.
+const trackedIndex = await client.createIndex({
+  indexName: 'tenant-beta',
+  indexKey: client.generateKey(),
+  kmsName: 'plain', // a `provider: none` registry entry
+});
+```
+
+At least one of `indexKey` / `kmsName` is required on `createIndex`. The
+LangChain integration accepts the same `kmsName` option in its store config.
+
 ## Documentation
 
 For more information on CyborgDB, see the [Cyborg Docs](https://docs.cyborg.co).

@@ -21,3 +21,7 @@
 #docs/*.md
 # Then explicitly reverse the ignore rule for a single file:
 #!docs/README.md
+
+# index.ts is hand-maintained (public SDK exports: CyborgDB, EncryptedIndex,
+# custom types). The generator's barrel would clobber it — keep ours.
+index.ts

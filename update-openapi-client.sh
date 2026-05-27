@@ -12,7 +12,7 @@ fi
 
 # Clean existing generated files
 echo "Cleaning old generated files..."
-rm -rf src/model src/api
+rm -rf src/models src/apis
 
 # Generate TypeScript client using typescript-fetch generator
 # Using OpenAPI Generator version 7.12.0
