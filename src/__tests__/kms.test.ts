@@ -82,7 +82,7 @@ function captureApi() {
     return Promise.resolve(resp);
   };
   const api: any = {
-    getIndexInfoV1IndexesDescribePost: rec('describe', { indexName: 'idx', indexType: 'ivfflat', isTrained: false, indexConfig: {} }),
+    getIndexInfoV1IndexesDescribePost: rec('describe', { indexName: 'idx', isTrained: false, indexConfig: {} }),
     deleteIndexV1IndexesDeletePost: rec('deleteIndex', { status: 'success' }),
     getVectorsV1VectorsGetPost: rec('get', { results: [] }),
     trainIndexV1IndexesTrainPost: rec('train', { status: 'success' }),

@@ -216,7 +216,6 @@ describe('CyborgDB API Contract Tests', () => {
 
       const config = await index.getIndexConfig();
       expect(config.dimension).toBe(dimension);
-      expect(await index.getIndexType()).toBe('disk_ivf');
 
       await index.deleteIndex();
       await sleep(1000); // Backend has eventual consistency for deletions
@@ -231,7 +230,6 @@ describe('CyborgDB API Contract Tests', () => {
         indexKey: tempIndexKey
       });
 
-      expect(await index.getIndexType()).toBe('disk_ivf');
 
       await index.deleteIndex();
       await sleep(1000); // Backend has eventual consistency for deletions
@@ -249,7 +247,6 @@ describe('CyborgDB API Contract Tests', () => {
         storagePrecision: 'float16'
       });
 
-      expect(await index.getIndexType()).toBe('disk_ivf');
 
       await index.deleteIndex();
       await sleep(1000);
@@ -266,7 +263,6 @@ describe('CyborgDB API Contract Tests', () => {
 
       const config = await embeddingIndex.getIndexConfig();
       expect(config.dimension).toBe(384); // all-MiniLM-L6-v2 dimension
-      expect(await embeddingIndex.getIndexType()).toBe('disk_ivf');
 
       // Wait for index to be ready
       await sleep(2000);
@@ -344,17 +340,10 @@ describe('CyborgDB API Contract Tests', () => {
       expect(name).toBe(testIndexName);
     });
 
-    it('should expose index type via getIndexType()', async () => {
-      const indexType = await testIndex.getIndexType();
-      expect(typeof indexType).toBe('string');
-      expect(indexType).toBe('disk_ivf');
-    });
-
     it('should expose index config via getIndexConfig()', async () => {
       const config = await testIndex.getIndexConfig();
       expect(typeof config).toBe('object');
       expect(config).toHaveProperty('dimension');
-      expect(config).toHaveProperty('index_type');
       expect(config.dimension).toBe(dimension);
     });
   });

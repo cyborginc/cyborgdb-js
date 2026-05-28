@@ -35,11 +35,10 @@ export class EncryptedIndex {
     private readonly indexKeyHex?: string;
     private api: DefaultApi;
 
-    // Permanently cached describe-derived metadata. Index type and config are
-    // immutable for the life of an index, so they're fetched once and reused
-    // (mirrors py's `_index_type_cached` / `_index_config` and go's cached
-    // `indexType`). Training status is NOT cached — it changes server-side.
-    private indexTypeCached?: string;
+    // Permanently cached describe-derived metadata. `indexConfig` is
+    // immutable for the life of an index, so it's fetched once and
+    // reused (mirrors py's `_index_config`). Training status is NOT
+    // cached — it changes server-side.
     private indexConfigCached?: Record<string, any>;
 
     // Spread into a request body to conditionally include indexKey.
@@ -75,14 +74,6 @@ export class EncryptedIndex {
     public async getIndexName(): Promise<string> {
         // Known at construction — no API call (matches py/go).
         return this.indexName;
-    }
-    public async getIndexType(): Promise<string|undefined> {
-        // Immutable — fetch once, then serve from cache.
-        if (this.indexTypeCached === undefined) {
-            const response = await this.describeIndex(this.indexName);
-            this.indexTypeCached = response.indexType;
-        }
-        return this.indexTypeCached;
     }
     public async isTrained(): Promise<boolean> {
         // Not cached — training status changes server-side (matches py/go).

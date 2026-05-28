@@ -203,7 +203,6 @@ export class CyborgDB {
    * ```typescript
    * // Typically used internally, but can be called directly
    * const indexInfo = await client.describeIndex("my-index", indexKey);
-   * console.log(`Index type: ${indexInfo.indexType}`);
    * console.log(`Is trained: ${indexInfo.isTrained}`);
    * console.log(`Dimensions: ${indexInfo.indexConfig.dimension}`);
    * ```

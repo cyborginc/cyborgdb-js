@@ -722,8 +722,6 @@ describe('TestUnitFlow', () => {
         const config = await index.getIndexConfig();
         expect(config).toBeDefined();
         expect(typeof config).toBe('object');
-        
-        expect(await index.getIndexType()).toBe('disk_ivf');
     });
 
     test('test_19_load_index', async () => {

@@ -44,8 +44,8 @@ function generateRandomKey(): Uint8Array {
 }
 
 // Helper function to generate unique index name
-function generateIndexName(indexType: string, prefix = "test"): string {
-  return `${prefix}_${indexType}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+function generateIndexName(prefix = "test"): string {
+  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 }
 
 beforeAll(async () => {
@@ -77,7 +77,7 @@ describe('DiskIVFBasicIntegrationTest', () => {
 
   // Set up for each test
   beforeEach(async () => {
-    indexName = generateIndexName('diskivf');
+    indexName = generateIndexName();
     indexKey = generateRandomKey();
 
     console.log(`Creating DiskIVF index with dimension ${dimension}`);
@@ -102,7 +102,6 @@ describe('DiskIVFBasicIntegrationTest', () => {
   test('should create DiskIVF index successfully', async () => {
     expect(index).toBeDefined();
     expect(await index.getIndexName()).toBe(indexName);
-    expect(await index.getIndexType()).toBe("disk_ivf");
   });
 
   test('should list IDs from the index', async () => {
