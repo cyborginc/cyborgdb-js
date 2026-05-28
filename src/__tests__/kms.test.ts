@@ -1,25 +1,42 @@
 /**
  * KMS-backed key management tests.
  *
- * The service supports three modes for index encryption keys:
- *   1. Legacy / SDK-managed: client provides `indexKey`, no `kmsName`.
- *   2. KMS-fully-managed: `kmsName` references a real KMS provider; service
- *      generates and wraps the KEK internally. Client does NOT supply `indexKey`.
- *   3. KMS-tracked + SDK-supplied KEK: `kmsName` references a registry entry
- *      whose provider is `none`; client also supplies `indexKey`.
+ * The service supports two wire encodings for index encryption keys, and
+ * `kms_name` + `index_key` are strictly mutually exclusive on the create
+ * request (the server returns 400 regardless of which slot `kms_name`
+ * resolves to):
  *
- * The "offline contract" suite at the top runs with no service — it asserts the
- * SDK's local guard and the request shape (which fields hit the wire). The live
- * suites below are opt-in via env vars because they require the cyborgdb-service
- * to be configured with specific kms.registry entries:
- *   - CYBORGDB_KMS_NAME_REAL — a registry entry with provider `aws-kms`
+ *   1. **SDK-supplied KEK** — request carries `indexKey` and no
+ *      `kmsName`. The server uses the SDK-supplied bytes as the KEK and
+ *      records the envelope as `provider="none"`; the SDK must re-supply
+ *      the same `indexKey` on every subsequent request for that index.
+ *      No KMS registry slot is referenced.
+ *   2. **KMS-managed KEK** — request carries `kmsName` and no
+ *      `indexKey`. The server generates a random KEK, wraps it via the
+ *      referenced registry slot's provider (`aws-kms` or `aws`), and
+ *      persists the wrapped form. Subsequent requests resolve the KEK
+ *      server-side via the cache or the KMS provider; the SDK never
+ *      sees it.
+ *
+ * The "offline contract" suite at the top runs with no service — it
+ * asserts the SDK's local guard and the request shape (which fields hit
+ * the wire). The live suites below are opt-in via env vars because they
+ * require the cyborgdb-service to be configured with specific
+ * kms.registry entries:
+ *   - CYBORGDB_KMS_NAME_REAL — registry entry with provider `aws-kms`
  *     (HSM-backed). Exercises mode 2 against the AWS KMS path.
- *   - CYBORGDB_KMS_NAME_SM   — a registry entry with provider `aws`
- *     (Secrets Manager). Exercises mode 2 against the Secrets Manager path.
- *   - CYBORGDB_KMS_NAME_NONE — a registry entry with `provider: none`.
- *     Exercises mode 3.
+ *   - CYBORGDB_KMS_NAME_SM   — registry entry with provider `aws`
+ *     (Secrets Manager). Exercises mode 2 against the Secrets Manager
+ *     path.
  *
- * Each live suite is gated independently; missing env vars skip just their suite.
+ * The SDK-supplied-KEK path (mode 1) is exercised live whenever
+ * CYBORGDB_API_KEY is set; it needs no registry slot and historically
+ * the test file gated it on a `provider: none` slot that has since been
+ * removed from the registry — strict mutex made that slot unreachable
+ * from the SDK anyway.
+ *
+ * Each live suite is gated independently; missing env vars skip just
+ * their suite.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
@@ -34,7 +51,6 @@ const BASE_URL = process.env.CYBORGDB_BASE_URL || 'http://localhost:8000';
 const API_KEY = process.env.CYBORGDB_API_KEY;
 const KMS_REAL = process.env.CYBORGDB_KMS_NAME_REAL;
 const KMS_SM = process.env.CYBORGDB_KMS_NAME_SM;
-const KMS_NONE = process.env.CYBORGDB_KMS_NAME_NONE;
 
 const dimension = 128;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -124,7 +140,11 @@ describe('CyborgDB KMS — offline contract (no service)', () => {
     expect('index_key' in wire).toBe(false);
   });
 
-  it('CreateIndexRequest with both index_key and kms_name keeps both', () => {
+  it('CreateIndexRequest preserves both fields on the wire even though the server rejects the combo', () => {
+    // Strict mutex lives in the server, not the SDK. Verify the
+    // generated model forwards both fields untouched so the rejection
+    // is the server's call — the SDK doesn't silently strip one and
+    // mask the operator's misconfiguration.
     const wire = JSON.parse(JSON.stringify(CreateIndexRequestToJSON({ indexName: 'idx', indexKey: 'ff', kmsName: 'slot' })));
     expect(wire.index_key).toBe('ff');
     expect(wire.kms_name).toBe('slot');
@@ -303,12 +323,10 @@ describeIfConfigured('CyborgDB KMS — mode 2 (fully KMS-managed via aws / Secre
   });
 });
 
-describeIfConfigured('CyborgDB KMS — mode 3 (provider:none + SDK-supplied KEK)', () => {
-  if (!KMS_NONE) {
-    it.skip('skipped: CYBORGDB_KMS_NAME_NONE not set', () => undefined);
-    return;
-  }
-
+describeIfConfigured('CyborgDB KMS — mode 1 (SDK-supplied KEK, no kmsName)', () => {
+  // No KMS slot dependency — the SDK supplies the KEK on every request
+  // and the server records the envelope as `provider="none"`. Gated on
+  // CYBORGDB_API_KEY alone.
   let client: Client;
   let indexName: string;
   let indexKey: Uint8Array;
@@ -316,7 +334,7 @@ describeIfConfigured('CyborgDB KMS — mode 3 (provider:none + SDK-supplied KEK)
 
   beforeAll(() => {
     client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY!, verifySsl: false });
-    indexName = `kms_none_${Date.now().toString(36)}`;
+    indexName = `kms_sdk_${Date.now().toString(36)}`;
     indexKey = Client.generateKey();
   });
 
@@ -324,11 +342,10 @@ describeIfConfigured('CyborgDB KMS — mode 3 (provider:none + SDK-supplied KEK)
     try { if (index) await index.deleteIndex(); } catch (e) { /* ignore */ }
   });
 
-  it('creates an index with both kmsName and indexKey', async () => {
+  it('creates an index with indexKey and no kmsName', async () => {
     index = await client.createIndex({
       indexName,
       indexKey,
-      kmsName: KMS_NONE,
       dimension
     });
     expect(index).toBeDefined();
@@ -337,7 +354,7 @@ describeIfConfigured('CyborgDB KMS — mode 3 (provider:none + SDK-supplied KEK)
 
   it('upserts and queries with the SDK-supplied KEK', async () => {
     const vectors = makeVectors(5, dimension);
-    const items = vectors.map((v, i) => ({ id: `none_${i}`, vector: v }));
+    const items = vectors.map((v, i) => ({ id: `sdk_${i}`, vector: v }));
 
     const upsertResult = await index.upsert({ items });
     expect(upsertResult.status).toBe('success');
@@ -374,6 +391,50 @@ describeIfConfigured('CyborgDB KMS — negative paths (config-agnostic)', () => 
       kmsName: 'definitely-not-a-registered-slot',
       dimension
     })).rejects.toThrow();
+  });
+
+  it('rejects createIndex when neither kmsName nor indexKey is supplied (server-side)', async () => {
+    // The SDK has a local guard that catches this offline (covered by
+    // the offline-contract suite). To exercise the server-side guard
+    // we bypass the SDK helper and send the raw request — the server
+    // must produce its own 400 even if a future SDK change drops the
+    // client-side check.
+    const res = await fetch(`${BASE_URL}/v1/indexes/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY! },
+      body: JSON.stringify({ index_name: `neg_empty_${Date.now().toString(36)}`, dimension }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects createIndex with kmsName + indexKey even when kmsName is unknown', async () => {
+    // The strict-mutex check fires BEFORE the registry lookup, so the
+    // server returns 400 with the mutex message rather than an
+    // unknown-slot message. This pins down "mutex first, slot
+    // resolution second" so a future server refactor can't silently
+    // swap the ordering and let the combination through for an
+    // as-yet-unknown slot.
+    //
+    // Use raw fetch instead of the SDK helper because the
+    // typescript-fetch generator's error shape doesn't surface the
+    // server's `detail` field in the thrown Error.message — the
+    // distinction we care about ("mutex 400" vs "unknown-slot 400")
+    // is invisible through the SDK layer today.
+    const indexKeyHex = Buffer.from(Client.generateKey()).toString('hex');
+    const res = await fetch(`${BASE_URL}/v1/indexes/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY! },
+      body: JSON.stringify({
+        index_name: `neg_mutex_unknown_${Date.now().toString(36)}`,
+        index_key: indexKeyHex,
+        kms_name: 'definitely-not-a-registered-slot',
+        dimension,
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(typeof body.detail).toBe('string');
+    expect(body.detail).toMatch(/index_key must not be supplied alongside/);
   });
 });
 
@@ -449,37 +510,23 @@ describeIfConfigured('CyborgDB KMS — negative paths (real-provider contract)',
   });
 });
 
-describeIfConfigured('CyborgDB KMS — negative paths (provider:none contract)', () => {
-  if (!KMS_NONE) {
-    it.skip('skipped: CYBORGDB_KMS_NAME_NONE not set', () => undefined);
-    return;
-  }
-
+describeIfConfigured('CyborgDB KMS — negative paths (SDK-supplied KEK contract)', () => {
+  // Counterparts to the SDK-supplied-KEK positive suite — same wire
+  // encoding (indexKey alone), but exercising the failure modes:
+  // forgetting the key on reload, and supplying a wrong key.
   let client: Client;
 
   beforeAll(() => {
     client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY!, verifySsl: false });
   });
 
-  it('rejects createIndex when kmsName references provider:none and indexKey is omitted', async () => {
-    const indexName = `neg_none_nokey_${Date.now().toString(36)}`;
-    await expect(client.createIndex({
-      indexName,
-      kmsName: KMS_NONE,
-      dimension
-    })).rejects.toThrow();
-  });
-
-  it('rejects loadIndex without indexKey on a provider:none index', async () => {
-    const indexName = `neg_none_loadnokey_${Date.now().toString(36)}`;
+  it('rejects loadIndex without indexKey on an SDK-supplied-KEK index', async () => {
+    const indexName = `neg_sdk_loadnokey_${Date.now().toString(36)}`;
     const indexKey = Client.generateKey();
-    const index = await client.createIndex({
-      indexName,
-      indexKey,
-      kmsName: KMS_NONE,
-      dimension
-    });
+    const index = await client.createIndex({ indexName, indexKey, dimension });
     try {
+      // The persisted envelope records `provider="none"`, so the server
+      // has no way to resolve the KEK without the SDK re-supplying it.
       await expect(client.loadIndex({ indexName })).rejects.toThrow();
     } finally {
       try { await index.deleteIndex(); } catch (e) { /* ignore */ }
@@ -489,17 +536,12 @@ describeIfConfigured('CyborgDB KMS — negative paths (provider:none contract)',
   // The SDK may or may not validate the key on loadIndex; either way,
   // an operation that requires decryption should fail.  Probe by trying
   // to query after a wrong-key load.
-  it('fails to query after loadIndex with wrong indexKey on a provider:none index', async () => {
-    const indexName = `neg_none_wrongkey_${Date.now().toString(36)}`;
+  it('fails to query after loadIndex with wrong indexKey on an SDK-supplied-KEK index', async () => {
+    const indexName = `neg_sdk_wrongkey_${Date.now().toString(36)}`;
     const realKey = Client.generateKey();
     const wrongKey = Client.generateKey();
 
-    const index = await client.createIndex({
-      indexName,
-      indexKey: realKey,
-      kmsName: KMS_NONE,
-      dimension
-    });
+    const index = await client.createIndex({ indexName, indexKey: realKey, dimension });
     try {
       const vectors = makeVectors(3, dimension);
       const items = vectors.map((v, i) => ({ id: `wk_${i}`, vector: v }));
@@ -525,11 +567,15 @@ describeIfConfigured('CyborgDB KMS — negative paths (provider:none contract)',
 // ---------------------------------------------------------------------------
 
 describeIfConfigured('CyborgDB KMS — mixed-mode concurrency', () => {
-  if (!KMS_REAL || !KMS_SM || !KMS_NONE) {
-    it.skip('skipped: requires all three of CYBORGDB_KMS_NAME_{REAL,SM,NONE}', () => undefined);
+  if (!KMS_REAL || !KMS_SM) {
+    it.skip('skipped: requires both CYBORGDB_KMS_NAME_REAL and CYBORGDB_KMS_NAME_SM', () => undefined);
     return;
   }
 
+  // Three legs: aws-kms slot, aws/SM slot, SDK-supplied KEK (no slot).
+  // The SDK-supplied leg used to reference a `provider: none` registry
+  // slot; with strict mutex it carries `indexKey` alone and the server
+  // records the envelope as `provider="none"` itself.
   let client: Client;
   const createdNames: string[] = [];
 
@@ -548,19 +594,19 @@ describeIfConfigured('CyborgDB KMS — mixed-mode concurrency', () => {
     }
   });
 
-  it('creates indexes against aws-kms, aws/SM, and none providers in parallel', async () => {
+  it('creates indexes against aws-kms, aws/SM, and SDK-supplied paths in parallel', async () => {
     const stamp = Date.now().toString(36);
     const kmsKmsName = `cc_kms_${stamp}`;
     const kmsSmName  = `cc_sm_${stamp}`;
-    const kmsNoneName = `cc_none_${stamp}`;
-    const noneKey = Client.generateKey();
+    const sdkName    = `cc_sdk_${stamp}`;
+    const sdkKey = Client.generateKey();
 
-    createdNames.push(kmsKmsName, kmsSmName, kmsNoneName);
+    createdNames.push(kmsKmsName, kmsSmName, sdkName);
 
     // Fire all three in parallel — Promise.all rejects on the first error,
     // which is what we want: any provider mishandling a concurrent request
     // surfaces as a thrown promise here.
-    const [kmsIdx, smIdx, noneIdx] = await Promise.all([
+    const [kmsIdx, smIdx, sdkIdx] = await Promise.all([
       client.createIndex({
         indexName: kmsKmsName,
         kmsName: KMS_REAL,
@@ -572,9 +618,8 @@ describeIfConfigured('CyborgDB KMS — mixed-mode concurrency', () => {
         dimension
       }),
       client.createIndex({
-        indexName: kmsNoneName,
-        indexKey: noneKey,
-        kmsName: KMS_NONE,
+        indexName: sdkName,
+        indexKey: sdkKey,
         dimension
       }),
     ]);
@@ -583,45 +628,45 @@ describeIfConfigured('CyborgDB KMS — mixed-mode concurrency', () => {
     // cross-talk in the service's request handling.
     expect(await kmsIdx.getIndexName()).toBe(kmsKmsName);
     expect(await smIdx.getIndexName()).toBe(kmsSmName);
-    expect(await noneIdx.getIndexName()).toBe(kmsNoneName);
+    expect(await sdkIdx.getIndexName()).toBe(sdkName);
 
     // Confirm all three landed in the catalog.
     const listed = await client.listIndexes();
-    expect(listed).toEqual(expect.arrayContaining([kmsKmsName, kmsSmName, kmsNoneName]));
+    expect(listed).toEqual(expect.arrayContaining([kmsKmsName, kmsSmName, sdkName]));
 
     // Inline cleanup so afterAll has less to do.  In parallel, since
     // delete is provider-independent.
-    await Promise.all([kmsIdx.deleteIndex(), smIdx.deleteIndex(), noneIdx.deleteIndex()]);
+    await Promise.all([kmsIdx.deleteIndex(), smIdx.deleteIndex(), sdkIdx.deleteIndex()]);
   });
 
-  it('loads pre-existing indexes across all three providers in parallel', async () => {
+  it('loads pre-existing indexes across all three paths in parallel', async () => {
     const stamp = Date.now().toString(36);
     const kmsKmsName = `cc_load_kms_${stamp}`;
     const kmsSmName  = `cc_load_sm_${stamp}`;
-    const kmsNoneName = `cc_load_none_${stamp}`;
-    const noneKey = Client.generateKey();
+    const sdkName    = `cc_load_sdk_${stamp}`;
+    const sdkKey = Client.generateKey();
 
-    createdNames.push(kmsKmsName, kmsSmName, kmsNoneName);
+    createdNames.push(kmsKmsName, kmsSmName, sdkName);
 
-    // Setup phase — serial create (concurrency of create is covered above).
+    // Setup phase — concurrent create (sequencing of create is covered above).
     const created = await Promise.all([
       client.createIndex({ indexName: kmsKmsName, kmsName: KMS_REAL, dimension }),
       client.createIndex({ indexName: kmsSmName, kmsName: KMS_SM, dimension }),
-      client.createIndex({ indexName: kmsNoneName, indexKey: noneKey, kmsName: KMS_NONE, dimension }),
+      client.createIndex({ indexName: sdkName, indexKey: sdkKey, dimension }),
     ]);
 
     try {
       // Concurrent loads — exercises the KEK cache (hits for the first
-      // two, SDK-supplied-key fast path for `none`).
-      const [kmsLoaded, smLoaded, noneLoaded] = await Promise.all([
+      // two, SDK-supplied-key fast path for the third).
+      const [kmsLoaded, smLoaded, sdkLoaded] = await Promise.all([
         client.loadIndex({ indexName: kmsKmsName }),
         client.loadIndex({ indexName: kmsSmName }),
-        client.loadIndex({ indexName: kmsNoneName, indexKey: noneKey }),
+        client.loadIndex({ indexName: sdkName, indexKey: sdkKey }),
       ]);
 
       expect(await kmsLoaded.getIndexName()).toBe(kmsKmsName);
       expect(await smLoaded.getIndexName()).toBe(kmsSmName);
-      expect(await noneLoaded.getIndexName()).toBe(kmsNoneName);
+      expect(await sdkLoaded.getIndexName()).toBe(sdkName);
     } finally {
       await Promise.all(created.map(idx => idx.deleteIndex().catch(() => undefined)));
     }
