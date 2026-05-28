@@ -213,9 +213,7 @@ describe('CyborgDB API Contract Tests', () => {
 
       expect(index).toBeDefined();
       expect(await index.getIndexName()).toBe(tempIndexName);
-
-      const config = await index.getIndexConfig();
-      expect(config.dimension).toBe(dimension);
+      expect(await index.getDimension()).toBe(dimension);
 
       await index.deleteIndex();
       await sleep(1000); // Backend has eventual consistency for deletions
@@ -260,9 +258,7 @@ describe('CyborgDB API Contract Tests', () => {
       });
 
       expect(embeddingIndex).toBeDefined();
-
-      const config = await embeddingIndex.getIndexConfig();
-      expect(config.dimension).toBe(384); // all-MiniLM-L6-v2 dimension
+      expect(await embeddingIndex.getDimension()).toBe(384); // all-MiniLM-L6-v2 dimension
 
       // Wait for index to be ready
       await sleep(2000);
@@ -340,11 +336,10 @@ describe('CyborgDB API Contract Tests', () => {
       expect(name).toBe(testIndexName);
     });
 
-    it('should expose index config via getIndexConfig()', async () => {
-      const config = await testIndex.getIndexConfig();
-      expect(typeof config).toBe('object');
-      expect(config).toHaveProperty('dimension');
-      expect(config.dimension).toBe(dimension);
+    it('should expose flat config accessors', async () => {
+      expect(await testIndex.getDimension()).toBe(dimension);
+      expect(typeof await testIndex.getMetric()).toBe('string');
+      expect(typeof await testIndex.getNLists()).toBe('number');
     });
   });
 

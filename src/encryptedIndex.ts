@@ -35,11 +35,13 @@ export class EncryptedIndex {
     private readonly indexKeyHex?: string;
     private api: DefaultApi;
 
-    // Permanently cached describe-derived metadata. `indexConfig` is
-    // immutable for the life of an index, so it's fetched once and
-    // reused (mirrors py's `_index_config`). Training status is NOT
-    // cached — it changes server-side.
-    private indexConfigCached?: Record<string, any>;
+    // Lazy-cached describe-derived metadata. `dimension` and `metric`
+    // are immutable post-creation, so the first describe populates
+    // both and we reuse the values. `n_lists` is NOT cached because
+    // training mutates it (default 1 → trained cluster count).
+    // `isTrained` is also not cached — same reason.
+    private dimensionCached?: number;
+    private metricCached?: string;
 
     // Spread into a request body to conditionally include indexKey.
     private withKey<T extends object>(body: T): T & { indexKey?: string } {
@@ -80,14 +82,26 @@ export class EncryptedIndex {
         const response = await this.describeIndex(this.indexName);
         return response.isTrained;
     }
-    public async getIndexConfig(): Promise<Record<string, any>> {
-        // Immutable — fetch once, then serve a defensive copy from cache.
-        if (this.indexConfigCached === undefined) {
+    public async getDimension(): Promise<number> {
+        if (this.dimensionCached === undefined) {
             const response = await this.describeIndex(this.indexName);
-            this.indexConfigCached = { ...response.indexConfig };
+            this.dimensionCached = response.dimension;
+            this.metricCached = response.metric;
         }
-        // Return a copy to prevent external modification
-        return { ...this.indexConfigCached };
+        return this.dimensionCached;
+    }
+    public async getMetric(): Promise<string> {
+        if (this.metricCached === undefined) {
+            const response = await this.describeIndex(this.indexName);
+            this.dimensionCached = response.dimension;
+            this.metricCached = response.metric;
+        }
+        return this.metricCached;
+    }
+    public async getNLists(): Promise<number> {
+        // Fetched fresh on every read — training mutates this server-side.
+        const response = await this.describeIndex(this.indexName);
+        return response.nLists;
     }
     /**
      * Delete an index

@@ -19,17 +19,23 @@ import { mapValues } from '../runtime';
  * Attributes:
  *     index_name (str): The name of the index.
  *     is_trained (bool): Indicates whether the index has been trained.
- *     index_config (Dict[str, Any]): The full configuration details of the index.
+ *     dimension (int): Dimensionality of the vectors. `0` before the
+ *         first upsert when create_index was called without an explicit
+ *         dimension (auto-detect).
+ *     metric (str): Distance metric (`euclidean`, `cosine`, or
+ *         `squared_euclidean`).
+ *     n_lists (int): Number of inverted lists in the IVF index. `1`
+ *         for untrained indexes.
  * @export
  * @interface IndexInfoResponseModel
  */
 export interface IndexInfoResponseModel {
     /**
      * 
-     * @type {{ [key: string]: any; }}
+     * @type {number}
      * @memberof IndexInfoResponseModel
      */
-    indexConfig: { [key: string]: any; };
+    dimension: number;
     /**
      * 
      * @type {string}
@@ -42,15 +48,29 @@ export interface IndexInfoResponseModel {
      * @memberof IndexInfoResponseModel
      */
     isTrained: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof IndexInfoResponseModel
+     */
+    metric: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof IndexInfoResponseModel
+     */
+    nLists: number;
 }
 
 /**
  * Check if a given object implements the IndexInfoResponseModel interface.
  */
 export function instanceOfIndexInfoResponseModel(value: object): value is IndexInfoResponseModel {
-    if (!('indexConfig' in value) || value['indexConfig'] === undefined) return false;
+    if (!('dimension' in value) || value['dimension'] === undefined) return false;
     if (!('indexName' in value) || value['indexName'] === undefined) return false;
     if (!('isTrained' in value) || value['isTrained'] === undefined) return false;
+    if (!('metric' in value) || value['metric'] === undefined) return false;
+    if (!('nLists' in value) || value['nLists'] === undefined) return false;
     return true;
 }
 
@@ -64,9 +84,11 @@ export function IndexInfoResponseModelFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
         
-        'indexConfig': json['index_config'],
+        'dimension': json['dimension'],
         'indexName': json['index_name'],
         'isTrained': json['is_trained'],
+        'metric': json['metric'],
+        'nLists': json['n_lists'],
     };
 }
 
@@ -81,9 +103,11 @@ export function IndexInfoResponseModelToJSONTyped(value?: IndexInfoResponseModel
 
     return {
         
-        'index_config': value['indexConfig'],
+        'dimension': value['dimension'],
         'index_name': value['indexName'],
         'is_trained': value['isTrained'],
+        'metric': value['metric'],
+        'n_lists': value['nLists'],
     };
 }
 

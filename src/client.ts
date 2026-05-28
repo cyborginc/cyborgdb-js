@@ -204,7 +204,7 @@ export class CyborgDB {
    * // Typically used internally, but can be called directly
    * const indexInfo = await client.describeIndex("my-index", indexKey);
    * console.log(`Is trained: ${indexInfo.isTrained}`);
-   * console.log(`Dimensions: ${indexInfo.indexConfig.dimension}`);
+   * console.log(`Dimensions: ${indexInfo.dimension}`);
    * ```
    * 
    * @param indexName Name of the index to describe

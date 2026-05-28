@@ -476,8 +476,7 @@ describe('TestUnitFlow', () => {
         expect(results.ids.length).toBe(totalNumVectors);
 
         // Verify final state - n_lists should match what we specified
-        const finalConfig = await index.getIndexConfig();
-        const finalNLists = (finalConfig as { n_lists?: number })?.n_lists;
+        const finalNLists = await index.getNLists();
         console.log(`Final n_lists: ${finalNLists}`);
         expect(finalNLists).toBe(nLists);
     }, 130000);
@@ -718,10 +717,9 @@ describe('TestUnitFlow', () => {
     test('test_18_index_properties', async () => {
         // Check if the index has the expected properties
         expect(await index.getIndexName()).toBe(indexName);
-        
-        const config = await index.getIndexConfig();
-        expect(config).toBeDefined();
-        expect(typeof config).toBe('object');
+        expect(typeof await index.getDimension()).toBe('number');
+        expect(typeof await index.getMetric()).toBe('string');
+        expect(typeof await index.getNLists()).toBe('number');
     });
 
     test('test_19_load_index', async () => {
