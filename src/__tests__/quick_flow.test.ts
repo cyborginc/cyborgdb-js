@@ -49,7 +49,7 @@ function checkMetadataResults(
     }
 
     // Handle both formats: array of arrays (batch) or array of array of arrays (multiple metadata queries)
-    let normalizedResults: QueryResultItem[][][] = [];
+    let normalizedResults: QueryResultItem[][][];
     
     if (results.length > 0 && results[0].length > 0 && !Array.isArray(results[0][0])) {
         // Single metadata query result: QueryResultItem[][]
@@ -75,8 +75,6 @@ function checkMetadataResults(
         const metadataNeighborsIndices = metadataNeighbors[idx];
 
         const recall: number[] = new Array(numQueries).fill(0);
-        let numReturned = 0;
-        let numExpected = 0;
 
         // Iterate over the queries
         for (let i = 0; i < numQueries; i++) {
@@ -90,10 +88,7 @@ function checkMetadataResults(
             // Get the returned neighbors for this query
             const returned = resultIds[idx][i];
 
-            // Update the number of returned neighbors
-            numReturned += returned.length;
             const localExpected = groundtruthIds.filter(id => id !== -1).length;
-            numExpected += localExpected;
 
             // If we expect no results and got no results, recall is 100%
             if (returned.length === 0 && localExpected === 0) {
@@ -113,9 +108,6 @@ function checkMetadataResults(
             recall[i] = intersection.length / Math.min(localExpected, 100);
         }
 
-        // Get the number of groundtruth results (non -1 values)
-        numExpected = numExpected / numQueries;
-        numReturned = numReturned / numQueries;
         recalls.push(recall.reduce((a, b) => a + b, 0) / recall.length);
     }
 

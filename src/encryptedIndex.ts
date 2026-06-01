@@ -399,7 +399,7 @@ export class EncryptedIndex {
               contentValue = Buffer.from(item.contents as any).toString('base64');
             }
           } catch (error) {
-            throw new Error(`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw new Error(`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : 'Unknown error'}`, { cause: error });
           }
         }
 

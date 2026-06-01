@@ -59,7 +59,7 @@ export class CyborgDB {
       // Browser environments can't disable SSL verification (security restriction)
       // Node.js 18+ has built-in fetch but needs a custom agent for SSL options
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const https = require('https');
         const agent = new https.Agent({
           rejectUnauthorized: false

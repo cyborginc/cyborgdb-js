@@ -110,7 +110,7 @@ export function handleApiError(error: unknown): never {
       if (isError(e) && e.message.includes('Validation failed')) {
         throw e;
       }
-      throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`);
+      throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`, { cause: e });
     }
   }
 

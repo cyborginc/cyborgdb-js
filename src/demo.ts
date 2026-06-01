@@ -96,6 +96,6 @@ export async function getDemoApiKey(description?: string): Promise<string> {
   } catch (error) {
     const errorMsg = `Failed to generate demo API key: ${error instanceof Error ? error.message : String(error)}`;
     console.error(errorMsg);
-    throw new Error(errorMsg);
+    throw new Error(errorMsg, { cause: error });
   }
 }
