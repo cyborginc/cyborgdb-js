@@ -82,13 +82,17 @@ export function IndexInfoResponseModelFromJSONTyped(json: any, ignoreDiscriminat
     if (json == null) {
         return json;
     }
+    // Accept both the flat shape and the legacy nested
+    // `index_config: {dimension, metric, n_lists}` shape the service
+    // still returns on /v1/indexes/describe.
+    const nested = (json['index_config'] ?? {}) as Record<string, any>;
     return {
-        
-        'dimension': json['dimension'],
+
+        'dimension': json['dimension'] ?? nested['dimension'],
         'indexName': json['index_name'],
         'isTrained': json['is_trained'],
-        'metric': json['metric'],
-        'nLists': json['n_lists'],
+        'metric': json['metric'] ?? nested['metric'],
+        'nLists': json['n_lists'] ?? nested['n_lists'],
     };
 }
 
