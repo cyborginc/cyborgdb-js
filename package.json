@@ -51,6 +51,7 @@
   },
   "homepage": "https://github.com/cyborginc/cyborgdb-js#readme",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@langchain/core": "^1.1.19",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.9.1",
@@ -60,6 +61,7 @@
     "dotenv": "^17.4.2",
     "esbuild": "^0.28.0",
     "eslint": "^10.4.0",
+    "globals": "^17.6.0",
     "jest": "^30.4.2",
     "jest-util": "^30.4.1",
     "ts-jest": "^29.1.2",
