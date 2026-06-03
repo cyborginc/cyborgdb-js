@@ -126,7 +126,6 @@ describe('DiskIVF Index Tests', () => {
 
     expect(index).toBeDefined();
     expect(await index.getIndexName()).toBe(indexName);
-    expect(await index.getIndexType()).toBe('disk_ivf');
 
     const testIds = testVectors.map((_, i) => `vec_${i}`);
     await index.upsert({ ids: testIds, vectors: testVectors });
@@ -147,8 +146,6 @@ describe('DiskIVF Index Tests', () => {
       indexKey,
       metric: 'euclidean'
     });
-
-    expect(await index.getIndexType()).toBe('disk_ivf');
 
     const testIds = testVectors.map((_, i) => `auto_${i}`);
     await index.upsert({ ids: testIds, vectors: testVectors });

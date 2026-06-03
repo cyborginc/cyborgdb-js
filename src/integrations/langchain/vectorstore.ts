@@ -18,7 +18,14 @@ import { Document, DocumentInterface } from "@langchain/core/documents";
 
 export interface CyborgVectorStoreConfig {
   indexName: string;
-  indexKey: string | Uint8Array;
+  /**
+   * 32-byte key (base64 string or Uint8Array). Optional when `kmsName`
+   * references a real-provider KMS registry entry (the service manages the
+   * key). Required for legacy indexes and `provider: none` slots.
+   */
+  indexKey?: string | Uint8Array;
+  /** Optional name of a `kms.registry` entry in the service config. */
+  kmsName?: string;
   apiKey: string;
   baseUrl: string;
   embedding: EmbeddingsInterface;
@@ -33,7 +40,8 @@ export class CyborgVectorStore extends VectorStore {
   private client: CyborgDB;
   private index?: EncryptedIndex;
   private indexName: string;
-  private indexKey: Uint8Array;
+  private indexKey?: Uint8Array;
+  private kmsName?: string;
   private dimension?: number;
   private metric: string;
   
@@ -48,7 +56,9 @@ export class CyborgVectorStore extends VectorStore {
     super(embeddings, config);
     
     this.indexName = config.indexName;
-    // Convert string to Uint8Array if necessary
+    this.kmsName = config.kmsName;
+    // Convert string to Uint8Array if necessary. Left undefined for
+    // fully-KMS-managed indexes (the service resolves the key).
     if (typeof config.indexKey === 'string') {
       // Handle base64 encoded string
       const base64 = config.indexKey;
@@ -144,6 +154,7 @@ export class CyborgVectorStore extends VectorStore {
         this.index = await this.client.createIndex({
           indexName: this.indexName,
           indexKey: this.indexKey,
+          kmsName: this.kmsName,
           dimension: this.dimension,
           metric: this.metric as any
         });

@@ -185,11 +185,6 @@ const vectorStore = await CyborgVectorStore.fromExistingIndex(
 
 ## Configuration Options
 
-### Index Type
-
-The integration always creates a DiskIVF index — a two-stage inverted-file
-index with float32 reranking — so no `indexType` option is required.
-
 ### Distance Metrics
 
 - `cosine`: Cosine similarity (default)
