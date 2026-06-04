@@ -1,74 +1,72 @@
 {
-  "name": "cyborgdb",
-  "version": "0.15.0",
-  "description": "JavaScript & TypeScript Client SDK for CyborgDB: The Confidential Vector Database",
-  "main": "dist/index.js",
-  "module": "dist/index.esm.js",
-  "types": "dist/index.d.ts",
-  "browser": {
-    "./dist/index.js": "./dist/index.esm.js"
-  },
-  "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
-  ],
-  "sideEffects": false,
-  "scripts": {
-    "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types",
-    "build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring --external:@langchain/core",
-    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring --external:@langchain/core",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist",
-    "clean": "rm -rf dist",
-    "lint": "eslint 'src/*.ts' 'src/__tests__/**/*.ts'",
-    "lint:fix": "eslint 'src/*.ts' 'src/__tests__/**/*.ts' --fix",
-    "package": "npm run lint && npm run test && npm run build && npm pack",
-    "prepublishOnly": "npm run lint && npm run build",
-    "test:ssl": "jest __tests__/ssl-verification.test.ts",
-    "test:integration": "jest __tests__/integration.test.ts",
-    "test:quickflow": "jest __tests__/quick_flow.test.ts",
-    "test:quickflow:built": "npm run build && jest __tests__/quick_flow.test.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/cyborginc/cyborgdb-js.git"
-  },
-  "keywords": [
-    "cyborgdb",
-    "vector-database",
-    "confidential",
-    "typescript",
-    "javascript",
-    "sdk"
-  ],
-  "author": "Cyborg Inc.",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/cyborginc/cyborgdb-js/issues"
-  },
-  "homepage": "https://github.com/cyborginc/cyborgdb-js#readme",
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@langchain/core": "^1.1.19",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^25.9.1",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
-    "axios": "^1.12.2",
-    "dotenv": "^17.4.2",
-    "esbuild": "^0.28.0",
-    "eslint": "^10.4.0",
-    "globals": "^17.6.0",
-    "jest": "^30.4.2",
-    "jest-util": "^30.4.1",
-    "ts-jest": "^29.1.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+	"name": "cyborgdb",
+	"version": "0.15.0",
+	"description": "JavaScript & TypeScript Client SDK for CyborgDB: The Confidential Vector Database",
+	"main": "dist/index.js",
+	"module": "dist/index.esm.js",
+	"types": "dist/index.d.ts",
+	"browser": {
+		"./dist/index.js": "./dist/index.esm.js"
+	},
+	"files": [
+		"dist/**/*",
+		"README.md",
+		"LICENSE"
+	],
+	"sideEffects": false,
+	"scripts": {
+		"build": "npm run clean && npm run build:cjs && npm run build:esm && npm run build:types",
+		"build:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring --external:@langchain/core",
+		"build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.esm.js --external:fs --external:path --external:crypto --external:http --external:https --external:url --external:stream --external:querystring --external:@langchain/core",
+		"build:types": "tsc --emitDeclarationOnly --outDir dist",
+		"clean": "rm -rf dist",
+		"lint": "biome check src",
+		"lint:fix": "biome check --write src",
+		"format": "biome format --write .",
+		"format:check": "biome format .",
+		"package": "npm run lint && npm run test && npm run build && npm pack",
+		"prepublishOnly": "npm run lint && npm run build",
+		"test:ssl": "jest __tests__/ssl-verification.test.ts",
+		"test:integration": "jest __tests__/integration.test.ts",
+		"test:quickflow": "jest __tests__/quick_flow.test.ts",
+		"test:quickflow:built": "npm run build && jest __tests__/quick_flow.test.ts",
+		"test": "jest",
+		"test:watch": "jest --watch",
+		"test:coverage": "jest --coverage"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cyborginc/cyborgdb-js.git"
+	},
+	"keywords": [
+		"cyborgdb",
+		"vector-database",
+		"confidential",
+		"typescript",
+		"javascript",
+		"sdk"
+	],
+	"author": "Cyborg Inc.",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/cyborginc/cyborgdb-js/issues"
+	},
+	"homepage": "https://github.com/cyborginc/cyborgdb-js#readme",
+	"devDependencies": {
+		"@biomejs/biome": "2.4.16",
+		"@langchain/core": "^1.1.19",
+		"@types/jest": "^30.0.0",
+		"@types/node": "^25.9.1",
+		"axios": "^1.12.2",
+		"dotenv": "^17.4.2",
+		"esbuild": "^0.28.0",
+		"jest": "^30.4.2",
+		"jest-util": "^30.4.1",
+		"ts-jest": "^29.1.2",
+		"ts-node": "^10.9.2",
+		"typescript": "^6.0.3"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
 }

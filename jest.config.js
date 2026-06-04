@@ -1,30 +1,27 @@
 module.exports = {
-    setupFiles: ["dotenv/config"],
-    preset: 'ts-jest',
-    testEnvironment: 'node',
-    testMatch: [
-        "**/*.test.ts",
-        "**/src/__tests__/**/*.test.ts"
-      ],
-    verbose: true,
-    testTimeout: 600000, // Default timeout of 60 seconds for all tests
-    bail: false, // Continue running tests even after a failure
-    maxWorkers: 1, // Run tests sequentially to avoid conflicts
-    collectCoverage: true,
-    collectCoverageFrom: [
-      'src/**/*.ts',
-      '!src/api/**/*.ts',
-      '!src/model/**/*.ts'
-    ],
-    coverageDirectory: 'coverage',
-    coverageReporters: ['json', 'lcov', 'text', 'clover'],
-    moduleFileExtensions: ['ts', 'js', 'json'],
-    transform: {
-      '^.+\\.ts$': 'ts-jest'
-    },
-    globals: {
-      'ts-jest': {
-        tsconfig: 'tsconfig.json'
-      }
-    }
-  };
+	setupFiles: ["dotenv/config"],
+	preset: "ts-jest",
+	testEnvironment: "node",
+	testMatch: ["**/*.test.ts", "**/src/__tests__/**/*.test.ts"],
+	verbose: true,
+	testTimeout: 600000, // Default timeout of 60 seconds for all tests
+	bail: false, // Continue running tests even after a failure
+	maxWorkers: 1, // Run tests sequentially to avoid conflicts
+	collectCoverage: true,
+	collectCoverageFrom: [
+		"src/**/*.ts",
+		"!src/api/**/*.ts",
+		"!src/model/**/*.ts",
+	],
+	coverageDirectory: "coverage",
+	coverageReporters: ["json", "lcov", "text", "clover"],
+	moduleFileExtensions: ["ts", "js", "json"],
+	transform: {
+		"^.+\\.ts$": "ts-jest",
+	},
+	globals: {
+		"ts-jest": {
+			tsconfig: "tsconfig.json",
+		},
+	},
+};
