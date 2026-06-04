@@ -125,10 +125,7 @@ export function handleApiError(error: unknown): never {
 
 	if (errorBody) {
 		try {
-			if (
-				typeof errorBody === "object" &&
-				"detail" in (errorBody as object)
-			) {
+			if (typeof errorBody === "object" && "detail" in (errorBody as object)) {
 				const detailValue = (errorBody as { detail: unknown }).detail;
 				if (Array.isArray(detailValue)) {
 					const err = errorBody as HTTPValidationError;
