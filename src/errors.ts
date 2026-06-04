@@ -127,8 +127,7 @@ export function handleApiError(error: unknown): never {
 		try {
 			if (
 				typeof errorBody === "object" &&
-				errorBody !== null &&
-				"detail" in errorBody
+				"detail" in (errorBody as object)
 			) {
 				const detailValue = (errorBody as { detail: unknown }).detail;
 				if (Array.isArray(detailValue)) {
