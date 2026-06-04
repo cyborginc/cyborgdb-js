@@ -1,50 +1,46 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-export const VERSION = require('../package.json').version;
+export const VERSION = require("../package.json").version;
 
 // Main SDK exports
-export { CyborgDB as Client } from './client';
-export { EncryptedIndex } from './encryptedIndex';
-
+export { CyborgDB as Client } from "./client";
+// Export demo utilities
+export { getDemoApiKey } from "./demo";
+export { EncryptedIndex } from "./encryptedIndex";
+// Export integrations
+export * from "./integrations";
 // Export commonly used types and interfaces
 export {
-  CreateIndexRequest,
-  IndexOperationRequest,
-  UpsertRequest,
-  BatchQueryRequest,
-  TrainRequest,
-  DeleteRequest,
-  GetRequest,
-  VectorItem,
-  GetResponseModel,
-  QueryResponse,
-  ErrorResponseModel,
-  HTTPValidationError,
-  QueryResultItem
-} from './models';
-
+	BatchQueryRequest,
+	CreateIndexRequest,
+	DeleteRequest,
+	ErrorResponseModel,
+	GetRequest,
+	GetResponseModel,
+	HTTPValidationError,
+	IndexOperationRequest,
+	QueryResponse,
+	QueryResultItem,
+	TrainRequest,
+	UpsertRequest,
+	VectorItem,
+} from "./models";
 // Export custom strongly-typed interfaces
 export {
-  JsonValue,
-  JsonObject,
-  JsonArray,
-  JsonPrimitive,
-  VectorMetadata,
-  FilterExpression,
-  FilterValue,
-  FilterOperator,
-  UpsertResponse,
-  DeleteResponse,
-  TrainResponse,
-  HealthResponse,
-  TrainingStatus,
-  GetResultItem,
-  isJsonValue,
-  isError,
-  getErrorMessage
-} from './types';
-
-// Export integrations
-export * from './integrations';
-
-// Export demo utilities
-export { getDemoApiKey } from './demo';
+	DeleteResponse,
+	FilterExpression,
+	FilterOperator,
+	FilterValue,
+	GetResultItem,
+	getErrorMessage,
+	HealthResponse,
+	isError,
+	isJsonValue,
+	JsonArray,
+	JsonObject,
+	JsonPrimitive,
+	JsonValue,
+	TrainingStatus,
+	TrainResponse,
+	UpsertResponse,
+	VectorMetadata,
+} from "./types";

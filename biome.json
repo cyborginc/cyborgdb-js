@@ -1,0 +1,27 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+	"files": {
+		"includes": [
+			"**",
+			"!dist/**",
+			"!src/apis/**",
+			"!src/models/**",
+			"!src/runtime.ts",
+			"!openapi.json",
+			"!src/__tests__/unit_test_flow_data.json",
+			"!src/__tests__/wiki_data_sample.json"
+		]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"suspicious": {
+				"noExplicitAny": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true
+	}
+}

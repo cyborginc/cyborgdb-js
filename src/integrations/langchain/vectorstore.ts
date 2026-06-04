@@ -1,751 +1,761 @@
 /**
  * LangChain integration for CyborgDB JavaScript SDK.
- * 
+ *
  * This module provides a LangChain VectorStore implementation for CyborgDB,
  * enabling seamless integration with LangChain applications.
- * 
+ *
  * Requirements:
  *   npm install @langchain/core
  */
 
-import { CyborgDB } from '../../client';
-import { EncryptedIndex } from '../../encryptedIndex';
-import { VectorItem, QueryResultItem } from '../../models';
-import { GetResultItem, FilterExpression } from '../../types';
-import { VectorStore } from "@langchain/core/vectorstores";
+import type { Document, DocumentInterface } from "@langchain/core/documents";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
-import { Document, DocumentInterface } from "@langchain/core/documents";
+import { VectorStore } from "@langchain/core/vectorstores";
+import { CyborgDB } from "../../client";
+import type { EncryptedIndex } from "../../encryptedIndex";
+import type { QueryResultItem, VectorItem } from "../../models";
+import type { FilterExpression, GetResultItem } from "../../types";
 
 export interface CyborgVectorStoreConfig {
-  indexName: string;
-  /**
-   * 32-byte key (base64 string or Uint8Array). Optional when `kmsName`
-   * references a real-provider KMS registry entry (the service manages the
-   * key). Required for legacy indexes and `provider: none` slots.
-   */
-  indexKey?: string | Uint8Array;
-  /** Optional name of a `kms.registry` entry in the service config. */
-  kmsName?: string;
-  apiKey: string;
-  baseUrl: string;
-  embedding: EmbeddingsInterface;
-  dimension?: number;
-  metric?: 'cosine' | 'euclidean' | 'squared_euclidean';
-  verifySsl?: boolean;
+	indexName: string;
+	/**
+	 * 32-byte key (base64 string or Uint8Array). Optional when `kmsName`
+	 * references a real-provider KMS registry entry (the service manages the
+	 * key). Required for legacy indexes and `provider: none` slots.
+	 */
+	indexKey?: string | Uint8Array;
+	/** Optional name of a `kms.registry` entry in the service config. */
+	kmsName?: string;
+	apiKey: string;
+	baseUrl: string;
+	embedding: EmbeddingsInterface;
+	dimension?: number;
+	metric?: "cosine" | "euclidean" | "squared_euclidean";
+	verifySsl?: boolean;
 }
 
 export class CyborgVectorStore extends VectorStore {
-  declare FilterType: Record<string, any>;
-  
-  private client: CyborgDB;
-  private index?: EncryptedIndex;
-  private indexName: string;
-  private indexKey?: Uint8Array;
-  private kmsName?: string;
-  private dimension?: number;
-  private metric: string;
-  
-  _vectorstoreType(): string {
-    return 'cyborgdb';
-  }
+	declare FilterType: Record<string, any>;
 
-  constructor(
-    embeddings: EmbeddingsInterface,
-    config: CyborgVectorStoreConfig
-  ) {
-    super(embeddings, config);
-    
-    this.indexName = config.indexName;
-    this.kmsName = config.kmsName;
-    // Convert string to Uint8Array if necessary. Left undefined for
-    // fully-KMS-managed indexes (the service resolves the key).
-    if (typeof config.indexKey === 'string') {
-      // Handle base64 encoded string
-      const base64 = config.indexKey;
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      this.indexKey = bytes;
-    } else {
-      this.indexKey = config.indexKey;
-    }
-    this.dimension = config.dimension;
-    this.metric = config.metric || 'cosine';
-    
-    // Create client
-    this.client = new CyborgDB({
-      baseUrl: config.baseUrl,
-      apiKey: config.apiKey,
-      verifySsl: config.verifySsl
-    });
-    
-    // Initialize index will be done lazily
-  }
+	private client: CyborgDB;
+	private index?: EncryptedIndex;
+	private indexName: string;
+	private indexKey?: Uint8Array;
+	private kmsName?: string;
+	private dimension?: number;
+	private metric: string;
 
-  /**
-   * Generate a secure 32-byte key for use with CyborgDB indexes.
-   */
-  static generateKey(): Uint8Array {
-    // Generate a random 32-byte key
-    if (typeof window !== 'undefined' && window.crypto) {
-      const key = new Uint8Array(32);
-      window.crypto.getRandomValues(key);
-      return key;
-    } else {
-      // Node.js environment
-      try {
-        const g = (typeof globalThis !== 'undefined' ? globalThis : 
-                  typeof window !== 'undefined' ? window : 
-                  typeof self !== 'undefined' ? self : {}) as any;
-        const crypto = g.crypto || g.require?.('crypto');
-        if (crypto && crypto.randomBytes) {
-          return new Uint8Array(crypto.randomBytes(32));
-        }
-      } catch (e) {
-        // Fallback
-      }
-      // Fallback to Math.random (less secure)
-      const key = new Uint8Array(32);
-      for (let i = 0; i < 32; i++) {
-        key[i] = Math.floor(Math.random() * 256);
-      }
-      return key;
-    }
-  }
+	_vectorstoreType(): string {
+		return "cyborgdb";
+	}
 
-  /**
-   * Generate a unique ID for documents.
-   */
-  private generateId(): string {
-    return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-  }
+	constructor(
+		embeddings: EmbeddingsInterface,
+		config: CyborgVectorStoreConfig,
+	) {
+		super(embeddings, config);
 
-  /**
-   * Initialize or load the CyborgDB index.
-   */
-  private async initializeIndex(): Promise<void> {
-    if (this.index) {
-      return;
-    }
+		this.indexName = config.indexName;
+		this.kmsName = config.kmsName;
+		// Convert string to Uint8Array if necessary. Left undefined for
+		// fully-KMS-managed indexes (the service resolves the key).
+		if (typeof config.indexKey === "string") {
+			// Handle base64 encoded string
+			const base64 = config.indexKey;
+			const binaryString = atob(base64);
+			const bytes = new Uint8Array(binaryString.length);
+			for (let i = 0; i < binaryString.length; i++) {
+				bytes[i] = binaryString.charCodeAt(i);
+			}
+			this.indexKey = bytes;
+		} else {
+			this.indexKey = config.indexKey;
+		}
+		this.dimension = config.dimension;
+		this.metric = config.metric || "cosine";
 
-    try {
-      // Check if index already exists
-      const existingIndexes = await this.client.listIndexes();
-      const indexExists = Array.isArray(existingIndexes) 
-        ? existingIndexes.includes(this.indexName)
-        : (existingIndexes as any).indices?.includes(this.indexName) || false;
+		// Create client
+		this.client = new CyborgDB({
+			baseUrl: config.baseUrl,
+			apiKey: config.apiKey,
+			verifySsl: config.verifySsl,
+		});
 
-      if (indexExists) {
-        // Load existing index using loadIndex method
-        this.index = await this.client.loadIndex({
-          indexName: this.indexName,
-          indexKey: this.indexKey
-        });
-      } else {
-        // Detect dimension if not provided
-        if (!this.dimension) {
-          const dummy = await this.embeddings.embedQuery('dimension check');
-          this.dimension = Array.isArray(dummy) ? dummy.length : 0;
-        }
+		// Initialize index will be done lazily
+	}
 
-        // Create new index
-        this.index = await this.client.createIndex({
-          indexName: this.indexName,
-          indexKey: this.indexKey,
-          kmsName: this.kmsName,
-          dimension: this.dimension,
-          metric: this.metric as any
-        });
-      }
-    } catch (error) {
-      console.error('Error initializing index:', error);
-      throw error;
-    }
-  }
+	/**
+	 * Generate a secure 32-byte key for use with CyborgDB indexes.
+	 */
+	static generateKey(): Uint8Array {
+		// Generate a random 32-byte key
+		if (typeof window !== "undefined" && window.crypto) {
+			const key = new Uint8Array(32);
+			window.crypto.getRandomValues(key);
+			return key;
+		} else {
+			// Node.js environment
+			try {
+				const g = (
+					typeof globalThis !== "undefined"
+						? globalThis
+						: typeof window !== "undefined"
+							? window
+							: typeof self !== "undefined"
+								? self
+								: {}
+				) as any;
+				const crypto = g.crypto || g.require?.("crypto");
+				if (crypto?.randomBytes) {
+					return new Uint8Array(crypto.randomBytes(32));
+				}
+			} catch (_e) {
+				// Fallback
+			}
+			// Fallback to Math.random (less secure)
+			const key = new Uint8Array(32);
+			for (let i = 0; i < 32; i++) {
+				key[i] = Math.floor(Math.random() * 256);
+			}
+			return key;
+		}
+	}
 
-  /**
-   * Add texts to the vector store.
-   */
-  async addTexts(
-    texts: string[],
-    metadatas?: object[] | object,
-    options?: { ids?: string[] }
-  ): Promise<string[]> {
-    await this.initializeIndex();
+	/**
+	 * Generate a unique ID for documents.
+	 */
+	private generateId(): string {
+		return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+	}
 
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+	/**
+	 * Initialize or load the CyborgDB index.
+	 */
+	private async initializeIndex(): Promise<void> {
+		if (this.index) {
+			return;
+		}
 
-    // Validate that metadata doesn't contain reserved _content field
-    if (metadatas) {
-      const metadataArray = Array.isArray(metadatas) ? metadatas : [metadatas];
-      metadataArray.forEach((meta, idx) => {
-        if (meta && typeof meta === 'object' && '_content' in meta) {
-          throw new Error(
-            `Reserved field '_content' found in metadata at index ${idx}. ` +
-            `This field is used internally by CyborgVectorStore to store document text. ` +
-            `Please use a different field name for your metadata.`
-          );
-        }
-      });
-    }
+		try {
+			// Check if index already exists
+			const existingIndexes = await this.client.listIndexes();
+			const indexExists = Array.isArray(existingIndexes)
+				? existingIndexes.includes(this.indexName)
+				: (existingIndexes as any).indices?.includes(this.indexName) || false;
 
-    const ids = options?.ids || texts.map(() => this.generateId());
-    
-    // Generate embeddings
-    const vectors = await this.embeddings.embedDocuments(texts);
-    
-    // Build items for upsert
-    const items: VectorItem[] = texts.map((text, i) => {
-      const metadata = Array.isArray(metadatas) ? metadatas[i] : metadatas || {};
-      
-      return {
-        id: ids[i],
-        vector: vectors[i],
-        metadata: {
-          ...metadata,
-          _content: text
-        }
-      };
-    });
+			if (indexExists) {
+				// Load existing index using loadIndex method
+				this.index = await this.client.loadIndex({
+					indexName: this.indexName,
+					indexKey: this.indexKey,
+				});
+			} else {
+				// Detect dimension if not provided
+				if (!this.dimension) {
+					const dummy = await this.embeddings.embedQuery("dimension check");
+					this.dimension = Array.isArray(dummy) ? dummy.length : 0;
+				}
 
-    // Upsert to index
-    await this.index.upsert({ items });
-    
-    return ids;
-  }
+				// Create new index
+				this.index = await this.client.createIndex({
+					indexName: this.indexName,
+					indexKey: this.indexKey,
+					kmsName: this.kmsName,
+					dimension: this.dimension,
+					metric: this.metric as any,
+				});
+			}
+		} catch (error) {
+			console.error("Error initializing index:", error);
+			throw error;
+		}
+	}
 
-  /**
-   * Add documents to the vector store.
-   */
-  async addDocuments(
-    documents: DocumentInterface[],
-    options?: { ids?: string[] }
-  ): Promise<string[]> {
-    const texts = documents.map(doc => doc.pageContent);
-    const metadatas = documents.map(doc => doc.metadata);
-    return this.addTexts(texts, metadatas, options);
-  }
+	/**
+	 * Add texts to the vector store.
+	 */
+	async addTexts(
+		texts: string[],
+		metadatas?: object[] | object,
+		options?: { ids?: string[] },
+	): Promise<string[]> {
+		await this.initializeIndex();
 
-  /**
-   * Add vectors directly to the vector store.
-   */
-  async addVectors(
-    vectors: number[][],
-    documents: DocumentInterface[],
-    options?: { ids?: string[] }
-  ): Promise<string[]> {
-    await this.initializeIndex();
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+		// Validate that metadata doesn't contain reserved _content field
+		if (metadatas) {
+			const metadataArray = Array.isArray(metadatas) ? metadatas : [metadatas];
+			metadataArray.forEach((meta, idx) => {
+				if (meta && typeof meta === "object" && "_content" in meta) {
+					throw new Error(
+						`Reserved field '_content' found in metadata at index ${idx}. ` +
+							`This field is used internally by CyborgVectorStore to store document text. ` +
+							`Please use a different field name for your metadata.`,
+					);
+				}
+			});
+		}
 
-    // Validate that document metadata doesn't contain reserved _content field
-    documents.forEach((doc, idx) => {
-      if (doc.metadata && typeof doc.metadata === 'object' && '_content' in doc.metadata) {
-        throw new Error(
-          `Reserved field '_content' found in document metadata at index ${idx}. ` +
-          `This field is used internally by CyborgVectorStore to store document text. ` +
-          `Please use a different field name for your metadata.`
-        );
-      }
-    });
+		const ids = options?.ids || texts.map(() => this.generateId());
 
-    const ids = options?.ids || documents.map(() => this.generateId());
-    
-    // Build items for upsert
-    const items: VectorItem[] = vectors.map((vector, i) => ({
-      id: ids[i],
-      vector,
-      metadata: {
-        ...documents[i].metadata,
-        _content: documents[i].pageContent
-      }
-    }));
+		// Generate embeddings
+		const vectors = await this.embeddings.embedDocuments(texts);
 
-    // Upsert to index
-    await this.index.upsert({ items });
-    
-    return ids;
-  }
+		// Build items for upsert
+		const items: VectorItem[] = texts.map((text, i) => {
+			const metadata = Array.isArray(metadatas)
+				? metadatas[i]
+				: metadatas || {};
 
-  /**
-   * Delete documents from the vector store.
-   */
-  async delete(params: { ids?: string[] }): Promise<void> {
-    await this.initializeIndex();
-    
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+			return {
+				id: ids[i],
+				vector: vectors[i],
+				metadata: {
+					...metadata,
+					_content: text,
+				},
+			};
+		});
 
-    if (params.ids && params.ids.length > 0) {
-      await this.index.delete({ ids: params.ids });
-    }
-  }
+		// Upsert to index
+		await this.index.upsert({ items });
 
-  /**
-   * Retrieve documents by their IDs.
-   */
-  async get(ids: string[]): Promise<Document[]> {
-    await this.initializeIndex();
-    
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+		return ids;
+	}
 
-    const response = await this.index.get({ ids, include: ['metadata'] });
-    
-    if (!response || !Array.isArray(response) || response.length === 0) {
-      return [];
-    }
+	/**
+	 * Add documents to the vector store.
+	 */
+	async addDocuments(
+		documents: DocumentInterface[],
+		options?: { ids?: string[] },
+	): Promise<string[]> {
+		const texts = documents.map((doc) => doc.pageContent);
+		const metadatas = documents.map((doc) => doc.metadata);
+		return this.addTexts(texts, metadatas, options);
+	}
 
-    return response.map((item: GetResultItem) => {
-      const metadata = { ...(item.metadata || {}) };
+	/**
+	 * Add vectors directly to the vector store.
+	 */
+	async addVectors(
+		vectors: number[][],
+		documents: DocumentInterface[],
+		options?: { ids?: string[] },
+	): Promise<string[]> {
+		await this.initializeIndex();
 
-      let content = '';
-      if (metadata._content !== undefined) {
-        if (typeof metadata._content === 'string') {
-          content = metadata._content;
-        } else {
-          console.warn(
-            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
-            `Expected string but got ${typeof metadata._content}. ` +
-            `This likely means the document was created using the native CyborgDB API. ` +
-            `The content will be set to an empty string. ` +
-            `To avoid this warning, use CyborgVectorStore methods to create documents.`
-          );
-        }
-      }
-      delete metadata._content;
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-      return {
-        pageContent: content,
-        metadata
-      };
-    });
-  }
+		// Validate that document metadata doesn't contain reserved _content field
+		documents.forEach((doc, idx) => {
+			if (
+				doc.metadata &&
+				typeof doc.metadata === "object" &&
+				"_content" in doc.metadata
+			) {
+				throw new Error(
+					`Reserved field '_content' found in document metadata at index ${idx}. ` +
+						`This field is used internally by CyborgVectorStore to store document text. ` +
+						`Please use a different field name for your metadata.`,
+				);
+			}
+		});
 
-  /**
-   * List all document IDs in the vector store.
-   */
-  async listIds(filter?: FilterExpression): Promise<string[]> {
-    await this.initializeIndex();
-    
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+		const ids = options?.ids || documents.map(() => this.generateId());
 
-    // Note: The current CyborgDB API doesn't support filtering in listIds
-    // This is here for future compatibility when the API supports it
-    if (filter) {
-      console.warn('Filter parameter is not yet supported by CyborgDB listIds');
-    }
-    
-    const response = await this.index.listIds();
-    return Array.isArray(response) ? response : (response.ids || []);
-  }
+		// Build items for upsert
+		const items: VectorItem[] = vectors.map((vector, i) => ({
+			id: ids[i],
+			vector,
+			metadata: {
+				...documents[i].metadata,
+				_content: documents[i].pageContent,
+			},
+		}));
 
-  /**
-   * Search for documents similar to the query.
-   */
-  async similaritySearch(
-    query: string,
-    k = 4,
-    filter?: this['FilterType'],
-    _callbacks?: any
-  ): Promise<DocumentInterface[]> {
-    await this.initializeIndex();
-    
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+		// Upsert to index
+		await this.index.upsert({ items });
 
-    // Generate embedding for query
-    const embedding = await this.embeddings.embedQuery(query);
-    
-    // Query the index
-    const results = await this.index.query({
-      queryVectors: embedding,
-      topK: k,
-      filters: filter,
-      include: ['distance', 'metadata']
-    });
+		return ids;
+	}
 
-    if (!results || !results.results) {
-      return [];
-    }
+	/**
+	 * Delete documents from the vector store.
+	 */
+	async delete(params: { ids?: string[] }): Promise<void> {
+		await this.initializeIndex();
 
-    // Handle batch query results - results.results is of type Results
-    let queryResults: QueryResultItem[];
-    if (Array.isArray(results.results)) {
-      queryResults = results.results as QueryResultItem[];
-    } else if (results.results && typeof results.results === 'object') {
-      // If results.results is an object with a results property
-      const innerResults = (results.results as any).results;
-      queryResults = Array.isArray(innerResults) ? innerResults : [];
-    } else {
-      queryResults = [];
-    }
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-    return queryResults.map((item: QueryResultItem) => {
-      const metadata = { ...(item.metadata || {}) };
+		if (params.ids && params.ids.length > 0) {
+			await this.index.delete({ ids: params.ids });
+		}
+	}
 
-      let content = '';
-      if (metadata._content !== undefined) {
-        if (typeof metadata._content === 'string') {
-          content = metadata._content;
-        } else {
-          console.warn(
-            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
-            `Expected string but got ${typeof metadata._content}. ` +
-            `This likely means the document was created using the native CyborgDB API. ` +
-            `The content will be set to an empty string. ` +
-            `To avoid this warning, use CyborgVectorStore methods to create documents.`
-          );
-        }
-      }
-      delete metadata._content;
+	/**
+	 * Retrieve documents by their IDs.
+	 */
+	async get(ids: string[]): Promise<Document[]> {
+		await this.initializeIndex();
 
-      return {
-        pageContent: content,
-        metadata: {
-          ...metadata,
-          id: item.id
-        }
-      };
-    });
-  }
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-  /**
-   * Search for documents with similarity scores.
-   */
-  async similaritySearchWithScore(
-    query: string,
-    k = 4,
-    filter?: this['FilterType'],
-    _callbacks?: any
-  ): Promise<[DocumentInterface, number][]> {
-    await this.initializeIndex();
+		const response = await this.index.get({ ids, include: ["metadata"] });
 
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+		if (!response || !Array.isArray(response) || response.length === 0) {
+			return [];
+		}
 
-    // Generate embedding for query
-    const embedding = await this.embeddings.embedQuery(query);
+		return response.map((item: GetResultItem) => {
+			const metadata = { ...(item.metadata || {}) };
 
-    // Query the index
-    const results = await this.index.query({
-      queryVectors: embedding,
-      topK: k,
-      filters: filter,
-      include: ['distance', 'metadata']
-    });
+			let content = "";
+			if (metadata._content !== undefined) {
+				if (typeof metadata._content === "string") {
+					content = metadata._content;
+				} else {
+					console.warn(
+						`[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+							`Expected string but got ${typeof metadata._content}. ` +
+							`This likely means the document was created using the native CyborgDB API. ` +
+							`The content will be set to an empty string. ` +
+							`To avoid this warning, use CyborgVectorStore methods to create documents.`,
+					);
+				}
+			}
+			delete metadata._content;
 
-    if (!results || !results.results) {
-      return [];
-    }
+			return {
+				pageContent: content,
+				metadata,
+			};
+		});
+	}
 
-    // Handle batch query results - results.results is of type Results
-    let queryResults: QueryResultItem[];
-    if (Array.isArray(results.results)) {
-      queryResults = results.results as QueryResultItem[];
-    } else if (results.results && typeof results.results === 'object') {
-      // If results.results is an object with a results property
-      const innerResults = (results.results as any).results;
-      queryResults = Array.isArray(innerResults) ? innerResults : [];
-    } else {
-      queryResults = [];
-    }
+	/**
+	 * List all document IDs in the vector store.
+	 */
+	async listIds(filter?: FilterExpression): Promise<string[]> {
+		await this.initializeIndex();
 
-    return queryResults.map((item: QueryResultItem) => {
-      const metadata = { ...(item.metadata || {}) };
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-      let content = '';
-      if (metadata._content !== undefined) {
-        if (typeof metadata._content === 'string') {
-          content = metadata._content;
-        } else {
-          console.warn(
-            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
-            `Expected string but got ${typeof metadata._content}. ` +
-            `This likely means the document was created using the native CyborgDB API. ` +
-            `The content will be set to an empty string. ` +
-            `To avoid this warning, use CyborgVectorStore methods to create documents.`
-          );
-        }
-      }
-      delete metadata._content;
+		// Note: The current CyborgDB API doesn't support filtering in listIds
+		// This is here for future compatibility when the API supports it
+		if (filter) {
+			console.warn("Filter parameter is not yet supported by CyborgDB listIds");
+		}
 
-      const doc: Document = {
-        pageContent: content,
-        metadata: {
-          ...metadata,
-          id: item.id
-        }
-      };
+		const response = await this.index.listIds();
+		return Array.isArray(response) ? response : response.ids || [];
+	}
 
-      // Convert distance to similarity score
-      const similarity = this.normalizeScore(item.distance || 0);
+	/**
+	 * Search for documents similar to the query.
+	 */
+	async similaritySearch(
+		query: string,
+		k = 4,
+		filter?: this["FilterType"],
+		_callbacks?: any,
+	): Promise<DocumentInterface[]> {
+		await this.initializeIndex();
 
-      return [doc, similarity];
-    });
-  }
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-  /**
-   * Search for documents similar to an embedding vector.
-   */
-  async similaritySearchVectorWithScore(
-    query: number[],
-    k: number,
-    filter?: this['FilterType']
-  ): Promise<[DocumentInterface, number][]> {
-    await this.initializeIndex();
+		// Generate embedding for query
+		const embedding = await this.embeddings.embedQuery(query);
 
-    if (!this.index) {
-      throw new Error('Index not initialized');
-    }
+		// Query the index
+		const results = await this.index.query({
+			queryVectors: embedding,
+			topK: k,
+			filters: filter,
+			include: ["distance", "metadata"],
+		});
 
-    // Query the index
-    const results = await this.index.query({
-      queryVectors: query,
-      topK: k,
-      filters: filter,
-      include: ['distance', 'metadata']
-    });
+		if (!results?.results) {
+			return [];
+		}
 
-    if (!results || !results.results) {
-      return [];
-    }
+		// Handle batch query results - results.results is of type Results
+		let queryResults: QueryResultItem[];
+		if (Array.isArray(results.results)) {
+			queryResults = results.results as QueryResultItem[];
+		} else if (results.results && typeof results.results === "object") {
+			// If results.results is an object with a results property
+			const innerResults = (results.results as any).results;
+			queryResults = Array.isArray(innerResults) ? innerResults : [];
+		} else {
+			queryResults = [];
+		}
 
-    // Handle batch query results - results.results is of type Results
-    let queryResults: QueryResultItem[];
-    if (Array.isArray(results.results)) {
-      queryResults = results.results as QueryResultItem[];
-    } else if (results.results && typeof results.results === 'object') {
-      // If results.results is an object with a results property
-      const innerResults = (results.results as any).results;
-      queryResults = Array.isArray(innerResults) ? innerResults : [];
-    } else {
-      queryResults = [];
-    }
+		return queryResults.map((item: QueryResultItem) => {
+			const metadata = { ...(item.metadata || {}) };
 
-    return queryResults.map((item: QueryResultItem) => {
-      const metadata = { ...(item.metadata || {}) };
+			let content = "";
+			if (metadata._content !== undefined) {
+				if (typeof metadata._content === "string") {
+					content = metadata._content;
+				} else {
+					console.warn(
+						`[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+							`Expected string but got ${typeof metadata._content}. ` +
+							`This likely means the document was created using the native CyborgDB API. ` +
+							`The content will be set to an empty string. ` +
+							`To avoid this warning, use CyborgVectorStore methods to create documents.`,
+					);
+				}
+			}
+			delete metadata._content;
 
-      let content = '';
-      if (metadata._content !== undefined) {
-        if (typeof metadata._content === 'string') {
-          content = metadata._content;
-        } else {
-          console.warn(
-            `[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
-            `Expected string but got ${typeof metadata._content}. ` +
-            `This likely means the document was created using the native CyborgDB API. ` +
-            `The content will be set to an empty string. ` +
-            `To avoid this warning, use CyborgVectorStore methods to create documents.`
-          );
-        }
-      }
-      delete metadata._content;
+			return {
+				pageContent: content,
+				metadata: {
+					...metadata,
+					id: item.id,
+				},
+			};
+		});
+	}
 
-      const doc: Document = {
-        pageContent: content,
-        metadata: {
-          ...metadata,
-          id: item.id
-        }
-      };
+	/**
+	 * Search for documents with similarity scores.
+	 */
+	async similaritySearchWithScore(
+		query: string,
+		k = 4,
+		filter?: this["FilterType"],
+		_callbacks?: any,
+	): Promise<[DocumentInterface, number][]> {
+		await this.initializeIndex();
 
-      // Convert distance to similarity score
-      const similarity = this.normalizeScore(item.distance || 0);
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
 
-      return [doc, similarity];
-    });
-  }
+		// Generate embedding for query
+		const embedding = await this.embeddings.embedQuery(query);
 
-  /**
-   * Convert distance to similarity score [0, 1].
-   */
-  private normalizeScore(distance: number): number {
-    if (this.metric === 'cosine') {
-      // Cosine distance: 0 (identical) to 2 (opposite)
-      return Math.max(0.0, 1.0 - (distance / 2.0));
-    } else if (this.metric === 'euclidean') {
-      // Euclidean: exponential decay
-      return Math.exp(-distance);
-    } else if (this.metric === 'squared_euclidean') {
-      // Squared Euclidean: exponential decay with sqrt
-      return Math.exp(-Math.sqrt(distance));
-    } else {
-      // Default: inverse distance
-      return 1.0 / (1.0 + distance);
-    }
-  }
+		// Query the index
+		const results = await this.index.query({
+			queryVectors: embedding,
+			topK: k,
+			filters: filter,
+			include: ["distance", "metadata"],
+		});
 
-  /**
-   * Maximal Marginal Relevance search - balances similarity with diversity.
-   * 
-   * @param query - The query string
-   * @param options - MMR search options including k, fetchK, lambda, and filter
-   * @returns Promise of documents selected by maximal marginal relevance
-   */
-  async maxMarginalRelevanceSearch(
-    query: string,
-    options: {
-      k: number;
-      fetchK?: number;
-      lambda?: number;
-      filter?: Record<string, any>;
-    }
-  ): Promise<DocumentInterface[]> {
-    const { k, fetchK = k * 2, lambda = 0.5, filter } = options;
-    
-    // Step 1: Get query embedding
-    const queryEmbedding = await this.embeddings.embedQuery(query);
-    
-    // Step 2: Fetch more candidates than we need
-    const candidates = await this.similaritySearchVectorWithScore(
-      queryEmbedding,
-      fetchK,
-      filter
-    );
-    
-    if (candidates.length === 0) {
-      return [];
-    }
-    
-    // Step 3: Get embeddings for all candidate documents
-    const candidateEmbeddings = await Promise.all(
-      candidates.map(([doc]) => 
-        this.embeddings.embedQuery(doc.pageContent)
-      )
-    );
-    
-    // Step 4: Implement MMR algorithm
-    const selected: number[] = [];
-    const selectedDocs: DocumentInterface[] = [];
-    
-    // Start with the most similar document
-    let bestIdx = 0;
-    let bestScore = candidates[0][1];
-    for (let i = 1; i < candidates.length; i++) {
-      if (candidates[i][1] > bestScore) {
-        bestScore = candidates[i][1];
-        bestIdx = i;
-      }
-    }
-    selected.push(bestIdx);
-    selectedDocs.push(candidates[bestIdx][0]);
-    
-    // Iteratively select documents that maximize MMR
-    while (selected.length < k && selected.length < candidates.length) {
-      let bestMmrScore = -Infinity;
-      let bestMmrIdx = -1;
-      
-      for (let i = 0; i < candidates.length; i++) {
-        if (selected.includes(i)) continue;
-        
-        // Calculate similarity to query (already have this from the search)
-        const querySimScore = candidates[i][1];
-        
-        // Calculate maximum similarity to already selected documents
-        let maxSelectedSim = 0;
-        for (const selectedIdx of selected) {
-          const sim = this.cosineSimilarity(
-            candidateEmbeddings[i],
-            candidateEmbeddings[selectedIdx]
-          );
-          maxSelectedSim = Math.max(maxSelectedSim, sim);
-        }
-        
-        // Calculate MMR score
-        const mmrScore = lambda * querySimScore - (1 - lambda) * maxSelectedSim;
-        
-        if (mmrScore > bestMmrScore) {
-          bestMmrScore = mmrScore;
-          bestMmrIdx = i;
-        }
-      }
-      
-      if (bestMmrIdx === -1) break;
-      
-      selected.push(bestMmrIdx);
-      selectedDocs.push(candidates[bestMmrIdx][0]);
-    }
-    
-    return selectedDocs;
-  }
-  
-  /**
-   * Calculate cosine similarity between two vectors.
-   */
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) {
-      throw new Error('Vectors must have the same length');
-    }
-    
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-    
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    
-    normA = Math.sqrt(normA);
-    normB = Math.sqrt(normB);
-    
-    if (normA === 0 || normB === 0) {
-      return 0;
-    }
-    
-    return dotProduct / (normA * normB);
-  }
+		if (!results?.results) {
+			return [];
+		}
 
-  /**
-   * Create a vector store from texts.
-   */
-  static async fromTexts(
-    texts: string[],
-    metadatas: object[] | object,
-    embeddings: EmbeddingsInterface,
-    config: CyborgVectorStoreConfig
-  ): Promise<CyborgVectorStore> {
-    const store = new CyborgVectorStore(embeddings, config);
-    await store.addTexts(texts, metadatas);
-    return store;
-  }
+		// Handle batch query results - results.results is of type Results
+		let queryResults: QueryResultItem[];
+		if (Array.isArray(results.results)) {
+			queryResults = results.results as QueryResultItem[];
+		} else if (results.results && typeof results.results === "object") {
+			// If results.results is an object with a results property
+			const innerResults = (results.results as any).results;
+			queryResults = Array.isArray(innerResults) ? innerResults : [];
+		} else {
+			queryResults = [];
+		}
 
-  /**
-   * Create a vector store from documents.
-   */
-  static async fromDocuments(
-    docs: DocumentInterface[],
-    embeddings: EmbeddingsInterface,
-    config: CyborgVectorStoreConfig
-  ): Promise<CyborgVectorStore> {
-    const store = new CyborgVectorStore(embeddings, config);
-    await store.addDocuments(docs);
-    return store;
-  }
+		return queryResults.map((item: QueryResultItem) => {
+			const metadata = { ...(item.metadata || {}) };
 
-  /**
-   * Create a vector store from an existing index.
-   */
-  static async fromExistingIndex(
-    embeddings: EmbeddingsInterface,
-    config: CyborgVectorStoreConfig
-  ): Promise<CyborgVectorStore> {
-    const store = new CyborgVectorStore(embeddings, config);
-    await store.initializeIndex();
-    return store;
-  }
+			let content = "";
+			if (metadata._content !== undefined) {
+				if (typeof metadata._content === "string") {
+					content = metadata._content;
+				} else {
+					console.warn(
+						`[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+							`Expected string but got ${typeof metadata._content}. ` +
+							`This likely means the document was created using the native CyborgDB API. ` +
+							`The content will be set to an empty string. ` +
+							`To avoid this warning, use CyborgVectorStore methods to create documents.`,
+					);
+				}
+			}
+			delete metadata._content;
+
+			const doc: Document = {
+				pageContent: content,
+				metadata: {
+					...metadata,
+					id: item.id,
+				},
+			};
+
+			// Convert distance to similarity score
+			const similarity = this.normalizeScore(item.distance || 0);
+
+			return [doc, similarity];
+		});
+	}
+
+	/**
+	 * Search for documents similar to an embedding vector.
+	 */
+	async similaritySearchVectorWithScore(
+		query: number[],
+		k: number,
+		filter?: this["FilterType"],
+	): Promise<[DocumentInterface, number][]> {
+		await this.initializeIndex();
+
+		if (!this.index) {
+			throw new Error("Index not initialized");
+		}
+
+		// Query the index
+		const results = await this.index.query({
+			queryVectors: query,
+			topK: k,
+			filters: filter,
+			include: ["distance", "metadata"],
+		});
+
+		if (!results?.results) {
+			return [];
+		}
+
+		// Handle batch query results - results.results is of type Results
+		let queryResults: QueryResultItem[];
+		if (Array.isArray(results.results)) {
+			queryResults = results.results as QueryResultItem[];
+		} else if (results.results && typeof results.results === "object") {
+			// If results.results is an object with a results property
+			const innerResults = (results.results as any).results;
+			queryResults = Array.isArray(innerResults) ? innerResults : [];
+		} else {
+			queryResults = [];
+		}
+
+		return queryResults.map((item: QueryResultItem) => {
+			const metadata = { ...(item.metadata || {}) };
+
+			let content = "";
+			if (metadata._content !== undefined) {
+				if (typeof metadata._content === "string") {
+					content = metadata._content;
+				} else {
+					console.warn(
+						`[CyborgVectorStore] Non-string value found in '_content' field for document '${item.id}'. ` +
+							`Expected string but got ${typeof metadata._content}. ` +
+							`This likely means the document was created using the native CyborgDB API. ` +
+							`The content will be set to an empty string. ` +
+							`To avoid this warning, use CyborgVectorStore methods to create documents.`,
+					);
+				}
+			}
+			delete metadata._content;
+
+			const doc: Document = {
+				pageContent: content,
+				metadata: {
+					...metadata,
+					id: item.id,
+				},
+			};
+
+			// Convert distance to similarity score
+			const similarity = this.normalizeScore(item.distance || 0);
+
+			return [doc, similarity];
+		});
+	}
+
+	/**
+	 * Convert distance to similarity score [0, 1].
+	 */
+	private normalizeScore(distance: number): number {
+		if (this.metric === "cosine") {
+			// Cosine distance: 0 (identical) to 2 (opposite)
+			return Math.max(0.0, 1.0 - distance / 2.0);
+		} else if (this.metric === "euclidean") {
+			// Euclidean: exponential decay
+			return Math.exp(-distance);
+		} else if (this.metric === "squared_euclidean") {
+			// Squared Euclidean: exponential decay with sqrt
+			return Math.exp(-Math.sqrt(distance));
+		} else {
+			// Default: inverse distance
+			return 1.0 / (1.0 + distance);
+		}
+	}
+
+	/**
+	 * Maximal Marginal Relevance search - balances similarity with diversity.
+	 *
+	 * @param query - The query string
+	 * @param options - MMR search options including k, fetchK, lambda, and filter
+	 * @returns Promise of documents selected by maximal marginal relevance
+	 */
+	async maxMarginalRelevanceSearch(
+		query: string,
+		options: {
+			k: number;
+			fetchK?: number;
+			lambda?: number;
+			filter?: Record<string, any>;
+		},
+	): Promise<DocumentInterface[]> {
+		const { k, fetchK = k * 2, lambda = 0.5, filter } = options;
+
+		// Step 1: Get query embedding
+		const queryEmbedding = await this.embeddings.embedQuery(query);
+
+		// Step 2: Fetch more candidates than we need
+		const candidates = await this.similaritySearchVectorWithScore(
+			queryEmbedding,
+			fetchK,
+			filter,
+		);
+
+		if (candidates.length === 0) {
+			return [];
+		}
+
+		// Step 3: Get embeddings for all candidate documents
+		const candidateEmbeddings = await Promise.all(
+			candidates.map(([doc]) => this.embeddings.embedQuery(doc.pageContent)),
+		);
+
+		// Step 4: Implement MMR algorithm
+		const selected: number[] = [];
+		const selectedDocs: DocumentInterface[] = [];
+
+		// Start with the most similar document
+		let bestIdx = 0;
+		let bestScore = candidates[0][1];
+		for (let i = 1; i < candidates.length; i++) {
+			if (candidates[i][1] > bestScore) {
+				bestScore = candidates[i][1];
+				bestIdx = i;
+			}
+		}
+		selected.push(bestIdx);
+		selectedDocs.push(candidates[bestIdx][0]);
+
+		// Iteratively select documents that maximize MMR
+		while (selected.length < k && selected.length < candidates.length) {
+			let bestMmrScore = -Infinity;
+			let bestMmrIdx = -1;
+
+			for (let i = 0; i < candidates.length; i++) {
+				if (selected.includes(i)) continue;
+
+				// Calculate similarity to query (already have this from the search)
+				const querySimScore = candidates[i][1];
+
+				// Calculate maximum similarity to already selected documents
+				let maxSelectedSim = 0;
+				for (const selectedIdx of selected) {
+					const sim = this.cosineSimilarity(
+						candidateEmbeddings[i],
+						candidateEmbeddings[selectedIdx],
+					);
+					maxSelectedSim = Math.max(maxSelectedSim, sim);
+				}
+
+				// Calculate MMR score
+				const mmrScore = lambda * querySimScore - (1 - lambda) * maxSelectedSim;
+
+				if (mmrScore > bestMmrScore) {
+					bestMmrScore = mmrScore;
+					bestMmrIdx = i;
+				}
+			}
+
+			if (bestMmrIdx === -1) break;
+
+			selected.push(bestMmrIdx);
+			selectedDocs.push(candidates[bestMmrIdx][0]);
+		}
+
+		return selectedDocs;
+	}
+
+	/**
+	 * Calculate cosine similarity between two vectors.
+	 */
+	private cosineSimilarity(a: number[], b: number[]): number {
+		if (a.length !== b.length) {
+			throw new Error("Vectors must have the same length");
+		}
+
+		let dotProduct = 0;
+		let normA = 0;
+		let normB = 0;
+
+		for (let i = 0; i < a.length; i++) {
+			dotProduct += a[i] * b[i];
+			normA += a[i] * a[i];
+			normB += b[i] * b[i];
+		}
+
+		normA = Math.sqrt(normA);
+		normB = Math.sqrt(normB);
+
+		if (normA === 0 || normB === 0) {
+			return 0;
+		}
+
+		return dotProduct / (normA * normB);
+	}
+
+	/**
+	 * Create a vector store from texts.
+	 */
+	static async fromTexts(
+		texts: string[],
+		metadatas: object[] | object,
+		embeddings: EmbeddingsInterface,
+		config: CyborgVectorStoreConfig,
+	): Promise<CyborgVectorStore> {
+		const store = new CyborgVectorStore(embeddings, config);
+		await store.addTexts(texts, metadatas);
+		return store;
+	}
+
+	/**
+	 * Create a vector store from documents.
+	 */
+	static async fromDocuments(
+		docs: DocumentInterface[],
+		embeddings: EmbeddingsInterface,
+		config: CyborgVectorStoreConfig,
+	): Promise<CyborgVectorStore> {
+		const store = new CyborgVectorStore(embeddings, config);
+		await store.addDocuments(docs);
+		return store;
+	}
+
+	/**
+	 * Create a vector store from an existing index.
+	 */
+	static async fromExistingIndex(
+		embeddings: EmbeddingsInterface,
+		config: CyborgVectorStoreConfig,
+	): Promise<CyborgVectorStore> {
+		const store = new CyborgVectorStore(embeddings, config);
+		await store.initializeIndex();
+		return store;
+	}
 }
