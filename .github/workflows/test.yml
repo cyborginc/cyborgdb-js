@@ -115,10 +115,20 @@ jobs:
           # Install optional test dependencies
           pip install sentence-transformers
 
+      - name: Checkout cyborgdb-service repository
+        uses: actions/checkout@v6
+        with:
+          repository: cyborginc/cyborgdb-service
+          ref: main
+          path: cyborgdb-service
+          token: ${{ secrets.CYBORGDB_SERVICE_TOKEN }}
+
       - name: Install cyborgdb-service
         run: |
-          # For dev/staging, PIP_INDEX_URL points at CodeArtifact (PyPI upstream). For prod, it is unset and pip falls back to PyPI.
-          pip install "cyborgdb-service[embeddings]" --pre
+          # Install the server from source (cyborgdb-service@main) so CI runs the
+          # current code rather than a possibly-stale published wheel.
+          # PIP_INDEX_URL points at CodeArtifact (PyPI upstream) for dependencies.
+          pip install ./cyborgdb-service[embeddings]
           
       - name: Install SDK dependencies
         run: |
@@ -131,7 +141,7 @@ jobs:
         run: |
           echo "=== Testing with Standard version ==="
           # Set up environment for Standard
-          export CYBORGDB_DB_TYPE=standalone
+          export CYBORGDB_DB_TYPE=disk
           export CYBORGDB_SERVICE_LOG_LEVEL=DEBUG
           
           # Start the service with Standard API key
