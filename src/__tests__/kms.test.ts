@@ -106,11 +106,7 @@ function captureApi() {
 	return { api, calls };
 }
 
-// TODO: KMS tests temporarily bypassed to unblock the service wheel build.
-// Re-enable (describe / describe.skip below) and reimplement once the
-// server-side KMS path is fixed (cyborgdb-core dropped CachePolicy/DBConfig
-// in the StorageConfig refactor).
-describe.skip("CyborgDB KMS — offline contract (no service)", () => {
+describe("CyborgDB KMS — offline contract (no service)", () => {
 	const offlineClient = () =>
 		new Client({ baseUrl: "http://localhost:9", apiKey: "offline" });
 
@@ -251,9 +247,7 @@ describe.skip("CyborgDB KMS — offline contract (no service)", () => {
 // slots. Gated on CYBORGDB_API_KEY plus the relevant CYBORGDB_KMS_NAME_*.
 // ---------------------------------------------------------------------------
 
-// TODO: temporarily forced to skip (was `API_KEY ? describe : describe.skip`)
-// to bypass the live KMS suites while the server-side KMS path is fixed.
-const describeIfConfigured = describe.skip;
+const describeIfConfigured = API_KEY ? describe : describe.skip;
 
 describeIfConfigured(
 	"CyborgDB KMS — mode 2 (fully KMS-managed via aws-kms / HSM)",
