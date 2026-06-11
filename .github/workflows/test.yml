@@ -160,7 +160,7 @@ jobs:
           kill $(cat server-standard.pid) || true
           
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           directory: ./coverage
           flags: unittests
