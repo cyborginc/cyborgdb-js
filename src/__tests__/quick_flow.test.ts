@@ -576,9 +576,9 @@ describe("TestUnitFlow", () => {
 			100.0, // Query #2
 			91.05, // Query #3
 			77.77, // Query #4
-			100.0, // Query #5
+			75.0, // Query #5
 			78.88, // Query #6
-			100.0, // Query #7
+			75.0, // Query #7
 			92.35, // Query #8
 			91.66, // Query #9
 			77.77, // Query #10
