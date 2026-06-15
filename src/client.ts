@@ -13,7 +13,25 @@ import type { HealthResponse, TrainingStatus } from "./types";
 
 /**
  * CyborgDB TypeScript SDK
- * Provides an interface to interact with CyborgDB vector database service
+ * Provides an interface to interact with CyborgDB vector database service.
+ *
+ * The `apiKey` passed at construction is sent as the `X-API-Key` header on
+ * every request and may be any of three kinds, depending on how the service
+ * is deployed:
+ *
+ * - **Single service key** — the default; the one `CYBORGDB_API_KEY` the
+ *   service was started with. Full access, no RBAC.
+ * - **Root key** — when the service runs with `CYBORGDB_ROOT_API_KEY` set,
+ *   RBAC is on. A client using the root key has admin access and can mint
+ *   per-user keys via {@link EncryptedIndex.createUser}.
+ * - **User key** (`cdbk_...`) — minted by `createUser` and scoped to one
+ *   index with `read` / `write` permissions enforced cryptographically.
+ *   A user client calls `loadIndex({ indexName })` with **no** `indexKey`
+ *   (the service resolves it), then performs the data operations its
+ *   permissions allow. User keys work only against KMS-backed indexes
+ *   (the service must be able to resolve the index KEK server-side);
+ *   SDK-supplied-KEK indexes have no server-side key to resolve for a
+ *   user.
  */
 export class CyborgDB {
 	private api: DefaultApi;
