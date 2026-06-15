@@ -31,7 +31,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
-import { Client, EncryptedIndex } from "../index";
+import { Client, type EncryptedIndex } from "../index";
 
 dotenv.config({ path: ".env.local" });
 jest.setTimeout(120000);
@@ -52,8 +52,7 @@ const seed = () => [
 	{ id: "b", vector: [0.9, 0.8, 0.7, 0.6] },
 ];
 
-const describeIfRbac =
-	ROOT_API_KEY && KMS_NAME ? describe : describe.skip;
+const describeIfRbac = ROOT_API_KEY && KMS_NAME ? describe : describe.skip;
 
 describeIfRbac("CyborgDB RBAC — user management", () => {
 	let root: Client;
