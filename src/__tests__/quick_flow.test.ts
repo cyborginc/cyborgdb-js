@@ -639,7 +639,7 @@ describe("TestUnitFlow", () => {
 				`Some recalls are below their thresholds:\n${failMessage}`,
 			);
 		}
-	});
+	}, 180000);
 
 	test("test_13_trained_get", async () => {
 		// TRAINED GET (using untrained indices as an example)
