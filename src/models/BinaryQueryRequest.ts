@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { BinaryQueryBatch } from './BinaryQueryBatch';
 import {
     BinaryQueryBatchFromJSON,
-    BinaryQueryBatchFromJSONTyped,
     BinaryQueryBatchToJSON,
-    BinaryQueryBatchToJSONTyped,
 } from './BinaryQueryBatch';
 
 /**

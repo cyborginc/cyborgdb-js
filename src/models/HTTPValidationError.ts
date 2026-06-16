@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { ValidationError } from './ValidationError';
 import {
     ValidationErrorFromJSON,
-    ValidationErrorFromJSONTyped,
     ValidationErrorToJSON,
-    ValidationErrorToJSONTyped,
 } from './ValidationError';
 
 /**

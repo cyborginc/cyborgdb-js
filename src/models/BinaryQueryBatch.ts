@@ -12,7 +12,6 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 /**
  * Represents a batch of query vectors in binary format for efficient transfer.
  * 

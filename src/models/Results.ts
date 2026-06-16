@@ -12,14 +12,6 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
-import type { QueryResultItem } from './QueryResultItem';
-import {
-    QueryResultItemFromJSON,
-    QueryResultItemFromJSONTyped,
-    QueryResultItemToJSON,
-    QueryResultItemToJSONTyped,
-} from './QueryResultItem';
 
 /**
  * 

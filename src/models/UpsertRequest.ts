@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { VectorItem } from './VectorItem';
 import {
     VectorItemFromJSON,
-    VectorItemFromJSONTyped,
     VectorItemToJSON,
-    VectorItemToJSONTyped,
 } from './VectorItem';
 
 /**

@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { UserInfo } from './UserInfo';
 import {
     UserInfoFromJSON,
-    UserInfoFromJSONTyped,
     UserInfoToJSON,
-    UserInfoToJSONTyped,
 } from './UserInfo';
 
 /**

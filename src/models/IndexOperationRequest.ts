@@ -12,7 +12,6 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 /**
  * Request model for performing operations on an existing index (e.g., delete, describe).
  * 

@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { Results } from './Results';
 import {
     ResultsFromJSON,
-    ResultsFromJSONTyped,
     ResultsToJSON,
-    ResultsToJSONTyped,
 } from './Results';
 
 /**

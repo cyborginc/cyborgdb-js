@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { BinaryVectorBatchContentsInner } from './BinaryVectorBatchContentsInner';
 import {
     BinaryVectorBatchContentsInnerFromJSON,
-    BinaryVectorBatchContentsInnerFromJSONTyped,
     BinaryVectorBatchContentsInnerToJSON,
-    BinaryVectorBatchContentsInnerToJSONTyped,
 } from './BinaryVectorBatchContentsInner';
 
 /**

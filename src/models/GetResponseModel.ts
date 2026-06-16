@@ -12,13 +12,10 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 import type { GetResultItemModel } from './GetResultItemModel';
 import {
     GetResultItemModelFromJSON,
-    GetResultItemModelFromJSONTyped,
     GetResultItemModelToJSON,
-    GetResultItemModelToJSONTyped,
 } from './GetResultItemModel';
 
 /**

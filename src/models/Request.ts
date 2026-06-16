@@ -12,21 +12,6 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
-import type { QueryRequest } from './QueryRequest';
-import {
-    QueryRequestFromJSON,
-    QueryRequestFromJSONTyped,
-    QueryRequestToJSON,
-    QueryRequestToJSONTyped,
-} from './QueryRequest';
-import type { BatchQueryRequest } from './BatchQueryRequest';
-import {
-    BatchQueryRequestFromJSON,
-    BatchQueryRequestFromJSONTyped,
-    BatchQueryRequestToJSON,
-    BatchQueryRequestToJSONTyped,
-} from './BatchQueryRequest';
 
 /**
  * 
