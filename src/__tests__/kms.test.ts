@@ -22,13 +22,7 @@
  * CYBORGDB_API_KEY is set.
  */
 
-import {
-	afterAll,
-	beforeAll,
-	describe,
-	expect,
-	it,
-} from "@jest/globals";
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
 import { Client, EncryptedIndex } from "../index";
 
@@ -57,7 +51,10 @@ function mulberry32(seed: number): () => number {
 	};
 }
 
-function makeVectors(): { items: Array<{ id: string; vector: number[]; metadata: { idx: number } }>; vectors: number[][] } {
+function makeVectors(): {
+	items: Array<{ id: string; vector: number[]; metadata: { idx: number } }>;
+	vectors: number[][];
+} {
 	const rng = mulberry32(1234);
 	const vectors: number[][] = [];
 	for (let i = 0; i < NUM_VECTORS; i++) {
@@ -151,9 +148,9 @@ function runKMSRoundTripSuite(opts: {
 				const loaded = await client.loadIndex({ indexName, indexKey });
 				expect(loaded).toBeInstanceOf(EncryptedIndex);
 				const expectedHex = Buffer.from(indexKey as Uint8Array).toString("hex");
-				expect((loaded as unknown as { indexKeyHex?: string }).indexKeyHex).toBe(
-					expectedHex,
-				);
+				expect(
+					(loaded as unknown as { indexKeyHex?: string }).indexKeyHex,
+				).toBe(expectedHex);
 			});
 		} else {
 			it("test_01_create_index_kms_only", async () => {

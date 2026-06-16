@@ -113,8 +113,9 @@ export class CyborgDB {
 			const res = await inner(url, init);
 			if (!res.ok) {
 				try {
-					(res as unknown as { parsedBody?: unknown }).parsedBody =
-						await res.clone().json();
+					(res as unknown as { parsedBody?: unknown }).parsedBody = await res
+						.clone()
+						.json();
 				} catch {
 					// Non-JSON body — leave parsedBody undefined and let
 					// handleApiError fall back to its generic message.
