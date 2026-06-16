@@ -104,11 +104,30 @@ export class CyborgDB {
 			}
 		}
 
+		// Pre-read the body of non-2xx responses and stash the parsed JSON on
+		// the Response.  The generated runtime throws a `ResponseError` whose
+		// `response.body` is a `ReadableStream`, so `handleApiError` can't
+		// recover the server's `detail` synchronously without this.
+		const inner = fetchApi ?? globalThis.fetch.bind(globalThis);
+		fetchApi = async (url: RequestInfo | URL, init?: RequestInit) => {
+			const res = await inner(url, init);
+			if (!res.ok) {
+				try {
+					(res as unknown as { parsedBody?: unknown }).parsedBody =
+						await res.clone().json();
+				} catch {
+					// Non-JSON body — leave parsedBody undefined and let
+					// handleApiError fall back to its generic message.
+				}
+			}
+			return res;
+		};
+
 		// Create configuration
 		const config = new Configuration({
 			basePath: baseUrl,
 			apiKey: apiKey ? () => apiKey : undefined,
-			...(fetchApi && { fetchApi }),
+			fetchApi,
 			headers: {
 				"Content-Type": "application/json",
 				Accept: "application/json",
