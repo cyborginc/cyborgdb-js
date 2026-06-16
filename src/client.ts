@@ -355,5 +355,4 @@ export class CyborgDB {
 			handleApiError(error);
 		}
 	}
-
 }

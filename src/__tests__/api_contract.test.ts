@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
-import { Client, EncryptedIndex } from "../index";
+import { Client, type EncryptedIndex } from "../index";
 import { flattenResults } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
