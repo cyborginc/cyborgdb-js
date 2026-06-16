@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
-import { Client } from "../index";
+import { Client, EncryptedIndex } from "../index";
 import { flattenResults } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
@@ -361,15 +361,10 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
-	describe("10 - Client.isTraining()", () => {
-		it("should return training status with correct schema", async () => {
-			const status = await client.isTraining();
-
-			expect(status).toBeDefined();
-			expect(status).toHaveProperty("training_indexes");
-			expect(status).toHaveProperty("retrain_threshold");
-			expect(Array.isArray(status.training_indexes)).toBe(true);
-			expect(typeof status.retrain_threshold).toBe("number");
+	describe("10 - EncryptedIndex.isTraining()", () => {
+		it("should return boolean", async () => {
+			const training = await testIndex.isTraining();
+			expect(typeof training).toBe("boolean");
 		});
 	});
 
@@ -735,15 +730,13 @@ describe("CyborgDB API Contract Tests", () => {
 		const validTrainStatuses = ["success", "queued", "in_progress"];
 
 		const waitForTrainingToFinish = async (
-			indexName: string,
+			index: EncryptedIndex,
 			maxRetries: number = 30,
 		): Promise<boolean> => {
 			for (let attempt = 0; attempt < maxRetries; attempt++) {
 				await sleep(2000);
 
-				const trainingStatus = await client.isTraining();
-				const isCurrentlyTraining =
-					trainingStatus.training_indexes.includes(indexName);
+				const isCurrentlyTraining = await index.isTraining();
 
 				if (!isCurrentlyTraining) {
 					console.log(`Training finished after ${attempt + 1} attempts.`);
@@ -762,7 +755,7 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(validTrainStatuses).toContain(result.status);
 
 			// Wait for training to finish (no longer in training queue)
-			const finished = await waitForTrainingToFinish(testIndexName);
+			const finished = await waitForTrainingToFinish(testIndex);
 			expect(finished).toBe(true);
 
 			// Verify isTrained returns a boolean (don't require true for small datasets)

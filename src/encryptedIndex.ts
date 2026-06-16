@@ -92,6 +92,15 @@ export class EncryptedIndex {
 		const response = await this.describeIndex(this.indexName);
 		return response.isTrained;
 	}
+	public async isTraining(): Promise<boolean> {
+		try {
+			const response =
+				await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
+			return (response.trainingIndexes ?? []).includes(this.indexName);
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
 	public async getDimension(): Promise<number> {
 		if (this.dimensionCached === undefined) {
 			const response = await this.describeIndex(this.indexName);
@@ -548,6 +557,7 @@ export class EncryptedIndex {
 		filters,
 		include,
 		greedy,
+		rerankMult,
 		dimension,
 	}: {
 		queryVectors?: number[] | number[][] | Float32Array;
@@ -557,6 +567,7 @@ export class EncryptedIndex {
 		filters?: FilterExpression;
 		include?: string[];
 		greedy?: boolean;
+		rerankMult?: number;
 		dimension?: number;
 	}): Promise<QueryResponse> {
 		// Route to binary endpoint if queryVectors is Float32Array
@@ -573,6 +584,7 @@ export class EncryptedIndex {
 				filters,
 				include,
 				greedy,
+				rerankMult,
 				dimension,
 			});
 		}
@@ -604,6 +616,7 @@ export class EncryptedIndex {
 				topK: topK ?? undefined,
 				nProbes: nProbes ?? undefined,
 				greedy: greedy ?? undefined,
+				rerankMult: rerankMult ?? undefined,
 				filters: filters ?? undefined,
 				include: include ?? undefined,
 				queryVectors: vectors2D
@@ -794,6 +807,7 @@ export class EncryptedIndex {
 		filters,
 		include,
 		greedy,
+		rerankMult,
 		dimension: providedDimension,
 	}: {
 		queryVectors: number[][] | Float32Array;
@@ -802,6 +816,7 @@ export class EncryptedIndex {
 		filters?: FilterExpression;
 		include?: string[];
 		greedy?: boolean;
+		rerankMult?: number;
 		dimension?: number;
 	}): Promise<QueryResponse> {
 		try {
@@ -855,6 +870,7 @@ export class EncryptedIndex {
 				topK: topK ?? undefined,
 				nProbes: nProbes ?? undefined,
 				greedy: greedy ?? undefined,
+				rerankMult: rerankMult ?? undefined,
 				filters: filters ?? undefined,
 				include: include ?? undefined,
 			});

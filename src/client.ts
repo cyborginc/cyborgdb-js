@@ -9,7 +9,7 @@ import type {
 	IndexOperationRequest,
 } from "./models";
 import { Configuration } from "./runtime";
-import type { HealthResponse, TrainingStatus } from "./types";
+import type { HealthResponse } from "./types";
 
 /**
  * CyborgDB TypeScript SDK
@@ -356,27 +356,4 @@ export class CyborgDB {
 		}
 	}
 
-	/**
-	 * Check if any indexes are currently being trained
-	 *
-	 * Retrieves information about which indexes are currently being trained
-	 * and the retrain threshold configuration.
-	 *
-	 * @returns Promise resolving to training status information including:
-	 *   - training_indexes: Array of index names currently being trained
-	 *   - retrain_threshold: The multiplier used for the retraining threshold
-	 */
-	async isTraining(): Promise<TrainingStatus> {
-		try {
-			const response =
-				await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
-			// Map the camelCase response to snake_case for consistency
-			return {
-				training_indexes: response.trainingIndexes || [],
-				retrain_threshold: response.retrainThreshold || 0,
-			};
-		} catch (error: unknown) {
-			handleApiError(error);
-		}
-	}
 }

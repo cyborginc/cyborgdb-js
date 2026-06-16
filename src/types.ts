@@ -138,20 +138,6 @@ export interface HealthResponse {
 }
 
 /**
- * Training status information
- */
-export interface TrainingStatus {
-	/**
-	 * Array of index names currently being trained
-	 */
-	training_indexes: string[];
-	/**
-	 * The multiplier used for the retraining threshold
-	 */
-	retrain_threshold: number;
-}
-
-/**
  * Get operation result item with proper typing
  * Extends GetResultItemModel from models with enhanced type safety for metadata and contents
  */

@@ -39,7 +39,6 @@ export {
 	JsonObject,
 	JsonPrimitive,
 	JsonValue,
-	TrainingStatus,
 	TrainResponse,
 	UpsertResponse,
 	VectorMetadata,
