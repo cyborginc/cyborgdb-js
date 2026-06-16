@@ -228,11 +228,13 @@ export class EncryptedIndex {
 		batchSize,
 		maxIters,
 		tolerance,
+		maxMemory,
 	}: {
 		nLists?: number;
 		batchSize?: number;
 		maxIters?: number;
 		tolerance?: number;
+		maxMemory?: number;
 	} = {}): Promise<TrainResponse> {
 		try {
 			const trainRequest: TrainRequest = this.withKey({
@@ -241,7 +243,7 @@ export class EncryptedIndex {
 				maxIters: maxIters ?? undefined,
 				tolerance: tolerance ?? undefined,
 				nLists: nLists ?? undefined,
-				maxMemory: undefined,
+				maxMemory: maxMemory ?? undefined,
 			});
 
 			const response = await this.api.trainIndexV1IndexesTrainPost({
