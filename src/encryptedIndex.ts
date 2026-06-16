@@ -5,6 +5,7 @@ import type {
 	BinaryQueryRequest,
 	BinaryUpsertRequest,
 	BinaryVectorBatch,
+	CreateUserRequest,
 	DeleteRequest,
 	GetRequest,
 	GetResponseModel,
@@ -90,6 +91,15 @@ export class EncryptedIndex {
 		// Not cached — training status changes server-side (matches py/go).
 		const response = await this.describeIndex(this.indexName);
 		return response.isTrained;
+	}
+	public async isTraining(): Promise<boolean> {
+		try {
+			const response =
+				await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
+			return (response.trainingIndexes ?? []).includes(this.indexName);
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
 	}
 	public async getDimension(): Promise<number> {
 		if (this.dimensionCached === undefined) {
@@ -218,11 +228,13 @@ export class EncryptedIndex {
 		batchSize,
 		maxIters,
 		tolerance,
+		maxMemory,
 	}: {
 		nLists?: number;
 		batchSize?: number;
 		maxIters?: number;
 		tolerance?: number;
+		maxMemory?: number;
 	} = {}): Promise<TrainResponse> {
 		try {
 			const trainRequest: TrainRequest = this.withKey({
@@ -231,7 +243,7 @@ export class EncryptedIndex {
 				maxIters: maxIters ?? undefined,
 				tolerance: tolerance ?? undefined,
 				nLists: nLists ?? undefined,
-				maxMemory: undefined,
+				maxMemory: maxMemory ?? undefined,
 			});
 
 			const response = await this.api.trainIndexV1IndexesTrainPost({
@@ -547,6 +559,7 @@ export class EncryptedIndex {
 		filters,
 		include,
 		greedy,
+		rerankMult,
 		dimension,
 	}: {
 		queryVectors?: number[] | number[][] | Float32Array;
@@ -556,6 +569,7 @@ export class EncryptedIndex {
 		filters?: FilterExpression;
 		include?: string[];
 		greedy?: boolean;
+		rerankMult?: number;
 		dimension?: number;
 	}): Promise<QueryResponse> {
 		// Route to binary endpoint if queryVectors is Float32Array
@@ -572,6 +586,7 @@ export class EncryptedIndex {
 				filters,
 				include,
 				greedy,
+				rerankMult,
 				dimension,
 			});
 		}
@@ -603,6 +618,7 @@ export class EncryptedIndex {
 				topK: topK ?? undefined,
 				nProbes: nProbes ?? undefined,
 				greedy: greedy ?? undefined,
+				rerankMult: rerankMult ?? undefined,
 				filters: filters ?? undefined,
 				include: include ?? undefined,
 				queryVectors: vectors2D
@@ -793,6 +809,7 @@ export class EncryptedIndex {
 		filters,
 		include,
 		greedy,
+		rerankMult,
 		dimension: providedDimension,
 	}: {
 		queryVectors: number[][] | Float32Array;
@@ -801,6 +818,7 @@ export class EncryptedIndex {
 		filters?: FilterExpression;
 		include?: string[];
 		greedy?: boolean;
+		rerankMult?: number;
 		dimension?: number;
 	}): Promise<QueryResponse> {
 		try {
@@ -854,6 +872,7 @@ export class EncryptedIndex {
 				topK: topK ?? undefined,
 				nProbes: nProbes ?? undefined,
 				greedy: greedy ?? undefined,
+				rerankMult: rerankMult ?? undefined,
 				filters: filters ?? undefined,
 				include: include ?? undefined,
 			});
@@ -863,6 +882,103 @@ export class EncryptedIndex {
 					binaryQueryRequest,
 				});
 			return response;
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// RBAC — user management (root API key required)
+	//
+	// A user is scoped to this one index with a permission set drawn from
+	// {"read", "write"}, enforced cryptographically by the service: the
+	// wrapped data-encryption keys that exist for a user *are* their
+	// permission set, so there is no policy blob to keep in sync and
+	// revoking a user erases their keys. These routes are only accepted
+	// when the service runs with CYBORGDB_ROOT_API_KEY set and this client
+	// was constructed with that root key.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Mint a user API key scoped to this index.
+	 *
+	 * @param permissions Non-empty subset of `{"read", "write"}`. The grant
+	 *   is enforced cryptographically by the service, not by a checked
+	 *   policy field.
+	 * @returns `{ userId, apiKey }`. The `apiKey` is returned **exactly
+	 *   once** and is never stored by the service — capture it now, it
+	 *   cannot be recovered. Hand it to the user; they authenticate by
+	 *   passing it as `apiKey` to `CyborgDB` and need no index key of
+	 *   their own.
+	 * @throws Error if the user could not be created (e.g. the client is
+	 *   not using the root key, or `permissions` is invalid).
+	 */
+	async createUser({
+		permissions,
+	}: {
+		permissions: string[];
+	}): Promise<{ userId: string; apiKey: string }> {
+		try {
+			// SDK-supplied-KEK indexes: the service needs the index key to
+			// unwrap the root DEK and re-wrap it under the new user's key.
+			// KMS-backed indexes resolve it server-side, so indexKey is omitted.
+			const createUserRequest: CreateUserRequest = {
+				permissions,
+				...(this.indexKeyHex !== undefined && {
+					indexKey: this.indexKeyHex,
+				}),
+			};
+			const response = await this.api.createUserV1IndexesIndexNameUsersPost({
+				indexName: this.indexName,
+				createUserRequest,
+			});
+			return { userId: response.userId, apiKey: response.apiKey };
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * List the users provisioned for this index.
+	 *
+	 * @returns Array of `{ userId, permissions }`. Permissions are derived
+	 *   from which wrapped keys exist for each user (the cryptographic
+	 *   source of truth), not a stored field.
+	 * @throws Error if the users could not be listed (e.g. the client is
+	 *   not using the root key).
+	 */
+	async listUsers(): Promise<{ userId: string; permissions: string[] }[]> {
+		try {
+			const response = await this.api.listUsersV1IndexesIndexNameUsersGet({
+				indexName: this.indexName,
+				...(this.indexKeyHex !== undefined && { indexKey: this.indexKeyHex }),
+			});
+			return response.users.map((u) => ({
+				userId: u.userId,
+				permissions: u.permissions,
+			}));
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * Revoke a user, erasing their wrapped keys for this index.
+	 *
+	 * After this returns, the user's API key is rejected on the next
+	 * request — the service can no longer unwrap any key for them.
+	 *
+	 * @param userId The hex `userId` returned by `createUser` (also
+	 *   surfaced by `listUsers`).
+	 * @throws Error if the user could not be deleted.
+	 */
+	async deleteUser({ userId }: { userId: string }): Promise<void> {
+		try {
+			await this.api.deleteUserV1IndexesIndexNameUsersUserIdDelete({
+				indexName: this.indexName,
+				userId,
+				...(this.indexKeyHex !== undefined && { indexKey: this.indexKeyHex }),
+			});
 		} catch (error: unknown) {
 			handleApiError(error);
 		}

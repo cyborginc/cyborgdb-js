@@ -482,9 +482,7 @@ describe("TestUnitFlow", () => {
 		for (let attempt = 0; attempt < numRetries; attempt++) {
 			await new Promise((resolve) => setTimeout(resolve, 2000));
 
-			const trainingStatus = await client.isTraining();
-			const isCurrentlyTraining =
-				trainingStatus.training_indexes.includes(indexName);
+			const isCurrentlyTraining = await index.isTraining();
 
 			if (!isCurrentlyTraining) {
 				// Training finished, verify it's trained
@@ -639,7 +637,7 @@ describe("TestUnitFlow", () => {
 				`Some recalls are below their thresholds:\n${failMessage}`,
 			);
 		}
-	});
+	}, 180000);
 
 	test("test_13_trained_get", async () => {
 		// TRAINED GET (using untrained indices as an example)

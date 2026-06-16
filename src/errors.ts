@@ -109,12 +109,21 @@ export function handleApiError(error: unknown): never {
 		}
 	}
 
-	// Try to extract error details from different possible locations
+	// Try to extract error details from different possible locations.
+	// `ResponseError` from the generated runtime carries the raw fetch
+	// `Response`, whose `.body` is a `ReadableStream`; the client-side fetch
+	// wrapper in `CyborgDB`'s constructor pre-reads non-2xx bodies onto a
+	// `parsedBody` property so we can recover the server's `detail` here.
+	const parsedBody = hasResponse(error)
+		? (error.response as { parsedBody?: unknown }).parsedBody
+		: undefined;
 	let errorBody: unknown = hasBody(error)
 		? error.body
-		: hasResponse(error)
-			? error.response.body || error.response.data
-			: undefined;
+		: parsedBody !== undefined
+			? parsedBody
+			: hasResponse(error)
+				? error.response.body || error.response.data
+				: undefined;
 	if (typeof errorBody === "string") {
 		try {
 			errorBody = JSON.parse(errorBody);
