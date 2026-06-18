@@ -1,20 +1,30 @@
+<p align="center">
+  <a href="https://www.cyborg.co">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cyborginc/cyborgdb-js/main/assets/cyborgdb-logo-dark.svg">
+      <img src="https://raw.githubusercontent.com/cyborginc/cyborgdb-js/main/assets/cyborgdb-logo-light.svg" alt="CyborgDB" width="320">
+    </picture>
+  </a>
+</p>
+
 # CyborgDB JavaScript/TypeScript SDK
 
 ![NPM Version](https://img.shields.io/npm/v/cyborgdb)
 ![NPM License](https://img.shields.io/npm/l/cyborgdb)
 ![Node Current](https://img.shields.io/node/v/cyborgdb)
 
-The **CyborgDB JavaScript/TypeScript SDK** provides a comprehensive client library for interacting with [CyborgDB](https://docs.cyborg.co), the first Confidential Vector Database. This SDK enables you to perform encrypted vector operations including ingestion, search, and retrieval while maintaining end-to-end encryption of your vector embeddings. Built with TypeScript, it offers full type safety and seamless integration into modern JavaScript and TypeScript applications.
+The **CyborgDB JavaScript/TypeScript SDK** is the JavaScript/TypeScript client for [CyborgDB](https://www.cyborg.co) — the vector database that stays encrypted even while it's searching. Run similarity search directly on encrypted data with client-side keys; only the result of a query is ever decrypted, never the index. Built with TypeScript, it ships full type definitions for modern JavaScript and TypeScript apps.
 
-This SDK provides an interface to [`cyborgdb-service`](https://pypi.org/project/cyborgdb-service/) which you will need to separately install and run in order to use the SDK. For more info, please see our [docs](https://docs.cyborg.co).
+This SDK talks to [`cyborgdb-service`](https://hub.docker.com/r/cyborginc/cyborgdb-service), which you self-host in your own VPC or on-prem and run alongside your app. Install and start it separately. See our [docs](https://docs.cyborg.co) for more info.
 
 ## Key Features
 
-- **End-to-End Encryption**: All vector operations maintain encryption with client-side keys
-- **Zero-Trust Design**: Novel architecture keeps confidential inference data secure
-- **Full TypeScript Support**: Complete type definitions and IntelliSense support
-- **Batch Operations**: Efficient batch queries and upserts for high-throughput applications
-- **DiskIVF Indexing**: Two-stage inverted-file index with float32 reranking for high-recall search
+- **Encryption-in-use**: Search runs directly on ciphertext — only the query result is decrypted, never the index or stored vectors
+- **Encrypted ANN**: Disk-backed encrypted DiskIVF index with recall within 2% of a plaintext baseline ([read the benchmarks](https://www.cyborg.co/performance))
+- **Filters on encrypted metadata**: Combine vector similarity with equality and range predicates in a single request
+- **BYOK / HYOK**: Bring your own key via AWS, GCP, or Azure KMS, or keep the key client-side — you control the key material
+- **Per-tenant key isolation**: Per-index, per-user keys with cryptographic RBAC; revoke a user and their keys are erased
+- **TypeScript-first API**: Complete type definitions and IntelliSense for JavaScript and TypeScript apps
 
 ## Getting Started
 
@@ -25,10 +35,7 @@ To get started in minutes, check out our [Quickstart Guide](https://docs.cyborg.
 1. Install `cyborgdb-service`
 
 ```bash
-# Install the CyborgDB Service
-pip install cyborgdb-service
-
-# Or via Docker
+# Pull the CyborgDB Service image
 docker pull cyborginc/cyborgdb-service
 ```
 
@@ -50,7 +57,7 @@ const client = new Client({
   apiKey: 'your-api-key' 
 });
 
-// Generate a 256-bit encryption key
+// Generate a 32-byte encryption key
 const indexKey = client.generateKey();
 
 // Create an encrypted index
@@ -122,7 +129,7 @@ const results = await index.query({
 });
 ```
 
-#### Bring Your Own KMS (BYOK) & Multi-Tenancy
+#### Bring Your Own Key (BYOK) via KMS
 
 Indexes can be encrypted under a key managed by a KMS instead of one held by
 the SDK. The KMS entries (`kms.registry`) are configured **server-side** in the
