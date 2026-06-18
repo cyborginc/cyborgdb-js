@@ -13,7 +13,7 @@
 ![NPM License](https://img.shields.io/npm/l/cyborgdb)
 ![Node Current](https://img.shields.io/node/v/cyborgdb)
 
-The **CyborgDB JavaScript/TypeScript SDK** is the JavaScript/TypeScript client for [CyborgDB](https://www.cyborg.co) — the vector database that stays encrypted even while it's searching. Run similarity search directly on encrypted data with client-side keys; only the result of a query is ever decrypted, never the index. Built with TypeScript, it ships full type definitions for modern JavaScript and TypeScript apps.
+The **CyborgDB JavaScript/TypeScript SDK** is the JavaScript/TypeScript client for [CyborgDB](https://www.cyborg.co) — the vector database that stays encrypted even while it's searching. Run similarity search directly on encrypted data with client-side keys; only the result of a query is ever decrypted, never the index. Built with TypeScript, it ships full type definitions for JavaScript and TypeScript apps.
 
 This SDK talks to [`cyborgdb-service`](https://hub.docker.com/r/cyborginc/cyborgdb-service), which you self-host in your own VPC or on-prem and run alongside your app. Install and start it separately. See our [docs](https://docs.cyborg.co) for more info.
 
@@ -22,7 +22,7 @@ This SDK talks to [`cyborgdb-service`](https://hub.docker.com/r/cyborginc/cyborg
 - **Encryption-in-use**: Search runs directly on ciphertext — only the query result is decrypted, never the index or stored vectors
 - **Encrypted ANN**: Disk-backed encrypted DiskIVF index with recall within 2% of a plaintext baseline ([read the benchmarks](https://www.cyborg.co/performance))
 - **Filters on encrypted metadata**: Combine vector similarity with equality and range predicates in a single request
-- **BYOK / HYOK**: Bring your own key via AWS, GCP, or Azure KMS, or keep the key client-side — you control the key material
+- **BYOK / HYOK**: Wrap per-index keys with AWS KMS or AWS Secrets Manager, or hold the key client-side — you control the key material
 - **Per-tenant key isolation**: Per-index, per-user keys with cryptographic RBAC; revoke a user and their keys are erased
 - **TypeScript-first API**: Complete type definitions and IntelliSense for JavaScript and TypeScript apps
 
