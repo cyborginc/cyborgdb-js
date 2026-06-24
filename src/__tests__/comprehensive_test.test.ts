@@ -190,22 +190,25 @@ describe("DiskIVF Index Tests", () => {
 describe("Error Handling Tests", () => {
 	const client = createClient();
 
-	(process.env.CYBORGDB_SERVICE_ROOT_KEY ? test : test.skip)("should handle invalid API key", async () => {
-		const invalidClient = new Client({
-			baseUrl: API_URL,
-			apiKey: "invalid-key-12345",
-			verifySsl: false,
-		});
+	(process.env.CYBORGDB_SERVICE_ROOT_KEY ? test : test.skip)(
+		"should handle invalid API key",
+		async () => {
+			const invalidClient = new Client({
+				baseUrl: API_URL,
+				apiKey: "invalid-key-12345",
+				verifySsl: false,
+			});
 
-		await expect(
-			invalidClient.createIndex({
-				indexName: generateUniqueName(),
-				indexKey: generateRandomKey(),
-				dimension: 128,
-				metric: "euclidean",
-			}),
-		).rejects.toThrow();
-	});
+			await expect(
+				invalidClient.createIndex({
+					indexName: generateUniqueName(),
+					indexKey: generateRandomKey(),
+					dimension: 128,
+					metric: "euclidean",
+				}),
+			).rejects.toThrow();
+		},
+	);
 
 	test("should handle malformed requests", async () => {
 		const indexName = generateUniqueName();
