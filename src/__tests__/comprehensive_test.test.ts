@@ -190,7 +190,7 @@ describe("DiskIVF Index Tests", () => {
 describe("Error Handling Tests", () => {
 	const client = createClient();
 
-	test("should handle invalid API key", async () => {
+	(process.env.CYBORGDB_SERVICE_ROOT_KEY ? test : test.skip)("should handle invalid API key", async () => {
 		const invalidClient = new Client({
 			baseUrl: API_URL,
 			apiKey: "invalid-key-12345",
