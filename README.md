@@ -49,7 +49,7 @@ npm install cyborgdb
 ### Usage
 
 ```typescript
-import { Client } from 'cyborgdb';
+import { Client, loadSampleDataset } from 'cyborgdb';
 
 // Initialize the client
 const client = new Client({ 
@@ -66,37 +66,39 @@ const index = await client.createIndex({
   indexKey: indexKey,
 });
 
-// Add encrypted vector items
-const items = [
-  {
-    id: 'doc1',
-    vector: [0.1, 0.2, 0.3, /* ... 128 dimensions */],
-    contents: 'Hello world!',
-    metadata: { category: 'greeting', language: 'en' }
-  },
-  {
-    id: 'doc2', 
-    vector: [0.4, 0.5, 0.6, /* ... 128 dimensions */],
-    contents: 'Bonjour le monde!',
-    metadata: { category: 'greeting', language: 'fr' }
-  }
-];
+// Load the hosted sample dataset (fetched from S3 on first use, cached locally)
+const dataset = await loadSampleDataset(); // 75k 128-dim vectors with metadata
 
-await index.upsert({ items });
+// Add the encrypted vector items
+await index.upsert({ items: dataset.items });
 
-// Query the encrypted index
-const queryVector = [0.1, 0.2, 0.3, /* ... 128 dimensions */];
+// Query the encrypted index with a sample query vector
 const results = await index.query({
-  queryVectors: queryVector,
+  queryVectors: dataset.sampleQueries[0],
   topK: 10,
   include: ['distance']
 });
 
-// Print the results
+// Print the results (guaranteed non-empty against the sample dataset)
 results.results.forEach(result => {
   console.log(`ID: ${result.id}, Distance: ${result.distance}`);
 });
 ```
+
+> **Sample dataset:** `loadSampleDataset()` pulls a small reference dataset from
+> S3 on demand and caches it locally — it is not bundled into the SDK. Each item
+> has an explicit `id`, a 128-dim `vector`, and `metadata` with both string
+> (`string`) and numeric (`number`) fields, so the same dataset drives ANN
+> similarity search, metadata filter queries, and numeric range queries. The
+> dataset also ships `sampleQueries` (query vectors) and `exampleFilters`
+> (curated, guaranteed-to-match filters).
+
+> **Encryption model:** the index is encrypted at rest, but an encrypted DB does
+> **not** mean vectors are auto-hidden from you. You must pass your index key on
+> `loadIndex` / `get` / `query` to retrieve **decrypted** vectors and metadata —
+> without the key, only encrypted ciphertext is ever readable. HYOK-level
+> security is not implied unless you manage the key material yourself (see BYOK
+> below).
 
 ### Advanced Usage
 
@@ -115,18 +117,33 @@ const batchResults = await index.query({
 });
 ```
 
-#### Metadata Filtering
+#### Metadata Filtering & Range Queries
 
 ```typescript
-// Search with metadata filters
-const results = await index.query({
+const dataset = await loadSampleDataset();
+const queryVector = dataset.sampleQueries[0];
+
+// Equality filter on a string field
+const filtered = await index.query({
   queryVectors: queryVector,
   topK: 10,
-  nProbes: 1,
-  greedy: false,
-  filters: { category: 'greeting', language: 'en' },
-  include: ['distance', 'metadata', 'contents']
+  filters: { string: 'string_0' },
+  include: ['distance', 'metadata']
 });
+
+// Numeric range query (bounded) — combine similarity with a range predicate
+const ranged = await index.query({
+  queryVectors: queryVector,
+  topK: 10,
+  filters: { number: { $gte: 1250, $lte: 2500 } },
+  include: ['distance', 'metadata']
+});
+
+// The dataset also ships curated, guaranteed-to-match filters:
+for (const { name, filter } of dataset.exampleFilters) {
+  const res = await index.query({ queryVectors: queryVector, topK: 5, filters: filter });
+  console.log(`${name}: ${res.results.length} results`);
+}
 ```
 
 #### Bring Your Own Key (BYOK) via KMS
