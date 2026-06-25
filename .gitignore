@@ -204,4 +204,4 @@ $RECYCLE.BIN/
 # Project specific
 .openapi-generator
 wwwroot/*.js
-typings
+typingspr.md

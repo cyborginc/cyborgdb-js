@@ -5,7 +5,7 @@ import { gzipSync } from "node:zlib";
 import {
 	DEFAULT_SAMPLE_DATASET,
 	loadSampleDataset,
-	type SampleDataset,
+	type RawSampleDataset,
 } from "../datasets";
 
 /**
@@ -13,26 +13,46 @@ import {
  *
  * These are fully offline: `fetch` is mocked and the dataset is cached to a
  * throwaway temp directory, so no S3 access or running service is required.
+ *
+ * The mocked payload is the *raw* hosted shape (no `items`/`sampleQueries`);
+ * those convenience fields are rebuilt by the loader's hydrate step.
  */
 
-const FAKE_DATASET: SampleDataset = {
+const FAKE_RAW: RawSampleDataset = {
 	name: "quickstart-75k",
 	version: 1,
 	description: "test fixture",
 	dimension: 3,
 	metric: "euclidean",
 	count: 2,
-	items: [
-		{ id: "item_0", vector: [1, 2, 3], metadata: { number: 0, string: "a" } },
-		{ id: "item_1", vector: [4, 5, 6], metadata: { number: 1, string: "b" } },
-	],
-	sampleQueries: [[1, 2, 3]],
 	exampleFilters: [
 		{ name: "eq", filter: { string: "a" }, demonstrates: "equality" },
 	],
+	ids: ["item_0", "item_1"],
+	vectors: [
+		[1, 2, 3],
+		[4, 5, 6],
+	],
+	metadata: [
+		{ number: 0, string: "a" },
+		{ number: 1, string: "b" },
+	],
+	queries: [[1, 2, 3]],
+	metadata_queries: [{ string: "a" }],
+	metadata_query_names: ["eq string a"],
+	untrained_neighbors: [[0]],
+	trained_neighbors: [[0]],
+	untrained_metadata_matches: [[1]],
+	trained_metadata_matches: [[1]],
+	untrained_metadata_neighbors: [[[0]]],
+	trained_metadata_neighbors: [[[0]]],
+	untrained_recall: 1.0,
+	trained_recall: 0.94,
+	num_untrained_vectors: 1,
+	num_trained_vectors: 1,
 };
 
-function gzipResponse(dataset: SampleDataset): Response {
+function gzipResponse(dataset: RawSampleDataset): Response {
 	const gz = gzipSync(Buffer.from(JSON.stringify(dataset)));
 	return {
 		ok: true,
@@ -51,7 +71,7 @@ describe("loadSampleDataset", () => {
 		cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "cyborgdb-ds-"));
 		fetchSpy = jest
 			.spyOn(globalThis, "fetch")
-			.mockResolvedValue(gzipResponse(FAKE_DATASET));
+			.mockResolvedValue(gzipResponse(FAKE_RAW));
 	});
 
 	afterEach(() => {
@@ -59,15 +79,22 @@ describe("loadSampleDataset", () => {
 		fs.rmSync(cacheDir, { recursive: true, force: true });
 	});
 
-	it("downloads, decompresses, and parses the dataset", async () => {
+	it("downloads, decompresses, and hydrates the dataset", async () => {
 		const ds = await loadSampleDataset(DEFAULT_SAMPLE_DATASET, { cacheDir });
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		expect(ds.count).toBe(2);
 		expect(ds.dimension).toBe(3);
+		// items are built from ids + vectors + metadata
+		expect(ds.items).toHaveLength(2);
 		expect(ds.items[0].id).toBe("item_0");
 		expect(ds.items[0].vector).toEqual([1, 2, 3]);
-		expect(ds.sampleQueries).toHaveLength(1);
+		expect(ds.items[1].metadata).toEqual({ number: 1, string: "b" });
+		// sampleQueries are the leading queries
+		expect(ds.sampleQueries).toEqual([[1, 2, 3]]);
 		expect(ds.exampleFilters[0].filter).toEqual({ string: "a" });
+		// raw ground-truth fields pass through unchanged
+		expect(ds.trained_recall).toBe(0.94);
+		expect(ds.untrained_neighbors).toEqual([[0]]);
 	});
 
 	it("serves the second call from the local cache (no re-download)", async () => {

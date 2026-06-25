@@ -8,6 +8,7 @@ export {
 	DEFAULT_SAMPLE_DATASET,
 	type LoadSampleDatasetOptions,
 	loadSampleDataset,
+	type RawSampleDataset,
 	SAMPLE_DATASETS_BASE_URL,
 	type SampleDataset,
 	type SampleFilter,
