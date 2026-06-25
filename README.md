@@ -54,7 +54,7 @@ import { Client } from 'cyborgdb';
 // Initialize the client
 const client = new Client({ 
   baseUrl: 'https://localhost:8000', 
-  apiKey: 'your-api-key' 
+  apiKey: 'your-api-key' // optional; only if the service was started with one
 });
 
 // Generate a 32-byte encryption key
