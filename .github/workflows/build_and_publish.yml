@@ -268,7 +268,10 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
-      
+
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
       - name: Verify version matches tag
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
@@ -307,15 +310,5 @@ jobs:
           ls -la *.tgz
           npm pack --dry-run
       
-      - name: Load NPM token from 1Password
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: true
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_TOKEN }}
-          NPM_TOKEN: "op://CyborgDB/CyborgDB Prod/NPM_ACCESS_TOKEN"
-
       - name: Publish to NPM
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
