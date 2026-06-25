@@ -56,10 +56,10 @@
 		"js-yaml": "^4.2.0"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.4.16",
+		"@biomejs/biome": "2.5.1",
 		"@langchain/core": "^1.1.19",
 		"@types/jest": "^30.0.0",
-		"@types/node": "^25.9.1",
+		"@types/node": "^26.0.1",
 		"axios": "^1.12.2",
 		"dotenv": "^17.4.2",
 		"esbuild": "^0.28.0",
