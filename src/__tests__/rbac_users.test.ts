@@ -2,7 +2,7 @@
  * RBAC user-management integration tests for the CyborgDB TypeScript SDK.
  *
  * These exercise the user-key lifecycle the service exposes when it runs
- * with `CYBORGDB_ROOT_API_KEY` set (RBAC enabled, see the service's
+ * with `CYBORGDB_SERVICE_ROOT_KEY` set (RBAC enabled, see the service's
  * `rbac.md`):
  *
  *   * the **root** client mints per-user API keys with
@@ -19,7 +19,7 @@
  * against **KMS-backed** indexes. The suite is therefore gated on both
  * the root key and a KMS registry slot:
  *
- *   - CYBORGDB_ROOT_API_KEY — the service's admin key (RBAC must be
+ *   - CYBORGDB_SERVICE_ROOT_KEY — the service's admin key (RBAC must be
  *     enabled).
  *   - CYBORGDB_KMS_NAME     — a kms.registry slot the service can use
  *     to wrap the per-index KEK (e.g. the same value used by the KMS
@@ -42,7 +42,7 @@ const BASE_URL =
 	process.env.CYBORGDB_URL ||
 	process.env.CYBORGDB_BASE_URL ||
 	"http://localhost:8000";
-const ROOT_API_KEY = process.env.CYBORGDB_ROOT_API_KEY;
+const ROOT_API_KEY = process.env.CYBORGDB_SERVICE_ROOT_KEY;
 const KMS_NAME = process.env.CYBORGDB_KMS_NAME;
 
 const DIMENSION = 4;
