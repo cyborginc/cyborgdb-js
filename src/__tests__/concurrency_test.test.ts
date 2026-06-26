@@ -230,6 +230,35 @@ describe("ConcurrentUpserts", () => {
 			expect(matched).toBe(true);
 		}
 	});
+
+	test("concurrent write then verify per thread", async () => {
+		// 8 workers share one index. Each upserts unique vectors then reads one
+		// back via get() and verifies an exact vector match — catches request/
+		// response routing corruption on the shared client under concurrency.
+		const numWorkers = 8;
+		const errors: Error[] = [];
+
+		const workers = Array.from({ length: numWorkers }, async (_, w) => {
+			try {
+				const { ids, vectors } = await upsertBatch(index, `verify_${w}`, 10);
+				await sleep(1000);
+				const retrieved = await index.get({
+					ids: [ids[0]],
+					include: ["vector"],
+				});
+				expect(retrieved.length).toBe(1);
+				expect(retrieved[0].id).toBe(ids[0]);
+				expect(
+					vectorsApproxEqual(retrieved[0].vector as number[], vectors[0]),
+				).toBe(true);
+			} catch (e: any) {
+				errors.push(e);
+			}
+		});
+
+		await Promise.all(workers);
+		expect(errors).toEqual([]);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -571,6 +600,17 @@ describe("MultiIndexIsolation", () => {
 		}
 	});
 
+	test("list ids isolation", async () => {
+		// Each index's listIds must contain only its own IDs.
+		for (let i = 0; i < indexes.length; i++) {
+			const { ids } = await indexes[i].index.listIds();
+			expect(ids.length).toBeGreaterThan(0);
+			for (const id of ids) {
+				expect(id.startsWith(`idx${i}_`)).toBe(true);
+			}
+		}
+	});
+
 	test("delete in one index doesnt affect others", async () => {
 		// Deleting from index 0 must not remove anything from indexes 1 or 2.
 		const otherSnapshots: Record<number, Set<string>> = {};
@@ -765,5 +805,96 @@ describe("StressHighConcurrency", () => {
 		const storedSet = new Set(storedIds);
 		const missing = allIds.filter((id) => !storedSet.has(id));
 		expect(missing.length).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Index Switching From One Caller (ported from py test_concurrency.py)
+// ---------------------------------------------------------------------------
+
+describe("IndexSwitchingFromOneThread", () => {
+	let client: Client;
+	const numIndexes = 5;
+	let indexes: Array<{ index: EncryptedIndex; name: string; key: Uint8Array }>;
+
+	beforeAll(async () => {
+		client = makeClient();
+		indexes = [];
+		for (let i = 0; i < numIndexes; i++) {
+			indexes.push(await makeIndex(client, `switch_${i}`));
+		}
+	});
+
+	afterAll(async () => {
+		for (const { index } of indexes) {
+			try {
+				await index.deleteIndex();
+			} catch {
+				/* cleanup */
+			}
+		}
+	});
+
+	test("rapid round robin across indexes", async () => {
+		// One caller rapidly alternates ops across indexes: upsert to index i,
+		// query index i+1, etc. Validates the shared client scopes each request
+		// to the right index when touching different indexes back-to-back.
+		const perIndexIds: Record<number, string[]> = {};
+		const perIndexLastVecs: Record<number, number[][]> = {};
+		for (let i = 0; i < numIndexes; i++) {
+			perIndexIds[i] = [];
+		}
+
+		const rounds = 10;
+		const vecsPerRound = 5;
+		for (let r = 0; r < rounds; r++) {
+			for (let idx = 0; idx < numIndexes; idx++) {
+				const ids = Array.from(
+					{ length: vecsPerRound },
+					(_, j) => `sw${idx}_r${r}_${j}`,
+				);
+				const vectors = generateRandomVectors(vecsPerRound, DIMENSION);
+				await indexes[idx].index.upsert({ ids, vectors });
+				perIndexIds[idx].push(...ids);
+				perIndexLastVecs[idx] = vectors;
+
+				// Immediately query a different index to force context switching.
+				const other = (idx + 1) % numIndexes;
+				const response = await indexes[other].index.query({
+					queryVectors: generateRandomVectors(1, DIMENSION)[0],
+					topK: 5,
+				});
+				for (const item of flattenResults(response.results)) {
+					expect(item.id).toBeTruthy();
+				}
+			}
+		}
+
+		await waitUntil(async () => {
+			for (let i = 0; i < numIndexes; i++) {
+				const { ids } = await indexes[i].index.listIds();
+				if (ids.length < perIndexIds[i].length) return false;
+			}
+			return true;
+		});
+
+		// Each index ends with only its own IDs; last-round vectors stay intact.
+		for (let i = 0; i < numIndexes; i++) {
+			const { ids: stored } = await indexes[i].index.listIds();
+			expect(new Set(stored)).toEqual(new Set(perIndexIds[i]));
+
+			const lastIds = perIndexIds[i].slice(-vecsPerRound);
+			const retrieved = await indexes[i].index.get({
+				ids: [lastIds[0]],
+				include: ["vector"],
+			});
+			expect(retrieved.length).toBe(1);
+			expect(
+				vectorsApproxEqual(
+					retrieved[0].vector as number[],
+					perIndexLastVecs[i][0],
+				),
+			).toBe(true);
+		}
 	});
 });

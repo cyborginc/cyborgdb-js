@@ -647,4 +647,84 @@ describe("CyborgDB LangChain Integration", () => {
 			expect(docs[0].pageContent).toBe("Valid string content");
 		});
 	});
+
+	describe("Concurrent Async Operations", () => {
+		// Mirrors py TestAsyncConcurrentOperations: the async LangChain path
+		// under concurrent load through a shared CyborgVectorStore.
+		test("concurrent add and search", async () => {
+			// 10 callers add texts concurrently, then 10 search concurrently.
+			const numTasks = 10;
+			const textsPerTask = 10;
+
+			// Warm up so the index exists before the concurrent burst: the JS
+			// CyborgVectorStore initializes lazily on first use and that init is
+			// not concurrency-safe, so a cold parallel burst would race to create
+			// the index. (Python's store tolerates the concurrent first-op init.)
+			await vectorStore.addTexts(["warmup"], undefined, {
+				ids: ["async_warmup"],
+			});
+
+			const addResults = await Promise.allSettled(
+				Array.from({ length: numTasks }, (_, t) =>
+					vectorStore.addTexts(
+						Array.from(
+							{ length: textsPerTask },
+							(_, j) => `task ${t} document ${j} about topic ${t}`,
+						),
+						undefined,
+						{
+							ids: Array.from(
+								{ length: textsPerTask },
+								(_, j) => `async_${t}_${j}`,
+							),
+						},
+					),
+				),
+			);
+			for (const r of addResults) {
+				expect(r.status).toBe("fulfilled");
+				if (r.status === "fulfilled") {
+					expect(r.value).toHaveLength(textsPerTask);
+				}
+			}
+
+			const searchResults = await Promise.allSettled(
+				Array.from({ length: numTasks }, (_, t) =>
+					vectorStore.similaritySearch(`topic ${t}`, 5),
+				),
+			);
+			for (const r of searchResults) {
+				expect(r.status).toBe("fulfilled");
+				if (r.status === "fulfilled") {
+					expect(r.value.length).toBeGreaterThan(0);
+				}
+			}
+		});
+
+		test("concurrent add and delete", async () => {
+			// 5 callers add while 3 delete previously-seeded IDs — no crashes.
+			const seedIds = Array.from({ length: 30 }, (_, i) => `async_del_${i}`);
+			await vectorStore.addTexts(
+				Array.from({ length: 30 }, (_, i) => `deletable document ${i}`),
+				undefined,
+				{ ids: seedIds },
+			);
+
+			const adders = Array.from({ length: 5 }, (_, t) =>
+				vectorStore.addTexts(
+					Array.from({ length: 10 }, (_, j) => `new doc ${t}_${j}`),
+					undefined,
+					{ ids: Array.from({ length: 10 }, (_, j) => `async_new_${t}_${j}`) },
+				),
+			);
+			const deleters = Array.from({ length: 3 }, (_, t) =>
+				vectorStore.delete({ ids: seedIds.slice(t * 10, (t + 1) * 10) }),
+			);
+
+			const results = await Promise.allSettled([...adders, ...deleters]);
+			for (const r of results) {
+				expect(r.status).toBe("fulfilled");
+			}
+		});
+	});
 });
