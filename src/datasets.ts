@@ -16,6 +16,7 @@
  * ```
  */
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -119,10 +120,38 @@ export interface SampleDataset {
  */
 export type RawSampleDataset = Omit<SampleDataset, "items" | "sampleQueries">;
 
-/** Catalog of available datasets and where to fetch each one. */
-const DATASETS: Record<string, { objectPath: string }> = {
-	"quickstart-75k": { objectPath: "quickstart-75k/v1/dataset.json.gz" },
-};
+/**
+ * Catalog of available datasets: where to fetch each one and the SHA-256 of its
+ * decompressed JSON, pinned so a bucket compromise or a poisoned local cache
+ * file can't be trusted silently. The same digest is verified post-download and
+ * on cache read.
+ *
+ * Exported for tests to inject a fixture digest; it is intentionally not
+ * re-exported from `index.ts`, so it is not part of the public API.
+ */
+export const DATASETS: Record<string, { objectPath: string; sha256: string }> =
+	{
+		"quickstart-75k": {
+			objectPath: "quickstart-75k/v1/dataset.json.gz",
+			sha256:
+				"6e2db96a0932f036698ebf5e25cf0871cc69b649f7fb352f9e3dddcf9af0540f",
+		},
+	};
+
+/**
+ * Upper bound on the decompressed dataset size. Guards against a decompression
+ * bomb: a tiny gzip that expands to many GBs and OOMs the host. The largest
+ * shipped dataset is well under this; pick a generous cap.
+ */
+const MAX_DECOMPRESSED_BYTES = 512 * 1024 * 1024;
+
+/** Bounds the dataset download so a stalled connection can't hang forever. */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/** Hex-encoded SHA-256 of `data`. */
+function sha256Hex(data: Buffer): string {
+	return createHash("sha256").update(data).digest("hex");
+}
 
 /** Default dataset returned by `loadSampleDataset()` with no arguments. */
 export const DEFAULT_SAMPLE_DATASET = "quickstart-75k";
@@ -194,15 +223,28 @@ export async function loadSampleDataset(
 
 	if (!options.forceDownload && fs.existsSync(cacheFile)) {
 		try {
-			const cached = fs.readFileSync(cacheFile, "utf8");
-			return hydrate(JSON.parse(cached) as RawSampleDataset);
+			const cached = fs.readFileSync(cacheFile);
+			// Verify the cached file against the pinned digest: a poisoned cache
+			// must not be trusted. A mismatch falls through to re-download.
+			if (sha256Hex(cached) === entry.sha256) {
+				return hydrate(JSON.parse(cached.toString("utf8")) as RawSampleDataset);
+			}
 		} catch {
 			// Corrupt cache — fall through and re-download.
 		}
 	}
 
 	const url = `${SAMPLE_DATASETS_BASE_URL}/${entry.objectPath}`;
-	const response = await fetch(url);
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+		});
+	} catch (err) {
+		throw new Error(
+			`Failed to download sample dataset "${name}" from ${url}: ${err}`,
+		);
+	}
 	if (!response.ok) {
 		throw new Error(
 			`Failed to download sample dataset "${name}" from ${url}: ` +
@@ -211,14 +253,32 @@ export async function loadSampleDataset(
 	}
 
 	const compressed = Buffer.from(await response.arrayBuffer());
-	const json = gunzipSync(compressed).toString("utf8");
-	const raw = JSON.parse(json) as RawSampleDataset;
+	let decompressed: Buffer;
+	try {
+		// maxOutputLength caps the decompressed size, guarding against a
+		// decompression bomb (throws RangeError if the limit is exceeded).
+		decompressed = gunzipSync(compressed, {
+			maxOutputLength: MAX_DECOMPRESSED_BYTES,
+		});
+	} catch (err) {
+		throw new Error(`Failed to decompress sample dataset "${name}": ${err}`);
+	}
+
+	const digest = sha256Hex(decompressed);
+	if (digest !== entry.sha256) {
+		throw new Error(
+			`Integrity check failed for sample dataset "${name}": ` +
+				`expected SHA-256 ${entry.sha256}, got ${digest}.`,
+		);
+	}
+
+	const raw = JSON.parse(decompressed.toString("utf8")) as RawSampleDataset;
 
 	// Best-effort local cache of the raw payload; a failed write must not break
 	// the load. `items`/`sampleQueries` are rebuilt by hydrate() on read.
 	try {
 		fs.mkdirSync(cacheDir, { recursive: true });
-		fs.writeFileSync(cacheFile, json, "utf8");
+		fs.writeFileSync(cacheFile, decompressed);
 	} catch {
 		// Read-only FS or similar — skip caching.
 	}
