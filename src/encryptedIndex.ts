@@ -198,14 +198,10 @@ export class EncryptedIndex {
 				const result: GetResultItem = { id: item.id };
 
 				if (item.vector) result.vector = item.vector;
-				if (item.contents) {
-					try {
-						result.contents = Buffer.from(item.contents, "base64").toString(
-							"utf-8",
-						);
-					} catch {
-						result.contents = item.contents;
-					}
+				if (item.contents != null) {
+					// Return contents exactly as the service stored them (always a
+					// string), matching the Python SDK's get().
+					result.contents = item.contents;
 				}
 				if (item.metadata) result.metadata = item.metadata;
 				return result;

@@ -144,9 +144,12 @@ export interface HealthResponse {
 export interface GetResultItem
 	extends Omit<GetResultItemModel, "metadata" | "contents"> {
 	/**
-	 * The original content as Buffer, Blob, or string (if included)
+	 * The stored content, returned verbatim as a string (if included). Text
+	 * contents round-trip as the original UTF-8 string. Binary contents that
+	 * were upserted as a Buffer round-trip as a base64 string — decode them with
+	 * `Buffer.from(contents, "base64")`.
 	 */
-	contents?: Buffer | Blob | string;
+	contents?: string;
 	/**
 	 * Metadata associated with the vector (if included)
 	 */
