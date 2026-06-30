@@ -10,6 +10,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
 import { Client, type EncryptedIndex } from "../index";
+import {
+	CreateIndexRequestToJSON,
+	DeleteRequestToJSON,
+	GetRequestToJSON,
+	IndexOperationRequestToJSON,
+	ListIDsRequestToJSON,
+	QueryRequestToJSON,
+	TrainRequestToJSON,
+	UpsertRequestToJSON,
+} from "../models";
 import { flattenResults } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
@@ -949,5 +959,82 @@ describe("CyborgDB API Contract Tests", () => {
 			const indexes = await client.listIndexes();
 			expect(indexes).not.toContain(testIndexName);
 		});
+	});
+});
+
+describe("SDK Construction (offline)", () => {
+	// SDK-side construction/serialization checks that need no live service.
+	// Mirrors py TestSDKConstructionOffline / go TestSDKConstructionOffline.
+	// Client construction makes no network calls, so it is safe to instantiate.
+	const offlineClient = new Client({
+		baseUrl: "http://localhost:8000",
+		apiKey: "offline-test-key",
+		verifySsl: false,
+	});
+
+	// Round-trip a model through JSON to see exactly what reaches the wire —
+	// JSON.stringify drops `undefined` keys, which is the service's "no key"
+	// path (matches go's json.Marshal / py's to_dict checks).
+	const wire = (obj: unknown) => JSON.parse(JSON.stringify(obj));
+
+	it("createIndex requires indexKey or kmsName", async () => {
+		await expect(
+			offlineClient.createIndex({ indexName: "x" }),
+		).rejects.toThrow();
+	});
+
+	it("createIndex rejects a wrong-length key", async () => {
+		await expect(
+			offlineClient.createIndex({
+				indexName: "x",
+				indexKey: new Uint8Array(16),
+			}),
+		).rejects.toThrow();
+	});
+
+	it("loadIndex rejects a wrong-length key", async () => {
+		await expect(
+			offlineClient.loadIndex({ indexName: "x", indexKey: new Uint8Array(16) }),
+		).rejects.toThrow();
+	});
+
+	it("CreateIndexRequest with kmsName omits index_key on the wire", () => {
+		const payload = wire(
+			CreateIndexRequestToJSON({ indexName: "x", kmsName: "vendor-slot" }),
+		);
+		expect(payload.index_name).toBe("x");
+		expect(payload.kms_name).toBe("vendor-slot");
+		expect("index_key" in payload).toBe(false);
+	});
+
+	it("IndexOperationRequest keyless omits index_key on the wire", () => {
+		const payload = wire(IndexOperationRequestToJSON({ indexName: "x" }));
+		expect(payload.index_name).toBe("x");
+		expect("index_key" in payload).toBe(false);
+	});
+
+	it("all data-plane requests serialize without an index_key", () => {
+		const cases: Array<[string, unknown]> = [
+			[
+				"QueryRequest",
+				QueryRequestToJSON({ indexName: "x", queryVectors: [0] } as never),
+			],
+			[
+				"UpsertRequest",
+				UpsertRequestToJSON({ indexName: "x", items: [] } as never),
+			],
+			["GetRequest", GetRequestToJSON({ indexName: "x", ids: ["a"] } as never)],
+			[
+				"DeleteRequest",
+				DeleteRequestToJSON({ indexName: "x", ids: ["a"] } as never),
+			],
+			["TrainRequest", TrainRequestToJSON({ indexName: "x" } as never)],
+			["ListIDsRequest", ListIDsRequestToJSON({ indexName: "x" } as never)],
+		];
+		for (const [, json] of cases) {
+			const payload = wire(json);
+			// index_key must be absent or null on the wire (the KMS "no key" path).
+			expect(payload.index_key == null).toBe(true);
+		}
 	});
 });

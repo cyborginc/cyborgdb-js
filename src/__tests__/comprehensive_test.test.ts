@@ -6,6 +6,7 @@
 import { randomBytes } from "node:crypto";
 import * as dotenv from "dotenv";
 import { Client } from "../index";
+import { flattenResults } from "./test-helpers";
 
 // Load environment variables from .env.local
 dotenv.config({ path: ".env.local" });
@@ -442,36 +443,44 @@ describe("Edge Cases Tests", () => {
 	});
 
 	test("should handle boundary values", async () => {
-		const zeroVector = Array(128).fill(0);
-		await index.upsert({
-			items: [
-				{
-					id: "zero_vector",
-					vector: zeroVector,
-					metadata: { type: "zero" },
-				},
+		// Extreme float values must survive the upsert→get round-trip. Expected
+		// values are quantized to float32 (Math.fround) before comparison because
+		// the server stores vectors as float32 while JS numbers are float64.
+		// Mirrors go TestBoundaryVectorValuesRoundTrip /
+		// py test_boundary_vector_values_round_trip.
+		const cases: Array<[string, number[]]> = [
+			["very small (1e-10)", Array(128).fill(1e-10)],
+			["very large (1e10)", Array(128).fill(1e10)],
+			[
+				"mixed signs",
+				Array(128)
+					.fill(0)
+					.map((_, i) => (i % 2 === 0 ? i / 100.0 : -i / 100.0)),
 			],
-		});
+		];
 
-		const smallVector = Array(128).fill(1e-10);
-		await index.upsert({
-			items: [
-				{
-					id: "small_vector",
-					vector: smallVector,
-					metadata: { type: "small" },
-				},
-			],
-		});
+		for (let i = 0; i < cases.length; i++) {
+			await index.upsert({
+				items: [{ id: `boundary_${i}`, vector: cases[i][1] }],
+			});
+		}
+		await new Promise((resolve) => setTimeout(resolve, 2000));
 
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-
-		const results = await index.query({
-			queryVectors: [zeroVector],
-			topK: 2,
-		});
-
-		expect(results.results).toBeDefined();
+		for (let i = 0; i < cases.length; i++) {
+			const vec = cases[i][1];
+			const results = await index.get({
+				ids: [`boundary_${i}`],
+				include: ["vector"],
+			});
+			expect(results.length).toBe(1);
+			const retrieved = results[0].vector as number[];
+			expect(retrieved.length).toBe(128);
+			for (let j = 0; j < vec.length; j++) {
+				const expected = Math.fround(vec[j]);
+				const tol = Math.max(Math.abs(expected) * 1e-4, 1e-4);
+				expect(Math.abs(retrieved[j] - expected)).toBeLessThanOrEqual(tol);
+			}
+		}
 	});
 
 	test("should handle large metadata objects", async () => {
@@ -574,6 +583,182 @@ describe("Backend Compatibility Tests", () => {
 			expect(results.results).toBeDefined();
 		} finally {
 			await index.deleteIndex();
+		}
+	});
+});
+
+describe("Data Integrity Tests", () => {
+	const client = createClient();
+	let index: any;
+	let indexName: string;
+	let indexKey: Uint8Array;
+
+	beforeEach(async () => {
+		indexName = generateUniqueName("integrity");
+		indexKey = generateRandomKey();
+		index = await client.createIndex({
+			indexName,
+			indexKey,
+			dimension: 128,
+			metric: "euclidean",
+		});
+	});
+
+	afterEach(async () => {
+		if (index) {
+			try {
+				await index.deleteIndex();
+			} catch (error) {
+				console.error(`Error cleaning up index: ${error}`);
+			}
+		}
+	});
+
+	test("upsert overwrite preserves latest data", async () => {
+		// Overwriting an ID returns the latest vector and metadata — no stale
+		// cache, and version-1 metadata must not leak into version 2.
+		const vecV1 = Array(128)
+			.fill(0)
+			.map(() => Math.random());
+		await index.upsert({
+			items: [
+				{
+					id: "overwrite_test",
+					vector: vecV1,
+					metadata: { version: 1, old_field: "should_disappear" },
+				},
+			],
+		});
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
+		const vecV2 = Array(128)
+			.fill(0)
+			.map(() => Math.random() + 10.0);
+		await index.upsert({
+			items: [
+				{
+					id: "overwrite_test",
+					vector: vecV2,
+					metadata: { version: 2, new_field: "present" },
+				},
+			],
+		});
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
+		const results = await index.get({
+			ids: ["overwrite_test"],
+			include: ["vector", "metadata"],
+		});
+		expect(results.length).toBe(1);
+		const retrieved = results[0];
+		for (let i = 0; i < vecV2.length; i++) {
+			expect(retrieved.vector[i]).toBeCloseTo(vecV2[i], 4);
+		}
+		expect(retrieved.metadata.version).toBe(2);
+		expect(retrieved.metadata.new_field).toBe("present");
+	});
+
+	test("delete actually removes data", async () => {
+		// After delete, vectors are gone from get(), listIds(), and query().
+		const vectors = Array(10)
+			.fill(0)
+			.map(() =>
+				Array(128)
+					.fill(0)
+					.map(() => Math.random()),
+			);
+		const ids = vectors.map((_, i) => `del_test_${i}`);
+		await index.upsert({ ids, vectors });
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
+		const deleteIds = ids.slice(0, 5);
+		await index.delete({ ids: deleteIds });
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
+		// get() returns nothing for deleted IDs
+		const got = await index.get({ ids: deleteIds, include: ["vector"] });
+		expect(got.length).toBe(0);
+
+		// listIds() shows only the surviving 5
+		const listResult = await index.listIds();
+		for (const d of deleteIds) {
+			expect(listResult.ids).not.toContain(d);
+		}
+		expect(listResult.ids.length).toBe(5);
+
+		// query() must not surface a deleted vector
+		const response = await index.query({
+			queryVectors: [vectors[0]],
+			topK: 10,
+		});
+		const returned = flattenResults(response.results).map((it) => it.id);
+		for (const d of deleteIds) {
+			expect(returned).not.toContain(d);
+		}
+	});
+
+	test("get non-existent IDs", async () => {
+		// get() on a mix of real and missing IDs returns only the real ones.
+		await index.upsert({
+			items: [
+				{
+					id: "exists",
+					vector: Array(128)
+						.fill(0)
+						.map(() => Math.random()),
+				},
+			],
+		});
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
+		const results = await index.get({
+			ids: ["exists", "ghost_1", "ghost_2"],
+			include: ["vector"],
+		});
+		expect(results.length).toBe(1);
+		expect(results[0].id).toBe("exists");
+	});
+
+	test("duplicate index name rejected", async () => {
+		// `indexName` already exists (created in beforeEach); recreating it must
+		// fail rather than silently overwrite live data.
+		await expect(
+			client.createIndex({
+				indexName,
+				indexKey: generateRandomKey(),
+				dimension: 128,
+				metric: "euclidean",
+			}),
+		).rejects.toThrow();
+	});
+
+	test("wrong key cannot access data", async () => {
+		const name = generateUniqueName("wrongkey");
+		const wrongIndex = await client.createIndex({
+			indexName: name,
+			indexKey: generateRandomKey(),
+			dimension: 128,
+			metric: "euclidean",
+		});
+		try {
+			await wrongIndex.upsert({
+				items: [
+					{
+						id: "secret_data",
+						vector: Array(128)
+							.fill(0)
+							.map(() => Math.random()),
+					},
+				],
+			});
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+
+			// Loading with a different key must be rejected.
+			await expect(
+				client.loadIndex({ indexName: name, indexKey: generateRandomKey() }),
+			).rejects.toThrow();
+		} finally {
+			await wrongIndex.deleteIndex();
 		}
 	});
 });

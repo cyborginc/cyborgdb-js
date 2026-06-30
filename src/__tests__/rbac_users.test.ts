@@ -43,7 +43,10 @@ const BASE_URL =
 	process.env.CYBORGDB_BASE_URL ||
 	"http://localhost:8000";
 const ROOT_API_KEY = process.env.CYBORGDB_SERVICE_ROOT_KEY;
-const KMS_NAME = process.env.CYBORGDB_KMS_NAME;
+// The e2e nightly's RBAC step exports the slot as CYBORGDB_KMS_NAME_REAL; accept
+// the plain CYBORGDB_KMS_NAME too so this runs unchanged in either setup.
+const KMS_NAME =
+	process.env.CYBORGDB_KMS_NAME || process.env.CYBORGDB_KMS_NAME_REAL;
 
 const DIMENSION = 4;
 
@@ -152,14 +155,101 @@ describeIfRbac("CyborgDB RBAC — user management", () => {
 		// biome-ignore lint/style/noNonNullAssertion: guarded by expect above
 		expect([...listed!.permissions].sort()).toEqual(["read", "write"]);
 
-		// Revoke; the key must stop working on the next request.
+		// Revoke; the key must stop working immediately. Revocation drops the
+		// user's wrapped DEK, so even loading the index (which describes it,
+		// gated by the user-wrap check) is denied — hence load or query may
+		// throw. Matches test_list_then_revoke (py) / TestRBACListThenRevoke (go).
 		await index.deleteUser({ userId: out.userId });
 		const after = await index.listUsers();
 		expect(after.map((u) => u.userId)).not.toContain(out.userId);
 
-		const revoked = await userIndex(out.apiKey);
 		await expect(
-			revoked.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 }),
+			(async () => {
+				const revoked = await userIndex(out.apiKey);
+				await revoked.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 });
+			})(),
 		).rejects.toThrow();
+	});
+
+	it("read-only user is listed with read permission", async () => {
+		const out = await index.createUser({ permissions: ["read"] });
+		try {
+			const users = await index.listUsers();
+			const listed = users.find((u) => u.userId === out.userId);
+			expect(listed).toBeDefined();
+			// biome-ignore lint/style/noNonNullAssertion: guarded by expect above
+			expect(listed!.permissions).toEqual(["read"]);
+		} finally {
+			await index.deleteUser({ userId: out.userId });
+		}
+	});
+
+	it("write-only user can write but not query", async () => {
+		const out = await index.createUser({ permissions: ["write"] });
+		try {
+			const writer = await userIndex(out.apiKey);
+			// write op succeeds
+			await writer.upsert({
+				items: [{ id: "wo", vector: [0.0, 0.0, 1.0, 0.0] }],
+			});
+			// read op is cryptographically denied — no read DEK for this user
+			await expect(
+				writer.query({ queryVectors: [0.0, 0.0, 1.0, 0.0], topK: 1 }),
+			).rejects.toThrow();
+		} finally {
+			await index.deleteUser({ userId: out.userId });
+		}
+	});
+
+	it("invalid permissions rejected", async () => {
+		// The grant must be a non-empty subset of {"read","write"}; the service
+		// rejects an empty set and unknown permission names alike.
+		await expect(index.createUser({ permissions: [] })).rejects.toThrow();
+		await expect(
+			index.createUser({ permissions: ["admin"] }),
+		).rejects.toThrow();
+	});
+
+	it("non-root user cannot manage users", async () => {
+		const out = await index.createUser({ permissions: ["read", "write"] });
+		try {
+			const userIdx = await userIndex(out.apiKey);
+			// Minting, listing, and revoking users are root-only operations;
+			// a user key is rejected on each.
+			await expect(
+				userIdx.createUser({ permissions: ["read"] }),
+			).rejects.toThrow();
+			await expect(userIdx.listUsers()).rejects.toThrow();
+			await expect(
+				userIdx.deleteUser({ userId: out.userId }),
+			).rejects.toThrow();
+		} finally {
+			await index.deleteUser({ userId: out.userId });
+		}
+	});
+
+	it("revoking one user leaves another working", async () => {
+		const first = await index.createUser({ permissions: ["read"] });
+		const second = await index.createUser({ permissions: ["read"] });
+		try {
+			// Revoking one user drops only that user's wrapped keys; the other
+			// user's key keeps resolving the index.
+			await index.deleteUser({ userId: first.userId });
+			const survivor = await userIndex(second.apiKey);
+			const results = await survivor.query({
+				queryVectors: [0.1, 0.2, 0.3, 0.4],
+				topK: 1,
+			});
+			expect(Array.isArray(results.results)).toBe(true);
+			expect((results.results as unknown[]).length).toBeGreaterThanOrEqual(1);
+		} finally {
+			for (const u of [first, second]) {
+				try {
+					await index.deleteUser({ userId: u.userId });
+				} catch {
+					/* already revoked */
+				}
+			}
+		}
 	});
 });
