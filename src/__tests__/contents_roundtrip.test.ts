@@ -9,8 +9,8 @@
  * fully offline by mocking the API layer the index talks to.
  */
 import { describe, expect, it } from "@jest/globals";
-import { EncryptedIndex } from "../encryptedIndex";
 import type { DefaultApi } from "../apis/DefaultApi";
+import { EncryptedIndex } from "../encryptedIndex";
 
 // Build an EncryptedIndex whose API layer echoes a fixed `contents` wire value
 // back from getVectorsV1VectorsGetPost — i.e. exactly what the service stores.
