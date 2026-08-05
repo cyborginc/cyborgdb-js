@@ -3,6 +3,15 @@ export const VERSION = require("../package.json").version;
 
 // Main SDK exports
 export { CyborgDB as Client } from "./client";
+// Export sample dataset loader
+export {
+	DEFAULT_SAMPLE_DATASET,
+	type LoadSampleDatasetOptions,
+	loadSampleDataset,
+	SAMPLE_DATASETS_BASE_URL,
+	type SampleDataset,
+	type SampleFilter,
+} from "./datasets";
 // Export demo utilities
 export { getDemoApiKey } from "./demo";
 export { EncryptedIndex } from "./encryptedIndex";

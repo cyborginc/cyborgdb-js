@@ -1,8 +1,12 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
 import * as dotenv from "dotenv";
-import { Client, type EncryptedIndex, type QueryResultItem } from "../index";
+import {
+	Client,
+	type EncryptedIndex,
+	loadSampleDataset,
+	type QueryResultItem,
+	type SampleDataset,
+} from "../index";
 
 // Load environment variables from .env.local
 dotenv.config({ path: ".env.local" });
@@ -125,26 +129,8 @@ function checkMetadataResults(
 	return recalls;
 }
 
-interface TestData {
-	vectors: number[][];
-	queries: number[][];
-	untrained_neighbors: number[][];
-	trained_neighbors: number[][];
-	metadata: any[];
-	metadata_queries: any[];
-	metadata_query_names: string[]; // Present in JSON but not used in tests
-	untrained_metadata_matches: number[][];
-	trained_metadata_matches: number[][];
-	untrained_metadata_neighbors: number[][][];
-	trained_metadata_neighbors: number[][][];
-	untrained_recall: number;
-	trained_recall: number;
-	num_untrained_vectors: number;
-	num_trained_vectors: number;
-}
-
 describe("TestUnitFlow", () => {
-	let data: TestData;
+	let data: SampleDataset;
 	let vectors: number[][];
 	let queries: number[][];
 	let untrainedNeighbors: number[][];
@@ -170,25 +156,10 @@ describe("TestUnitFlow", () => {
 	let index: EncryptedIndex;
 
 	beforeAll(async () => {
-		// Construct the path to the JSON file
-		const testDir = path.dirname(path.resolve(__filename));
-		const jsonPath = path.join(testDir, "unit_test_flow_data.json");
-		const jsonData = fs.readFileSync(jsonPath, "utf8");
-
-		// Compute & validate checksum
-		const expectedChecksum =
-			"f72e30b0e9b94d1987d0bfd39866f05477cc0cdae88398d85d59693f283a504e";
-		const checksum = createHash("sha256")
-			.update(jsonData, "utf8")
-			.digest("hex");
-		if (checksum !== expectedChecksum) {
-			throw new Error(
-				`Data integrity check failed: expected checksum ${expectedChecksum}, got ${checksum}`,
-			);
-		}
-
-		// Parse the JSON data
-		data = JSON.parse(jsonData);
+		// Fetch the hosted sample dataset (downloaded from S3 on first use and
+		// cached locally). It carries the full ground-truth arrays this recall
+		// test needs, so it replaces the previously-committed JSON fixture.
+		data = await loadSampleDataset();
 
 		// Load vectors and neighbors as arrays
 		vectors = data.vectors;
