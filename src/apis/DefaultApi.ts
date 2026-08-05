@@ -81,6 +81,14 @@ import {
     ListUsersResponseFromJSON,
 } from '../models/ListUsersResponse';
 import {
+    type QueryMetadataRequest,
+    QueryMetadataRequestToJSON,
+} from '../models/QueryMetadataRequest';
+import {
+    type QueryMetadataResponse,
+    QueryMetadataResponseFromJSON,
+} from '../models/QueryMetadataResponse';
+import {
     type QueryResponse,
     QueryResponseFromJSON,
 } from '../models/QueryResponse';
@@ -140,6 +148,10 @@ export interface ListIdsV1VectorsListIdsPostRequest {
 export interface ListUsersV1IndexesIndexNameUsersGetRequest {
     indexName: string;
     xIndexKey?: string | null;
+}
+
+export interface QueryMetadataV1VectorsQueryMetadataPostRequest {
+    queryMetadataRequest: QueryMetadataRequest;
 }
 
 export interface QueryVectorsBinaryV1VectorsQueryBinaryPostRequest {
@@ -830,6 +842,59 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async listUsersV1IndexesIndexNameUsersGet(requestParameters: ListUsersV1IndexesIndexNameUsersGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ListUsersResponse> {
         const response = await this.listUsersV1IndexesIndexNameUsersGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for queryMetadataV1VectorsQueryMetadataPost without sending the request
+     */
+    async queryMetadataV1VectorsQueryMetadataPostRequestOpts(requestParameters: QueryMetadataV1VectorsQueryMetadataPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['queryMetadataRequest'] == null) {
+            throw new runtime.RequiredError(
+                'queryMetadataRequest',
+                'Required parameter "queryMetadataRequest" was null or undefined when calling queryMetadataV1VectorsQueryMetadataPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-API-Key"] = await this.configuration.apiKey("X-API-Key"); // APIKeyHeader authentication
+        }
+
+
+        let urlPath = `/v1/vectors/query_metadata`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: QueryMetadataRequestToJSON(requestParameters['queryMetadataRequest']),
+        };
+    }
+
+    /**
+     * Find items by metadata alone — no query vector, no distances.  Resolves the filter entirely from the encrypted metadata index and returns the matching item IDs. Works on untrained indexes.  Because there is no post-filter stage to fall back on, the index\'s `metadata_schema` is enforced here: `$regex` / `$contains` need a `pattern` field, and a `filterable: false` field cannot be filtered on. Both come back as 400 with the reason. `/query` with a vector has no such restriction.
+     * Query an Encrypted Index by Metadata Only
+     */
+    async queryMetadataV1VectorsQueryMetadataPostRaw(requestParameters: QueryMetadataV1VectorsQueryMetadataPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<QueryMetadataResponse>> {
+        const requestOptions = await this.queryMetadataV1VectorsQueryMetadataPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => QueryMetadataResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Find items by metadata alone — no query vector, no distances.  Resolves the filter entirely from the encrypted metadata index and returns the matching item IDs. Works on untrained indexes.  Because there is no post-filter stage to fall back on, the index\'s `metadata_schema` is enforced here: `$regex` / `$contains` need a `pattern` field, and a `filterable: false` field cannot be filtered on. Both come back as 400 with the reason. `/query` with a vector has no such restriction.
+     * Query an Encrypted Index by Metadata Only
+     */
+    async queryMetadataV1VectorsQueryMetadataPost(requestParameters: QueryMetadataV1VectorsQueryMetadataPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<QueryMetadataResponse> {
+        const response = await this.queryMetadataV1VectorsQueryMetadataPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

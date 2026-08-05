@@ -7,6 +7,7 @@ import type {
 	CreateIndexRequestStoragePrecisionEnum,
 	IndexInfoResponseModel,
 	IndexOperationRequest,
+	MetadataFieldPolicy,
 } from "./models";
 import { Configuration } from "./runtime";
 import type { HealthResponse } from "./types";
@@ -184,6 +185,11 @@ export class CyborgDB {
 	 * @param metric Distance metric for the index (optional)
 	 * @param embeddingModel Optional name of embedding model
 	 * @param storagePrecision Optional on-disk rerank-vector precision ('float32' | 'float16')
+	 * @param metadataSchema Optional per-field metadata indexing policy, fixed at
+	 *   create time: `{ title: { filterable: true, pattern: true } }`. Fields left
+	 *   out are filterable (opt-out posture); `pattern` requires `filterable` and
+	 *   builds the regex dictionary that `$regex`/`$contains` need. On `query()`
+	 *   this only decides how a filter resolves; `queryMetadata()` enforces it.
 	 * @returns Promise with the created index
 	 */
 	async createIndex({
@@ -194,6 +200,7 @@ export class CyborgDB {
 		metric,
 		embeddingModel,
 		storagePrecision,
+		metadataSchema,
 	}: {
 		indexName: string;
 		indexKey?: Uint8Array;
@@ -202,6 +209,7 @@ export class CyborgDB {
 		metric?: "euclidean" | "squared_euclidean" | "cosine";
 		embeddingModel?: string;
 		storagePrecision?: "float32" | "float16";
+		metadataSchema?: { [field: string]: MetadataFieldPolicy };
 	}) {
 		// Local guard mirrored from the py/go SDKs: at least one of the two.
 		if (indexKey === undefined && kmsName === undefined) {
@@ -225,6 +233,7 @@ export class CyborgDB {
 					| undefined,
 				...(keyHex !== undefined && { indexKey: keyHex }),
 				...(kmsName !== undefined && { kmsName }),
+				...(metadataSchema !== undefined && { metadataSchema }),
 			};
 
 			await this.api.createIndexV1IndexesCreatePost({

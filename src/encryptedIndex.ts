@@ -13,6 +13,9 @@ import type {
 	IndexOperationRequest,
 	ListIDsRequest,
 	ListIDsResponse,
+	MetadataFieldPolicy,
+	QueryMetadataRequest,
+	QueryMetadataResponse,
 	QueryResponse,
 	Request,
 	TrainRequest,
@@ -665,6 +668,110 @@ export class EncryptedIndex {
 				deleteRequest,
 			});
 			return response as DeleteResponse;
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * Find items by metadata alone — no query vector, no distances.
+	 *
+	 * The filter is resolved entirely from the encrypted metadata index, so this
+	 * works on untrained indexes and never decrypts vectors. It is also the one
+	 * read path where the index's `metadataSchema` is enforced rather than just
+	 * steering performance: `$regex`/`$contains` need a `pattern` field, and a
+	 * field created with `filterable: false` cannot be filtered on at all. Both
+	 * reject — run the same filter through `query()` with a vector if you need
+	 * them, which post-filters on the decrypted metadata instead.
+	 *
+	 * @param filters Metadata filters; omitted or empty matches everything
+	 * @param topK Cap on IDs returned, applied AFTER `orderBy`; omit for all
+	 * @param orderBy Metadata field to sort matches by, post-filter — either a
+	 *   field name or a MongoDB-style single-field object (`{ views: -1 }`,
+	 *   which sets the direction too)
+	 * @param ascending Sort direction when `orderBy` is a plain field name
+	 *   (default true)
+	 * @returns Promise with the matching IDs and their count
+	 */
+	async queryMetadata({
+		filters,
+		topK,
+		orderBy,
+		ascending = true,
+	}: {
+		filters?: FilterExpression;
+		topK?: number;
+		orderBy?: string | { [field: string]: number };
+		ascending?: boolean;
+	} = {}): Promise<{ ids: string[]; count: number }> {
+		// Accept core's `{ field: 1 | -1 }` form and normalize it here; the service
+		// takes a field name plus a separate direction flag. Validated before the
+		// request so a malformed `orderBy` throws as itself, not as an API error.
+		let orderByField = typeof orderBy === "string" ? orderBy : undefined;
+		let sortAscending = ascending;
+
+		if (typeof orderBy === "object" && orderBy !== null) {
+			const entries = Object.entries(orderBy);
+			if (Array.isArray(orderBy) || entries.length !== 1) {
+				throw new Error(
+					"Invalid queryMetadata call: orderBy must be a field name or a " +
+						"single-field object like { field: 1 } / { field: -1 }",
+				);
+			}
+			const [field, direction] = entries[0];
+			if (typeof direction !== "number" || Number.isNaN(direction)) {
+				throw new Error(
+					`Invalid queryMetadata call: orderBy direction for "${field}" must ` +
+						`be a number, e.g. { ${field}: -1 }`,
+				);
+			}
+			orderByField = field;
+			sortAscending = direction >= 0;
+		} else if (orderBy !== undefined && orderByField === undefined) {
+			throw new Error(
+				"Invalid queryMetadata call: orderBy must be a field name or a " +
+					"single-field object like { field: 1 } / { field: -1 }",
+			);
+		}
+
+		try {
+			const queryMetadataRequest: QueryMetadataRequest = this.withKey({
+				indexName: this.indexName,
+				filters: filters ?? {},
+				ascending: sortAscending,
+				...(topK !== undefined && { topK }),
+				...(orderByField !== undefined && { orderBy: orderByField }),
+			});
+
+			const response: QueryMetadataResponse =
+				await this.api.queryMetadataV1VectorsQueryMetadataPost({
+					queryMetadataRequest,
+				});
+
+			return { ids: response.ids, count: response.count };
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * The per-field metadata indexing policy recorded at create time.
+	 *
+	 * Empty object when the index uses the default index-everything posture, or
+	 * when the service predates the feature — callers never have to distinguish
+	 * those from a missing field.
+	 *
+	 * @returns Promise with the policy keyed by field name
+	 */
+	async metadataSchema(): Promise<{ [field: string]: MetadataFieldPolicy }> {
+		try {
+			const indexOperationRequest: IndexOperationRequest = this.withKey({
+				indexName: this.indexName,
+			});
+			const response = await this.api.getIndexInfoV1IndexesDescribePost({
+				indexOperationRequest,
+			});
+			return response.metadataSchema ?? {};
 		} catch (error: unknown) {
 			handleApiError(error);
 		}

@@ -69,8 +69,20 @@ export interface FilterOperator {
 	$nin?: JsonArray;
 	$and?: FilterExpression[];
 	$or?: FilterExpression[];
+	$nor?: FilterExpression[];
 	$not?: FilterExpression;
 	$exists?: boolean;
+	/**
+	 * ECMAScript regex, matched with search semantics (unanchored).
+	 *
+	 * On `query()` this resolves from the field's regex dictionary when the
+	 * index declared it `pattern: true`, and otherwise falls back to a
+	 * post-filter — same rows either way. On `queryMetadata()` there is no
+	 * fallback, so a non-pattern field is rejected.
+	 */
+	$regex?: string;
+	/** Substring match. Same index-resolution rules as `$regex`. */
+	$contains?: string;
 }
 
 /**
