@@ -686,8 +686,11 @@ export class EncryptedIndex {
 	 *
 	 * @param filters Metadata filters; omitted or empty matches everything
 	 * @param topK Cap on IDs returned, applied AFTER `orderBy`; omit for all
-	 * @param orderBy Metadata field to sort matches by, post-filter
-	 * @param ascending Sort direction when `orderBy` is set (default true)
+	 * @param orderBy Metadata field to sort matches by, post-filter — either a
+	 *   field name or a MongoDB-style single-field object (`{ views: -1 }`,
+	 *   which sets the direction too)
+	 * @param ascending Sort direction when `orderBy` is a plain field name
+	 *   (default true)
 	 * @returns Promise with the matching IDs and their count
 	 */
 	async queryMetadata({
@@ -698,16 +701,46 @@ export class EncryptedIndex {
 	}: {
 		filters?: FilterExpression;
 		topK?: number;
-		orderBy?: string;
+		orderBy?: string | { [field: string]: number };
 		ascending?: boolean;
 	} = {}): Promise<{ ids: string[]; count: number }> {
+		// Accept core's `{ field: 1 | -1 }` form and normalize it here; the service
+		// takes a field name plus a separate direction flag. Validated before the
+		// request so a malformed `orderBy` throws as itself, not as an API error.
+		let orderByField = typeof orderBy === "string" ? orderBy : undefined;
+		let sortAscending = ascending;
+
+		if (typeof orderBy === "object" && orderBy !== null) {
+			const entries = Object.entries(orderBy);
+			if (Array.isArray(orderBy) || entries.length !== 1) {
+				throw new Error(
+					"Invalid queryMetadata call: orderBy must be a field name or a " +
+						"single-field object like { field: 1 } / { field: -1 }",
+				);
+			}
+			const [field, direction] = entries[0];
+			if (typeof direction !== "number" || Number.isNaN(direction)) {
+				throw new Error(
+					`Invalid queryMetadata call: orderBy direction for "${field}" must ` +
+						`be a number, e.g. { ${field}: -1 }`,
+				);
+			}
+			orderByField = field;
+			sortAscending = direction >= 0;
+		} else if (orderBy !== undefined && orderByField === undefined) {
+			throw new Error(
+				"Invalid queryMetadata call: orderBy must be a field name or a " +
+					"single-field object like { field: 1 } / { field: -1 }",
+			);
+		}
+
 		try {
 			const queryMetadataRequest: QueryMetadataRequest = this.withKey({
 				indexName: this.indexName,
 				filters: filters ?? {},
-				ascending,
+				ascending: sortAscending,
 				...(topK !== undefined && { topK }),
-				...(orderBy !== undefined && { orderBy }),
+				...(orderByField !== undefined && { orderBy: orderByField }),
 			});
 
 			const response: QueryMetadataResponse =

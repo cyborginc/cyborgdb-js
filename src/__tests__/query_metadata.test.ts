@@ -163,6 +163,21 @@ describe("queryMetadata with a per-field policy", () => {
 		expect(descending.ids).toEqual(["i5", "i4", "i3", "i2", "i1", "i0"]);
 	});
 
+	it("accepts the mongo-style single-field object form of orderBy", async () => {
+		// { field: -1 } is core's form; the wrapper normalizes it for the service.
+		const { ids } = await index.queryMetadata({
+			filters: { rank: { $gte: 0 } },
+			orderBy: { rank: -1 },
+		});
+		expect(ids).toEqual(["i5", "i4", "i3", "i2", "i1", "i0"]);
+	});
+
+	it("rejects an orderBy object with two fields", async () => {
+		await expect(
+			index.queryMetadata({ orderBy: { rank: 1, color: -1 } }),
+		).rejects.toThrow(/exactly one|single-field/);
+	});
+
 	it("applies topK after the sort", async () => {
 		const { ids } = await index.queryMetadata({
 			filters: { rank: { $gte: 0 } },
