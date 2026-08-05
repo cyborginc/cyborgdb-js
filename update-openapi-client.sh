@@ -15,8 +15,8 @@ echo "Cleaning old generated files..."
 rm -rf src/models src/apis
 
 # Generate TypeScript client using typescript-fetch generator
-# Using OpenAPI Generator version 7.12.0
-echo "Generating TypeScript client with OpenAPI Generator 7.12.0..."
+# Using OpenAPI Generator version 7.22.0
+echo "Generating TypeScript client with OpenAPI Generator 7.22.0..."
 
 # Check if openapi-generator-cli is installed
 if ! command -v openapi-generator-cli &> /dev/null; then
@@ -25,7 +25,7 @@ if ! command -v openapi-generator-cli &> /dev/null; then
 fi
 
 # Set the specific version
-export OPENAPI_GENERATOR_VERSION=7.12.0
+export OPENAPI_GENERATOR_VERSION=7.22.0
 
 # Generate the client
 openapi-generator-cli generate \
