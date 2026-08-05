@@ -27,6 +27,8 @@ export * from './ListIDsResponse';
 export * from './ListUsersResponse';
 export * from './LocationInner';
 export * from './MetadataFieldPolicy';
+export * from './QueryMetadataRequest';
+export * from './QueryMetadataResponse';
 export * from './QueryRequest';
 export * from './QueryResponse';
 export * from './QueryResultItem';

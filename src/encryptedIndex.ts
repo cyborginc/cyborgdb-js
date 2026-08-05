@@ -13,6 +13,9 @@ import type {
 	IndexOperationRequest,
 	ListIDsRequest,
 	ListIDsResponse,
+	MetadataFieldPolicy,
+	QueryMetadataRequest,
+	QueryMetadataResponse,
 	QueryResponse,
 	Request,
 	TrainRequest,
@@ -665,6 +668,77 @@ export class EncryptedIndex {
 				deleteRequest,
 			});
 			return response as DeleteResponse;
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * Find items by metadata alone — no query vector, no distances.
+	 *
+	 * The filter is resolved entirely from the encrypted metadata index, so this
+	 * works on untrained indexes and never decrypts vectors. It is also the one
+	 * read path where the index's `metadataSchema` is enforced rather than just
+	 * steering performance: `$regex`/`$contains` need a `pattern` field, and a
+	 * field created with `filterable: false` cannot be filtered on at all. Both
+	 * reject — run the same filter through `query()` with a vector if you need
+	 * them, which post-filters on the decrypted metadata instead.
+	 *
+	 * @param filters Metadata filters; omitted or empty matches everything
+	 * @param topK Cap on IDs returned, applied AFTER `orderBy`; omit for all
+	 * @param orderBy Metadata field to sort matches by, post-filter
+	 * @param ascending Sort direction when `orderBy` is set (default true)
+	 * @returns Promise with the matching IDs and their count
+	 */
+	async queryMetadata({
+		filters,
+		topK,
+		orderBy,
+		ascending = true,
+	}: {
+		filters?: FilterExpression;
+		topK?: number;
+		orderBy?: string;
+		ascending?: boolean;
+	} = {}): Promise<{ ids: string[]; count: number }> {
+		try {
+			const queryMetadataRequest: QueryMetadataRequest = this.withKey({
+				indexName: this.indexName,
+				filters: filters ?? {},
+				ascending,
+				...(topK !== undefined && { topK }),
+				...(orderBy !== undefined && { orderBy }),
+			});
+
+			const response: QueryMetadataResponse =
+				await this.api.queryMetadataV1VectorsQueryMetadataPost({
+					queryMetadataRequest,
+				});
+
+			return { ids: response.ids, count: response.count };
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * The per-field metadata indexing policy recorded at create time.
+	 *
+	 * Empty object when the index uses the default index-everything posture, or
+	 * when the service predates the feature — callers never have to distinguish
+	 * those from a missing field.
+	 *
+	 * @returns Promise with the policy keyed by field name
+	 */
+	async metadataSchema(): Promise<{ [field: string]: MetadataFieldPolicy }> {
+		try {
+			const indexOperationRequest: IndexOperationRequest = this.withKey({
+				indexName: this.indexName,
+			});
+			const response = await this.api.getIndexInfoV1IndexesDescribePost({
+				indexOperationRequest,
+			});
+			return response.metadataSchema ?? {};
 		} catch (error: unknown) {
 			handleApiError(error);
 		}

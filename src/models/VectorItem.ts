@@ -49,7 +49,7 @@ export interface VectorItem {
      */
     contents?: Contents | null;
     /**
-     * 
+     * Arbitrary JSON object stored alongside the vector. Schemaless — the index's `metadata_schema` governs how fields are indexed, not what may be stored. Nested objects are addressable by dot-path in filters (`loc.city`); dates have no native type, store them as epoch millis.
      * @type {{ [key: string]: any; }}
      * @memberof VectorItem
      */
