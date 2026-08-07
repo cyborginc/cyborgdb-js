@@ -394,31 +394,27 @@ describe("CyborgDB SSL Verification", () => {
 			},
 		];
 
-		test.each(
-			combinations,
-		)("URL: $url, verifySsl: $verifySsl should log $expectedLogType", ({
-			url,
-			verifySsl,
-			expectedLogType,
-			expectedMessage,
-		}) => {
-			const client = new CyborgDB({
-				baseUrl: url,
-				apiKey: CYBORGDB_API_KEY,
-				verifySsl,
-			});
+		test.each(combinations)(
+			"URL: $url, verifySsl: $verifySsl should log $expectedLogType",
+			({ url, verifySsl, expectedLogType, expectedMessage }) => {
+				const client = new CyborgDB({
+					baseUrl: url,
+					apiKey: CYBORGDB_API_KEY,
+					verifySsl,
+				});
 
-			expect(client).toBeDefined();
+				expect(client).toBeDefined();
 
-			if (expectedLogType === "info" && expectedMessage) {
-				expect(originalConsoleInfo).toHaveBeenCalledWith(expectedMessage);
-			} else if (expectedLogType === "warn" && expectedMessage) {
-				expect(originalConsoleWarn).toHaveBeenCalledWith(expectedMessage);
-			} else {
-				expect(originalConsoleInfo).not.toHaveBeenCalled();
-				expect(originalConsoleWarn).not.toHaveBeenCalled();
-			}
-		});
+				if (expectedLogType === "info" && expectedMessage) {
+					expect(originalConsoleInfo).toHaveBeenCalledWith(expectedMessage);
+				} else if (expectedLogType === "warn" && expectedMessage) {
+					expect(originalConsoleWarn).toHaveBeenCalledWith(expectedMessage);
+				} else {
+					expect(originalConsoleInfo).not.toHaveBeenCalled();
+					expect(originalConsoleWarn).not.toHaveBeenCalled();
+				}
+			},
+		);
 	});
 
 	describe("Functionality Preservation", () => {
