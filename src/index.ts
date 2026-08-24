@@ -20,6 +20,7 @@ export * from "./integrations";
 // Export commonly used types and interfaces
 export {
 	BatchQueryRequest,
+	BM25Config,
 	CreateIndexRequest,
 	DeleteRequest,
 	ErrorResponseModel,
@@ -27,6 +28,8 @@ export {
 	GetResponseModel,
 	HTTPValidationError,
 	IndexOperationRequest,
+	MetadataFieldPolicy,
+	MetadataResult,
 	QueryResponse,
 	QueryResultItem,
 	TrainRequest,
