@@ -1,11 +1,13 @@
 /* tslint:disable */
 /* eslint-disable */
+
 export * from './BatchQueryRequest';
 export * from './BinaryQueryBatch';
 export * from './BinaryQueryRequest';
 export * from './BinaryUpsertRequest';
 export * from './BinaryVectorBatch';
 export * from './BinaryVectorBatchContentsInner';
+export * from './BM25Config';
 export * from './Contents';
 export * from './CreateIndexRequest';
 export * from './CreateUserRequest';
@@ -27,6 +29,8 @@ export * from './ListIDsResponse';
 export * from './ListUsersResponse';
 export * from './LocationInner';
 export * from './MetadataFieldPolicy';
+export * from './MetadataResult';
+export * from './OrderBy';
 export * from './QueryMetadataRequest';
 export * from './QueryMetadataResponse';
 export * from './QueryRequest';

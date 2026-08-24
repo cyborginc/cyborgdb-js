@@ -12,17 +12,34 @@
  * Do not edit the class manually.
  */
 
+import type { MetadataResult } from './MetadataResult';
+import {
+    MetadataResultFromJSON,
+    MetadataResultToJSON,
+} from './MetadataResult';
+
 /**
- * Response model for a metadata-only query.
+ * Response model for a metadata query.
  * 
  * Attributes:
- *     ids (List[str]): Matching item IDs — ordered by `order_by` when it was
- *         set, otherwise an unordered subset.
- *     count (int): Number of IDs returned.
+ *     results (List[MetadataResult]): Matching items, using core's row shape
+ *         directly. On a `text=...` query each row is `{id, score}` in
+ *         descending score order; on a filter-only query each row is `{id}`
+ *         (no `score` key — there is nothing to score) following `order_by`
+ *         when set, else an unordered subset.
+ *     ids (List[str]): Matching item IDs, parallel to `results`. Retained
+ *         for backward compatibility with callers that only read IDs.
+ *     count (int): Number of items returned.
  * @export
  * @interface QueryMetadataResponse
  */
 export interface QueryMetadataResponse {
+    /**
+     * 
+     * @type {Array<MetadataResult>}
+     * @memberof QueryMetadataResponse
+     */
+    results?: Array<MetadataResult>;
     /**
      * 
      * @type {Array<string>}
@@ -56,6 +73,7 @@ export function QueryMetadataResponseFromJSONTyped(json: any, ignoreDiscriminato
     }
     return {
         
+        'results': json['results'] == null ? undefined : ((json['results'] as Array<any>).map(MetadataResultFromJSON)),
         'ids': json['ids'],
         'count': json['count'],
     };
@@ -72,6 +90,7 @@ export function QueryMetadataResponseToJSONTyped(value?: QueryMetadataResponse |
 
     return {
         
+        'results': value['results'] == null ? undefined : ((value['results'] as Array<any>).map(MetadataResultToJSON)),
         'ids': value['ids'],
         'count': value['count'],
     };
