@@ -113,9 +113,13 @@ describe("BM25 full-text search (single full_text field)", () => {
 	it("returns scored { id, score } rows ranked by descending score", async () => {
 		const results = await index.queryMetadata({ text: "quantum computing" });
 		expect(results.length).toBeGreaterThan(0);
-		// Scored dicts, not bare IDs, and sorted by descending score.
+		// Scored rows: each carries a real numeric BM25 score (not just a present
+		// key — the mapping always sets `score`, so its value is what matters),
+		// and they come back sorted by descending score.
 		expect(
-			results.every((r) => Object.keys(r).sort().join() === "id,score"),
+			results.every(
+				(r) => typeof r.id === "string" && typeof r.score === "number",
+			),
 		).toBe(true);
 		const scores = results.map((r) => r.score as number);
 		expect(scores).toEqual([...scores].sort((a, b) => b - a));
@@ -167,9 +171,8 @@ describe("BM25 full-text search (single full_text field)", () => {
 			filters: { topic: { $in: ["physics"] } },
 		});
 		expect(idSet(results)).toEqual(ANY_TERM);
-		expect(
-			results.every((r) => Object.keys(r).sort().join() === "id,score"),
-		).toBe(true);
+		// Survivors of the pre-filter are scored: each carries a numeric score.
+		expect(results.every((r) => typeof r.score === "number")).toBe(true);
 	});
 
 	it("composes requireAllTerms with a filter", async () => {

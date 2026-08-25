@@ -852,7 +852,9 @@ export class EncryptedIndex {
 	 *
 	 * @returns Promise with the policy keyed by field name
 	 */
-	async metadataSchema(): Promise<{ [field: string]: MetadataFieldPolicy }> {
+	async metadataSchema(): Promise<{
+		[field: string]: Required<MetadataFieldPolicy>;
+	}> {
 		try {
 			const indexOperationRequest: IndexOperationRequest = this.withKey({
 				indexName: this.indexName,
@@ -861,13 +863,15 @@ export class EncryptedIndex {
 				indexOperationRequest,
 			});
 			// Normalize each policy to the full { filterable, pattern, fullText }
-			// shape (matching py's property), so callers never branch on a
-			// missing key — an older service that omits fullText reads as false.
+			// shape (matching py's property), so callers never branch on a missing
+			// key. Defaults follow the index-everything posture: `filterable` is
+			// opt-out (true unless the service says otherwise), `pattern` and
+			// `fullText` are opt-in (false unless set).
 			return Object.fromEntries(
 				Object.entries(response.metadataSchema ?? {}).map(([field, policy]) => [
 					field,
 					{
-						filterable: policy.filterable ?? false,
+						filterable: policy.filterable ?? true,
 						pattern: policy.pattern ?? false,
 						fullText: policy.fullText ?? false,
 					},
