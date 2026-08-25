@@ -855,31 +855,22 @@ export class EncryptedIndex {
 	async metadataSchema(): Promise<{
 		[field: string]: Required<MetadataFieldPolicy>;
 	}> {
-		try {
-			const indexOperationRequest: IndexOperationRequest = this.withKey({
-				indexName: this.indexName,
-			});
-			const response = await this.api.getIndexInfoV1IndexesDescribePost({
-				indexOperationRequest,
-			});
-			// Normalize each policy to the full { filterable, pattern, fullText }
-			// shape (matching py's property), so callers never branch on a missing
-			// key. Defaults follow the index-everything posture: `filterable` is
-			// opt-out (true unless the service says otherwise), `pattern` and
-			// `fullText` are opt-in (false unless set).
-			return Object.fromEntries(
-				Object.entries(response.metadataSchema ?? {}).map(([field, policy]) => [
-					field,
-					{
-						filterable: policy.filterable ?? true,
-						pattern: policy.pattern ?? false,
-						fullText: policy.fullText ?? false,
-					},
-				]),
-			);
-		} catch (error: unknown) {
-			handleApiError(error);
-		}
+		const response = await this.describeIndex(this.indexName);
+		// Normalize each policy to the full { filterable, pattern, fullText }
+		// shape (matching py's property), so callers never branch on a missing
+		// key. Defaults follow the index-everything posture: `filterable` is
+		// opt-out (true unless the service says otherwise), `pattern` and
+		// `fullText` are opt-in (false unless set).
+		return Object.fromEntries(
+			Object.entries(response.metadataSchema ?? {}).map(([field, policy]) => [
+				field,
+				{
+					filterable: policy.filterable ?? true,
+					pattern: policy.pattern ?? false,
+					fullText: policy.fullText ?? false,
+				},
+			]),
+		);
 	}
 
 	/**
@@ -898,25 +889,16 @@ export class EncryptedIndex {
 		b: number;
 		analyzerVersion?: string | null;
 	} | null> {
-		try {
-			const indexOperationRequest: IndexOperationRequest = this.withKey({
-				indexName: this.indexName,
-			});
-			const response = await this.api.getIndexInfoV1IndexesDescribePost({
-				indexOperationRequest,
-			});
-			const config = response.bm25;
-			if (config == null) {
-				return null;
-			}
-			return {
-				k1: config.k1,
-				b: config.b,
-				analyzerVersion: config.analyzerVersion ?? null,
-			};
-		} catch (error: unknown) {
-			handleApiError(error);
+		const response = await this.describeIndex(this.indexName);
+		const config = response.bm25;
+		if (config == null) {
+			return null;
 		}
+		return {
+			k1: config.k1,
+			b: config.b,
+			analyzerVersion: config.analyzerVersion ?? null,
+		};
 	}
 
 	/**
