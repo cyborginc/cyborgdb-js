@@ -203,6 +203,10 @@ $RECYCLE.BIN/
 
 # Project specific
 .openapi-generator
+# Auto-generated per-model/api markdown docs emitted by openapi-generator
+# (typescript-fetch) on every regen; not shipped (package.json `files` only
+# publishes dist/) and not hand-maintained, so kept out of the repo.
+src/docs/
 wwwroot/*.js
 typings
 pr.md
