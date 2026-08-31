@@ -184,7 +184,11 @@ export class CyborgDB {
 	 * @param dimension Vector dimensionality (auto-detected from the first upsert if omitted)
 	 * @param metric Distance metric for the index (optional)
 	 * @param embeddingModel Optional name of embedding model
-	 * @param storagePrecision Optional on-disk rerank-vector precision ('float32' | 'float16')
+	 * @param storagePrecision Optional on-disk rerank-vector precision. `'float32'`
+	 *   (default) or `'float16'` (half the storage), or a TurboQuant tier
+	 *   `'tq12'` / `'tq8'` / `'tq6'` / `'tq4'` (12/8/6/4 bits per dim) that trades
+	 *   storage for a small recall/latency cost. `'tq4'` requires the cosine
+	 *   metric. Chosen at create time and immutable.
 	 * @param metadataSchema Optional per-field metadata indexing policy, fixed at
 	 *   create time: `{ title: { filterable: true, pattern: true } }`. Fields left
 	 *   out are filterable (opt-out posture); `pattern` requires `filterable` and
@@ -225,7 +229,7 @@ export class CyborgDB {
 		dimension?: number;
 		metric?: "euclidean" | "squared_euclidean" | "cosine";
 		embeddingModel?: string;
-		storagePrecision?: "float32" | "float16";
+		storagePrecision?: "float32" | "float16" | "tq12" | "tq8" | "tq6" | "tq4";
 		metadataSchema?: { [field: string]: MetadataFieldPolicy };
 		textFields?: string[];
 		bm25K1?: number;
