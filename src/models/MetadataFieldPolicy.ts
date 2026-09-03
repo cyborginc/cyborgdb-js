@@ -28,6 +28,13 @@
  *     pattern: Additionally build the field's regex dictionary, which
  *         makes `$regex` / `$contains` resolvable from the index.
  *         Requires `filterable=true`.
+ *     full_text: Route the field's string value through the BM25
+ *         analyzer instead of exact-match indexing.  This is what makes
+ *         the field searchable by `query_metadata(text=...)` and hybrid
+ *         `query(text=...)`.  A field is either analyzed or exact-match
+ *         indexed, so `full_text=true` is incompatible with both
+ *         `pattern=true` and an explicit `filterable=true`, and implies
+ *         `filterable=false`.
  * @export
  * @interface MetadataFieldPolicy
  */
@@ -44,6 +51,12 @@ export interface MetadataFieldPolicy {
      * @memberof MetadataFieldPolicy
      */
     pattern?: boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof MetadataFieldPolicy
+     */
+    fullText?: boolean;
 }
 
 /**
@@ -65,6 +78,7 @@ export function MetadataFieldPolicyFromJSONTyped(json: any, ignoreDiscriminator:
         
         'filterable': json['filterable'] == null ? undefined : json['filterable'],
         'pattern': json['pattern'] == null ? undefined : json['pattern'],
+        'fullText': json['full_text'] == null ? undefined : json['full_text'],
     };
 }
 
@@ -81,6 +95,7 @@ export function MetadataFieldPolicyToJSONTyped(value?: MetadataFieldPolicy | nul
         
         'filterable': value['filterable'],
         'pattern': value['pattern'],
+        'full_text': value['fullText'],
     };
 }
 

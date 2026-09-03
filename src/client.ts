@@ -184,12 +184,30 @@ export class CyborgDB {
 	 * @param dimension Vector dimensionality (auto-detected from the first upsert if omitted)
 	 * @param metric Distance metric for the index (optional)
 	 * @param embeddingModel Optional name of embedding model
-	 * @param storagePrecision Optional on-disk rerank-vector precision ('float32' | 'float16')
+	 * @param storagePrecision Optional on-disk rerank-vector precision. `'float32'`
+	 *   (default) or `'float16'` (half the storage), or a TurboQuant tier
+	 *   `'tq12'` / `'tq8'` / `'tq6'` / `'tq4'` (12/8/6/4 bits per dim) that trades
+	 *   storage for a small recall/latency cost. `'tq4'` requires the cosine
+	 *   metric. Chosen at create time and immutable.
 	 * @param metadataSchema Optional per-field metadata indexing policy, fixed at
 	 *   create time: `{ title: { filterable: true, pattern: true } }`. Fields left
 	 *   out are filterable (opt-out posture); `pattern` requires `filterable` and
 	 *   builds the regex dictionary that `$regex`/`$contains` need. On `query()`
 	 *   this only decides how a filter resolves; `queryMetadata()` enforces it.
+	 *
+	 *   A third policy, `full_text`, routes the field's string value through the
+	 *   BM25 analyzer instead of exact-match indexing, making it searchable by
+	 *   `queryMetadata({ text })` and hybrid `query({ text })`. `full_text: true`
+	 *   implies `filterable: false` and is incompatible with `pattern: true`:
+	 *   `{ body: { fullText: true } }`.
+	 * @param textFields Shorthand for marking fields `full_text: true` in
+	 *   `metadataSchema`. A field listed here is analyzed by BM25 and becomes
+	 *   searchable by `query({ text })` / `queryMetadata({ text })`.
+	 * @param bm25K1 BM25 term-frequency saturation (default 1.2). Requires at
+	 *   least one full-text field.
+	 * @param bm25B BM25 length-normalization strength (default 0.75). Requires at
+	 *   least one full-text field. BM25 search is opt-in and derived — an index
+	 *   with no full-text field writes no BM25 config at all.
 	 * @returns Promise with the created index
 	 */
 	async createIndex({
@@ -201,6 +219,9 @@ export class CyborgDB {
 		embeddingModel,
 		storagePrecision,
 		metadataSchema,
+		textFields,
+		bm25K1,
+		bm25B,
 	}: {
 		indexName: string;
 		indexKey?: Uint8Array;
@@ -208,8 +229,11 @@ export class CyborgDB {
 		dimension?: number;
 		metric?: "euclidean" | "squared_euclidean" | "cosine";
 		embeddingModel?: string;
-		storagePrecision?: "float32" | "float16";
+		storagePrecision?: "float32" | "float16" | "tq12" | "tq8" | "tq6" | "tq4";
 		metadataSchema?: { [field: string]: MetadataFieldPolicy };
+		textFields?: string[];
+		bm25K1?: number;
+		bm25B?: number;
 	}) {
 		// Local guard mirrored from the py/go SDKs: at least one of the two.
 		if (indexKey === undefined && kmsName === undefined) {
@@ -234,6 +258,9 @@ export class CyborgDB {
 				...(keyHex !== undefined && { indexKey: keyHex }),
 				...(kmsName !== undefined && { kmsName }),
 				...(metadataSchema !== undefined && { metadataSchema }),
+				...(textFields !== undefined && { textFields }),
+				...(bm25K1 !== undefined && { bm25K1 }),
+				...(bm25B !== undefined && { bm25B }),
 			};
 
 			await this.api.createIndexV1IndexesCreatePost({

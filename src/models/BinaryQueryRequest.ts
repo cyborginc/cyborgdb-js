@@ -26,6 +26,7 @@ import {
  * 
  * Inherits:
  *     IndexOperationRequest: Includes `index_name` and `index_key`.
+ *     HybridQueryParams: `text` and the fusion knobs for hybrid search.
  * 
  * Attributes:
  *     batch (BinaryQueryBatch): The batch of query vectors in binary format.
@@ -41,6 +42,48 @@ import {
  * @interface BinaryQueryRequest
  */
 export interface BinaryQueryRequest {
+    /**
+     * Query text for a BM25 full-text leg. Requires an index with at least one full_text field. Omitted/empty leaves the query text-free.
+     * @type {string}
+     * @memberof BinaryQueryRequest
+     */
+    text?: string | null;
+    /**
+     * full_text fields the text leg searches; omitted means all of them. Naming a non-full_text field raises.
+     * @type {Array<string>}
+     * @memberof BinaryQueryRequest
+     */
+    textFields?: Array<string> | null;
+    /**
+     * Per-field weights on the summed per-field BM25 scores, parallel to the searched fields. Omitted means 1.0 each.
+     * @type {Array<number>}
+     * @memberof BinaryQueryRequest
+     */
+    textFieldWeights?: Array<number> | null;
+    /**
+     * Require every query term to match (AND) instead of any (OR, the default).
+     * @type {boolean}
+     * @memberof BinaryQueryRequest
+     */
+    requireAllTerms?: boolean | null;
+    /**
+     * Leg blend in [0, 1]: 0 = pure BM25, 1 = pure vector; omitted means 0.5. An exact endpoint skips the dead leg's retrieval.
+     * @type {number}
+     * @memberof BinaryQueryRequest
+     */
+    alpha?: number | null;
+    /**
+     * RRF rank-smoothing constant (> 0; omitted means 60). Higher rewards agreement further down each leg's list.
+     * @type {number}
+     * @memberof BinaryQueryRequest
+     */
+    rrfK?: number | null;
+    /**
+     * Per-leg candidate depth as a multiple of top_k (>= 1; omitted means 3), so each leg looks deeper than the final cut.
+     * @type {number}
+     * @memberof BinaryQueryRequest
+     */
+    windowMult?: number | null;
     /**
      * ID name
      * @type {string}
@@ -116,6 +159,13 @@ export function BinaryQueryRequestFromJSONTyped(json: any, ignoreDiscriminator: 
     }
     return {
         
+        'text': json['text'] == null ? undefined : json['text'],
+        'textFields': json['text_fields'] == null ? undefined : json['text_fields'],
+        'textFieldWeights': json['text_field_weights'] == null ? undefined : json['text_field_weights'],
+        'requireAllTerms': json['require_all_terms'] == null ? undefined : json['require_all_terms'],
+        'alpha': json['alpha'] == null ? undefined : json['alpha'],
+        'rrfK': json['rrf_k'] == null ? undefined : json['rrf_k'],
+        'windowMult': json['window_mult'] == null ? undefined : json['window_mult'],
         'indexName': json['index_name'],
         'indexKey': json['index_key'] == null ? undefined : json['index_key'],
         'batch': BinaryQueryBatchFromJSON(json['batch']),
@@ -139,6 +189,13 @@ export function BinaryQueryRequestToJSONTyped(value?: BinaryQueryRequest | null,
 
     return {
         
+        'text': value['text'],
+        'text_fields': value['textFields'],
+        'text_field_weights': value['textFieldWeights'],
+        'require_all_terms': value['requireAllTerms'],
+        'alpha': value['alpha'],
+        'rrf_k': value['rrfK'],
+        'window_mult': value['windowMult'],
         'index_name': value['indexName'],
         'index_key': value['indexKey'],
         'batch': BinaryQueryBatchToJSON(value['batch']),
