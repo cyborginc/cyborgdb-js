@@ -14,6 +14,7 @@ import type {
 	ListIDsRequest,
 	ListIDsResponse,
 	MetadataFieldPolicy,
+	MetadataResult,
 	QueryMetadataRequest,
 	QueryMetadataResponse,
 	QueryResponse,
@@ -547,6 +548,22 @@ export class EncryptedIndex {
 	 * @param filters Metadata filters (MongoDB-style queries supported)
 	 * @param include Fields to include in results
 	 * @param greedy Use faster approximate search
+	 * @param text Query text for a BM25 leg — turns this into a hybrid (BM25 +
+	 *   vector) query against an index with at least one `full_text` field; a
+	 *   query vector is still required. Hybrid results carry a fused `score`
+	 *   (larger = more relevant) instead of `distance`. Omitted/empty leaves the
+	 *   query text-free (pure vector search).
+	 * @param textFields `full_text` fields the text leg searches; omitted means
+	 *   all of them. Naming a non-full-text field raises.
+	 * @param textFieldWeights Per-field weights on the summed per-field BM25
+	 *   scores, parallel to the searched fields. Omitted means 1.0 each.
+	 * @param requireAllTerms Require every query term to match (AND) instead of
+	 *   any (OR, the default).
+	 * @param alpha Leg blend in `[0, 1]`: 0 = pure BM25, 1 = pure vector; omitted
+	 *   means 0.5.
+	 * @param rrfK RRF rank-smoothing constant (> 0; omitted means 60).
+	 * @param windowMult Per-leg candidate depth as a multiple of `topK` (>= 1;
+	 *   omitted means 3).
 	 * @returns Promise resolving to QueryResponse
 	 * @throws Error if neither queryVectors nor queryContents provided
 	 */
@@ -560,6 +577,13 @@ export class EncryptedIndex {
 		greedy,
 		rerankMult,
 		dimension,
+		text,
+		textFields,
+		textFieldWeights,
+		requireAllTerms,
+		alpha,
+		rrfK,
+		windowMult,
 	}: {
 		queryVectors?: number[] | number[][] | Float32Array;
 		queryContents?: string;
@@ -570,6 +594,13 @@ export class EncryptedIndex {
 		greedy?: boolean;
 		rerankMult?: number;
 		dimension?: number;
+		text?: string;
+		textFields?: string[];
+		textFieldWeights?: number[];
+		requireAllTerms?: boolean;
+		alpha?: number;
+		rrfK?: number;
+		windowMult?: number;
 	}): Promise<QueryResponse> {
 		// Route to binary endpoint if queryVectors is Float32Array
 		if (queryVectors instanceof Float32Array) {
@@ -587,6 +618,13 @@ export class EncryptedIndex {
 				greedy,
 				rerankMult,
 				dimension,
+				text,
+				textFields,
+				textFieldWeights,
+				requireAllTerms,
+				alpha,
+				rrfK,
+				windowMult,
 			});
 		}
 
@@ -624,6 +662,15 @@ export class EncryptedIndex {
 					? vectors2D.map((vector) => vector.map((v) => Number(v)))
 					: [],
 				queryContents: queryContents ?? undefined,
+				// Hybrid text-leg knobs; only forwarded when set so an index
+				// without full_text fields keeps seeing text-free requests.
+				text: text ?? undefined,
+				textFields: textFields ?? undefined,
+				textFieldWeights: textFieldWeights ?? undefined,
+				requireAllTerms: requireAllTerms ?? undefined,
+				alpha: alpha ?? undefined,
+				rrfK: rrfK ?? undefined,
+				windowMult: windowMult ?? undefined,
 			});
 
 			const response = await this.api.queryVectorsV1VectorsQueryPost({
@@ -684,26 +731,51 @@ export class EncryptedIndex {
 	 * reject — run the same filter through `query()` with a vector if you need
 	 * them, which post-filters on the decrypted metadata instead.
 	 *
+	 * Returns `MetadataResult` rows (`{ id }`, matching core's
+	 * `list[MetadataResult]`). Passing `text` adds a BM25 full-text leg (requires
+	 * an index with at least one `full_text` field): results are then ranked by
+	 * relevance and each row also carries a `score` (`{ id, score }`, descending
+	 * score); `filters` given alongside acts as a pre-filter and `orderBy` is not
+	 * supported with `text`.
+	 *
 	 * @param filters Metadata filters; omitted or empty matches everything
-	 * @param topK Cap on IDs returned, applied AFTER `orderBy`; omit for all
+	 * @param topK Cap on results returned, applied AFTER `orderBy`; omit for all
 	 * @param orderBy Metadata field to sort matches by, post-filter — either a
 	 *   field name or a MongoDB-style single-field object (`{ views: -1 }`,
-	 *   which sets the direction too)
+	 *   which sets the direction too). Not supported with `text`.
 	 * @param ascending Sort direction when `orderBy` is a plain field name
 	 *   (default true)
-	 * @returns Promise with the matching IDs and their count
+	 * @param text Query text for the BM25 leg. Omitted/empty keeps this a
+	 *   filter-only query returning `{ id }` rows (no score).
+	 * @param textFields `full_text` fields the text leg searches; omitted means
+	 *   all of them. Naming a non-full-text field raises.
+	 * @param textFieldWeights Per-field weights on the summed per-field BM25
+	 *   scores, parallel to the searched fields. Omitted means 1.0 each.
+	 * @param requireAllTerms Require every query term to match (AND) instead of
+	 *   any (OR, the default).
+	 * @returns Promise with a list of `{ id }` rows (`MetadataResult[]`). Without
+	 *   `text`: ordered when `orderBy` was given, no `score` key. With `text`:
+	 *   each row also carries `score`, ranked by descending BM25 score.
 	 */
 	async queryMetadata({
 		filters,
 		topK,
 		orderBy,
 		ascending = true,
+		text,
+		textFields,
+		textFieldWeights,
+		requireAllTerms,
 	}: {
 		filters?: FilterExpression;
 		topK?: number;
 		orderBy?: string | { [field: string]: number };
 		ascending?: boolean;
-	} = {}): Promise<{ ids: string[]; count: number }> {
+		text?: string;
+		textFields?: string[];
+		textFieldWeights?: number[];
+		requireAllTerms?: boolean;
+	} = {}): Promise<MetadataResult[]> {
 		// Accept core's `{ field: 1 | -1 }` form and normalize it here; the service
 		// takes a field name plus a separate direction flag. Validated before the
 		// request so a malformed `orderBy` throws as itself, not as an API error.
@@ -741,6 +813,12 @@ export class EncryptedIndex {
 				ascending: sortAscending,
 				...(topK !== undefined && { topK }),
 				...(orderByField !== undefined && { orderBy: orderByField }),
+				// Text-leg knobs, only forwarded when set so an index without
+				// full_text fields keeps seeing text-free requests.
+				...(text !== undefined && { text }),
+				...(textFields !== undefined && { textFields }),
+				...(textFieldWeights !== undefined && { textFieldWeights }),
+				...(requireAllTerms !== undefined && { requireAllTerms }),
 			});
 
 			const response: QueryMetadataResponse =
@@ -748,33 +826,79 @@ export class EncryptedIndex {
 					queryMetadataRequest,
 				});
 
-			return { ids: response.ids, count: response.count };
+			// Match core's list[MetadataResult]: always { id, ... } rows. A text
+			// query is ranked by relevance and each row carries a BM25 `score`; a
+			// filter-only query has nothing to score, so the row is just { id }
+			// (no `score` key), mirroring core exactly.
+			const rows = response.results ?? [];
+			if (text) {
+				return rows.map((item) => ({ id: item.id, score: item.score }));
+			}
+			return rows.map((item) => ({ id: item.id }));
 		} catch (error: unknown) {
 			handleApiError(error);
 		}
 	}
 
 	/**
-	 * The per-field metadata indexing policy recorded at create time.
+	 * The per-field metadata indexing policy recorded at create time, as
+	 * `{ field: { filterable, pattern, fullText } }`.
 	 *
 	 * Empty object when the index uses the default index-everything posture, or
 	 * when the service predates the feature — callers never have to distinguish
-	 * those from a missing field.
+	 * those from a missing field. `fullText` marks a field routed through the
+	 * BM25 analyzer (searchable by `query`/`queryMetadata` with `text`); see
+	 * {@link bm25} for the scorer config.
 	 *
 	 * @returns Promise with the policy keyed by field name
 	 */
-	async metadataSchema(): Promise<{ [field: string]: MetadataFieldPolicy }> {
-		try {
-			const indexOperationRequest: IndexOperationRequest = this.withKey({
-				indexName: this.indexName,
-			});
-			const response = await this.api.getIndexInfoV1IndexesDescribePost({
-				indexOperationRequest,
-			});
-			return response.metadataSchema ?? {};
-		} catch (error: unknown) {
-			handleApiError(error);
+	async metadataSchema(): Promise<{
+		[field: string]: Required<MetadataFieldPolicy>;
+	}> {
+		const response = await this.describeIndex(this.indexName);
+		// Normalize each policy to the full { filterable, pattern, fullText }
+		// shape (matching py's property), so callers never branch on a missing
+		// key. Defaults follow the index-everything posture: `filterable` is
+		// opt-out (true unless the service says otherwise), `pattern` and
+		// `fullText` are opt-in (false unless set).
+		return Object.fromEntries(
+			Object.entries(response.metadataSchema ?? {}).map(([field, policy]) => [
+				field,
+				{
+					filterable: policy.filterable ?? true,
+					pattern: policy.pattern ?? false,
+					fullText: policy.fullText ?? false,
+				},
+			]),
+		);
+	}
+
+	/**
+	 * BM25 scorer config the index reports back, as
+	 * `{ k1, b, analyzerVersion }`, or `null` when the index has no `fullText`
+	 * field (BM25 is opt-in and derived, never flagged).
+	 *
+	 * `k1`/`b` are the tuning parameters supplied at create time or their
+	 * defaults; `analyzerVersion` identifies the tokenizer/stemmer pipeline the
+	 * corpus was indexed with.
+	 *
+	 * @returns Promise with the BM25 config, or `null` when not configured
+	 */
+	async bm25(): Promise<{
+		k1: number;
+		b: number;
+		analyzerVersion?: string | null;
+	} | null> {
+		const response = await this.describeIndex(this.indexName);
+		const config = response.bm25;
+		if (config == null) {
+			return null;
 		}
+		return {
+			k1: config.k1,
+			b: config.b,
+			analyzerVersion: config.analyzerVersion ?? null,
+		};
 	}
 
 	/**
@@ -914,6 +1038,13 @@ export class EncryptedIndex {
 		greedy,
 		rerankMult,
 		dimension: providedDimension,
+		text,
+		textFields,
+		textFieldWeights,
+		requireAllTerms,
+		alpha,
+		rrfK,
+		windowMult,
 	}: {
 		queryVectors: number[][] | Float32Array;
 		topK?: number;
@@ -923,6 +1054,13 @@ export class EncryptedIndex {
 		greedy?: boolean;
 		rerankMult?: number;
 		dimension?: number;
+		text?: string;
+		textFields?: string[];
+		textFieldWeights?: number[];
+		requireAllTerms?: boolean;
+		alpha?: number;
+		rrfK?: number;
+		windowMult?: number;
 	}): Promise<QueryResponse> {
 		try {
 			// Convert vectors to Float32Array if needed and get dimension
@@ -978,6 +1116,14 @@ export class EncryptedIndex {
 				rerankMult: rerankMult ?? undefined,
 				filters: filters ?? undefined,
 				include: include ?? undefined,
+				// Hybrid text-leg knobs, forwarded on the binary path too.
+				text: text ?? undefined,
+				textFields: textFields ?? undefined,
+				textFieldWeights: textFieldWeights ?? undefined,
+				requireAllTerms: requireAllTerms ?? undefined,
+				alpha: alpha ?? undefined,
+				rrfK: rrfK ?? undefined,
+				windowMult: windowMult ?? undefined,
 			});
 
 			const response =

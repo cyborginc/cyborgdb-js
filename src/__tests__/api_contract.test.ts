@@ -16,6 +16,7 @@ import {
 	GetRequestToJSON,
 	IndexOperationRequestToJSON,
 	ListIDsRequestToJSON,
+	QueryMetadataRequestToJSON,
 	QueryRequestToJSON,
 	TrainRequestToJSON,
 	UpsertRequestToJSON,
@@ -1036,5 +1037,62 @@ describe("SDK Construction (offline)", () => {
 			// index_key must be absent or null on the wire (the KMS "no key" path).
 			expect(payload.index_key == null).toBe(true);
 		}
+	});
+
+	// BM25 knobs must reach the wire as snake_case (create-time config + the
+	// hybrid/text query legs). Locks the SDK's forwarding to the openapi
+	// contract without needing a full_text-capable service — mirrors py's
+	// test_api_contract additions for text_fields / bm25_* / the query legs.
+	it("createIndex forwards the BM25 config to the wire", () => {
+		const payload = wire(
+			CreateIndexRequestToJSON({
+				indexName: "x",
+				textFields: ["body"],
+				bm25K1: 1.5,
+				bm25B: 0.7,
+			} as never),
+		);
+		expect(payload.text_fields).toEqual(["body"]);
+		expect(payload.bm25_k1).toBe(1.5);
+		expect(payload.bm25_b).toBe(0.7);
+	});
+
+	it("query forwards the hybrid text-leg knobs to the wire", () => {
+		const payload = wire(
+			QueryRequestToJSON({
+				indexName: "x",
+				queryVectors: [[0]],
+				text: "quantum",
+				textFields: ["body"],
+				textFieldWeights: [2, 1],
+				requireAllTerms: true,
+				alpha: 0.5,
+				rrfK: 60,
+				windowMult: 3,
+			} as never),
+		);
+		expect(payload.text).toBe("quantum");
+		expect(payload.text_fields).toEqual(["body"]);
+		expect(payload.text_field_weights).toEqual([2, 1]);
+		expect(payload.require_all_terms).toBe(true);
+		expect(payload.alpha).toBe(0.5);
+		expect(payload.rrf_k).toBe(60);
+		expect(payload.window_mult).toBe(3);
+	});
+
+	it("queryMetadata forwards the BM25 text-leg knobs to the wire", () => {
+		const payload = wire(
+			QueryMetadataRequestToJSON({
+				indexName: "x",
+				text: "quantum",
+				textFields: ["body"],
+				textFieldWeights: [1],
+				requireAllTerms: true,
+			} as never),
+		);
+		expect(payload.text).toBe("quantum");
+		expect(payload.text_fields).toEqual(["body"]);
+		expect(payload.text_field_weights).toEqual([1]);
+		expect(payload.require_all_terms).toBe(true);
 	});
 });
