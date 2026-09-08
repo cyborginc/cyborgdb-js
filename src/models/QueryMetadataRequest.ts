@@ -12,25 +12,60 @@
  * Do not edit the class manually.
  */
 
+import type { OrderBy } from './OrderBy';
+import {
+    OrderByFromJSON,
+    OrderByToJSON,
+} from './OrderBy';
+
 /**
- * Request model for a metadata-only query (no query vector).
+ * Request model for a metadata query (no query vector), optionally with a
+ * BM25 full-text leg.
  * 
  * Inherits:
  *     IndexOperationRequest: Includes `index_name` and `index_key`.
+ *     TextSearchParams: `text` and the BM25 field knobs. When `text` is set
+ *         the result is ranked by BM25 score; a `filters` given alongside
+ *         acts as a pre-filter (the text leg scores only its survivors).
+ *         `order_by` is not supported together with `text`.
  * 
  * Attributes:
  *     filters (Optional[Dict[str, Any]]): Metadata filters as a JSON-like
  *         dictionary. Unlike `/query`, every leaf must be resolvable from
  *         the metadata index — see the field description.
- *     top_k (Optional[int]): Cap on the number of ids returned. `None`
+ *     top_k (Optional[int]): Cap on the number of results returned. `None`
  *         returns every match. Applied AFTER `order_by`.
  *     order_by (Optional[str]): Metadata field to sort the matches by
- *         (post-filter). Unordered when omitted.
+ *         (post-filter). Unordered when omitted. Not supported with `text`.
  *     ascending (bool): Sort direction when `order_by` is set.
  * @export
  * @interface QueryMetadataRequest
  */
 export interface QueryMetadataRequest {
+    /**
+     * Query text for a BM25 full-text leg. Requires an index with at least one full_text field. Omitted/empty leaves the query text-free.
+     * @type {string}
+     * @memberof QueryMetadataRequest
+     */
+    text?: string | null;
+    /**
+     * full_text fields the text leg searches; omitted means all of them. Naming a non-full_text field raises.
+     * @type {Array<string>}
+     * @memberof QueryMetadataRequest
+     */
+    textFields?: Array<string> | null;
+    /**
+     * Per-field weights on the summed per-field BM25 scores, parallel to the searched fields. Omitted means 1.0 each.
+     * @type {Array<number>}
+     * @memberof QueryMetadataRequest
+     */
+    textFieldWeights?: Array<number> | null;
+    /**
+     * Require every query term to match (AND) instead of any (OR, the default).
+     * @type {boolean}
+     * @memberof QueryMetadataRequest
+     */
+    requireAllTerms?: boolean | null;
     /**
      * ID name
      * @type {string}
@@ -56,13 +91,13 @@ export interface QueryMetadataRequest {
      */
     topK?: number | null;
     /**
-     * Metadata field to sort matches by, applied after filtering. Unordered when omitted. Items missing the field, or holding a non-scalar, sort last.
-     * @type {string}
+     * 
+     * @type {OrderBy}
      * @memberof QueryMetadataRequest
      */
-    orderBy?: string | null;
+    orderBy?: OrderBy | null;
     /**
-     * Sort direction when `order_by` is set.
+     * Sort direction when `order_by` is a field name. Ignored when `order_by` is a dict (the dict's sign wins).
      * @type {boolean}
      * @memberof QueryMetadataRequest
      */
@@ -87,11 +122,15 @@ export function QueryMetadataRequestFromJSONTyped(json: any, ignoreDiscriminator
     }
     return {
         
+        'text': json['text'] == null ? undefined : json['text'],
+        'textFields': json['text_fields'] == null ? undefined : json['text_fields'],
+        'textFieldWeights': json['text_field_weights'] == null ? undefined : json['text_field_weights'],
+        'requireAllTerms': json['require_all_terms'] == null ? undefined : json['require_all_terms'],
         'indexName': json['index_name'],
         'indexKey': json['index_key'] == null ? undefined : json['index_key'],
         'filters': json['filters'] == null ? undefined : json['filters'],
         'topK': json['top_k'] == null ? undefined : json['top_k'],
-        'orderBy': json['order_by'] == null ? undefined : json['order_by'],
+        'orderBy': json['order_by'] == null ? undefined : OrderByFromJSON(json['order_by']),
         'ascending': json['ascending'] == null ? undefined : json['ascending'],
     };
 }
@@ -107,11 +146,15 @@ export function QueryMetadataRequestToJSONTyped(value?: QueryMetadataRequest | n
 
     return {
         
+        'text': value['text'],
+        'text_fields': value['textFields'],
+        'text_field_weights': value['textFieldWeights'],
+        'require_all_terms': value['requireAllTerms'],
         'index_name': value['indexName'],
         'index_key': value['indexKey'],
         'filters': value['filters'],
         'top_k': value['topK'],
-        'order_by': value['orderBy'],
+        'order_by': OrderByToJSON(value['orderBy']),
         'ascending': value['ascending'],
     };
 }

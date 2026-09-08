@@ -13,6 +13,11 @@
  */
 
 import { mapValues } from '../runtime';
+import type { BM25Config } from './BM25Config';
+import {
+    BM25ConfigFromJSON,
+    BM25ConfigToJSON,
+} from './BM25Config';
 import type { MetadataFieldPolicy } from './MetadataFieldPolicy';
 import {
     MetadataFieldPolicyFromJSON,
@@ -35,6 +40,8 @@ import {
  *     metadata_schema (Dict[str, MetadataFieldPolicy]): Per-field metadata
  *         indexing overrides recorded at create time. Empty when the
  *         index uses the default index-everything posture.
+ *     bm25 (Optional[BM25Config]): BM25 scoring config when the index has
+ *         at least one full_text field; `None` otherwise.
  * @export
  * @interface IndexInfoResponseModel
  */
@@ -75,6 +82,12 @@ export interface IndexInfoResponseModel {
      * @memberof IndexInfoResponseModel
      */
     metadataSchema?: { [key: string]: MetadataFieldPolicy; };
+    /**
+     * 
+     * @type {BM25Config}
+     * @memberof IndexInfoResponseModel
+     */
+    bm25?: BM25Config | null;
 }
 
 /**
@@ -105,6 +118,7 @@ export function IndexInfoResponseModelFromJSONTyped(json: any, ignoreDiscriminat
         'metric': json['metric'],
         'nLists': json['n_lists'],
         'metadataSchema': json['metadata_schema'] == null ? undefined : (mapValues(json['metadata_schema'], MetadataFieldPolicyFromJSON)),
+        'bm25': json['bm25'] == null ? undefined : BM25ConfigFromJSON(json['bm25']),
     };
 }
 
@@ -125,6 +139,7 @@ export function IndexInfoResponseModelToJSONTyped(value?: IndexInfoResponseModel
         'metric': value['metric'],
         'n_lists': value['nLists'],
         'metadata_schema': value['metadataSchema'] == null ? undefined : (mapValues(value['metadataSchema'], MetadataFieldPolicyToJSON)),
+        'bm25': BM25ConfigToJSON(value['bm25']),
     };
 }
 

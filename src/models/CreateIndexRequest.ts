@@ -45,6 +45,20 @@ import {
  *         metadata indexing policy, keyed by field name (dot-path for
  *         nested fields).  Omitted fields are filterable by default
  *         (opt-out posture).  Fixed at create time and immutable.
+ *     text_fields (Optional[List[str]]): Shorthand for marking fields
+ *         `full_text=true` in `metadata_schema`.  A field listed here is
+ *         analyzed by BM25 and becomes searchable by `query(text=...)` /
+ *         `query_metadata(text=...)`.  Cannot name a field the schema
+ *         already sets `full_text=false`.
+ *     bm25_k1 (Optional[float]): BM25 term-frequency saturation (>= 0,
+ *         default 1.2 in core).  Requires at least one full_text field.
+ *     bm25_b (Optional[float]): BM25 length-normalization strength
+ *         (in [0, 1], default 0.75 in core).  Requires at least one
+ *         full_text field.
+ * 
+ * BM25 full-text search is opt-in and derived, not flagged: an index
+ * with at least one full_text field supports the `text=...` query legs;
+ * an index with none writes no BM25 config at all.
  * @export
  * @interface CreateIndexRequest
  */
@@ -92,11 +106,29 @@ export interface CreateIndexRequest {
      */
     storagePrecision?: CreateIndexRequestStoragePrecisionEnum | null;
     /**
-     * Per-field metadata indexing policy: {"field": {"filterable": true, "pattern": false}}. `filterable` (default true) builds inverted-index postings so filters on the field resolve from the index; `pattern` (default false) also builds the field's regex dictionary, needed for index-resolved `$regex` / `$contains`. Fields not listed are filterable (opt-out posture). Immutable after create.
+     * Per-field metadata indexing policy: {"field": {"filterable": true, "pattern": false, "full_text": false}}. `filterable` (default true) builds inverted-index postings so filters on the field resolve from the index; `pattern` (default false) also builds the field's regex dictionary, needed for index-resolved `$regex` / `$contains`; `full_text` (default false) routes the field through the BM25 analyzer to enable full-text search (implies `filterable: false`, and is incompatible with `pattern: true`). Fields not listed are filterable (opt-out posture). Immutable after create.
      * @type {{ [key: string]: MetadataFieldPolicy; }}
      * @memberof CreateIndexRequest
      */
     metadataSchema?: { [key: string]: MetadataFieldPolicy; } | null;
+    /**
+     * Fields to index for BM25 full-text search — shorthand for marking them `full_text: true` in `metadata_schema`. Enables `query(text=...)` and `query_metadata(text=...)`.
+     * @type {Array<string>}
+     * @memberof CreateIndexRequest
+     */
+    textFields?: Array<string> | null;
+    /**
+     * BM25 term-frequency saturation (>= 0, default 1.2). Requires at least one full_text field.
+     * @type {number}
+     * @memberof CreateIndexRequest
+     */
+    bm25K1?: number | null;
+    /**
+     * BM25 length-normalization strength (in [0, 1], default 0.75). Requires at least one full_text field.
+     * @type {number}
+     * @memberof CreateIndexRequest
+     */
+    bm25B?: number | null;
 }
 
 
@@ -136,6 +168,9 @@ export function CreateIndexRequestFromJSONTyped(json: any, ignoreDiscriminator: 
         'metric': json['metric'] == null ? undefined : json['metric'],
         'storagePrecision': json['storage_precision'] == null ? undefined : json['storage_precision'],
         'metadataSchema': json['metadata_schema'] == null ? undefined : (mapValues(json['metadata_schema'], MetadataFieldPolicyFromJSON)),
+        'textFields': json['text_fields'] == null ? undefined : json['text_fields'],
+        'bm25K1': json['bm25_k1'] == null ? undefined : json['bm25_k1'],
+        'bm25B': json['bm25_b'] == null ? undefined : json['bm25_b'],
     };
 }
 
@@ -158,6 +193,9 @@ export function CreateIndexRequestToJSONTyped(value?: CreateIndexRequest | null,
         'metric': value['metric'],
         'storage_precision': value['storagePrecision'],
         'metadata_schema': value['metadataSchema'] == null ? undefined : (mapValues(value['metadataSchema'], MetadataFieldPolicyToJSON)),
+        'text_fields': value['textFields'],
+        'bm25_k1': value['bm25K1'],
+        'bm25_b': value['bm25B'],
     };
 }
 

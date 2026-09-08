@@ -15,8 +15,16 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import * as dotenv from "dotenv";
-import { Client, type EncryptedIndex, type FilterExpression } from "../index";
+import {
+	Client,
+	type EncryptedIndex,
+	type FilterExpression,
+	type MetadataResult,
+} from "../index";
 import { flattenResults } from "./test-helpers";
+
+/** Pull the ids out of queryMetadata's `{ id }` rows (core's shape). */
+const idsOf = (rows: MetadataResult[]) => rows.map((r) => r.id);
 
 dotenv.config({ path: ".env.local" });
 jest.setTimeout(120000);
@@ -40,7 +48,10 @@ const sorted = (ids: string[]) => [...ids].sort();
 
 async function seed(
 	client: Client,
-	metadataSchema?: Record<string, { filterable?: boolean; pattern?: boolean }>,
+	metadataSchema?: Record<
+		string,
+		{ filterable?: boolean; pattern?: boolean; fullText?: boolean }
+	>,
 ): Promise<EncryptedIndex> {
 	const index = await client.createIndex({
 		indexName: `query_metadata_${randomUUID().replace(/-/g, "").slice(0, 8)}`,
@@ -100,50 +111,58 @@ describe("queryMetadata with a per-field policy", () => {
 	it("round-trips the schema through describe", async () => {
 		const schema = await index.metadataSchema();
 		expect(schema).toEqual({
-			color: { filterable: true, pattern: true },
-			shape: { filterable: true, pattern: false },
-			hidden: { filterable: false, pattern: false },
+			color: { filterable: true, pattern: true, fullText: false },
+			shape: { filterable: true, pattern: false, fullText: false },
+			hidden: { filterable: false, pattern: false, fullText: false },
 		});
 	});
 
 	it("matches everything with no filters", async () => {
-		const { ids, count } = await index.queryMetadata();
-		expect(sorted(ids)).toEqual(sorted([...EVEN, ...ODD]));
-		expect(count).toBe(N);
+		const rows = await index.queryMetadata();
+		expect(sorted(idsOf(rows))).toEqual(sorted([...EVEN, ...ODD]));
+		expect(rows.length).toBe(N);
+	});
+
+	it("returns { id } rows without a score", async () => {
+		// Filter-only rows match core's list[MetadataResult]: { id } only, no
+		// `score` key (nothing to score without `text`).
+		const rows = await index.queryMetadata({ filters: { color: "red" } });
+		expect(rows.every((r) => Object.keys(r).length === 1 && "id" in r)).toBe(
+			true,
+		);
 	});
 
 	it("filters on equality", async () => {
-		const { ids } = await index.queryMetadata({ filters: { color: "red" } });
-		expect(sorted(ids)).toEqual(EVEN);
+		const rows = await index.queryMetadata({ filters: { color: "red" } });
+		expect(sorted(idsOf(rows))).toEqual(EVEN);
 	});
 
 	it("filters on a nested dot-path", async () => {
-		const { ids } = await index.queryMetadata({
+		const rows = await index.queryMetadata({
 			filters: { "loc.city": "paris" },
 		});
-		expect(sorted(ids)).toEqual(EVEN);
+		expect(sorted(idsOf(rows))).toEqual(EVEN);
 	});
 
 	it("resolves $regex on a pattern field", async () => {
-		const { ids } = await index.queryMetadata({
+		const rows = await index.queryMetadata({
 			filters: { color: { $regex: "^r" } },
 		});
-		expect(sorted(ids)).toEqual(EVEN);
+		expect(sorted(idsOf(rows))).toEqual(EVEN);
 	});
 
 	it("resolves $contains on a pattern field", async () => {
-		const { ids } = await index.queryMetadata({
+		const rows = await index.queryMetadata({
 			filters: { color: { $contains: "ree" } },
 		});
-		expect(sorted(ids)).toEqual(ODD);
+		expect(sorted(idsOf(rows))).toEqual(ODD);
 	});
 
 	it("returns empty for a no-match filter", async () => {
-		const { ids, count } = await index.queryMetadata({
+		const rows = await index.queryMetadata({
 			filters: { color: "mauve" },
 		});
-		expect(ids).toEqual([]);
-		expect(count).toBe(0);
+		expect(rows).toEqual([]);
 	});
 
 	it("orders by a field in both directions", async () => {
@@ -153,23 +172,23 @@ describe("queryMetadata with a per-field policy", () => {
 			orderBy: "rank",
 			ascending: true,
 		});
-		expect(ascending.ids).toEqual(["i0", "i1", "i2", "i3", "i4", "i5"]);
+		expect(idsOf(ascending)).toEqual(["i0", "i1", "i2", "i3", "i4", "i5"]);
 
 		const descending = await index.queryMetadata({
 			filters,
 			orderBy: "rank",
 			ascending: false,
 		});
-		expect(descending.ids).toEqual(["i5", "i4", "i3", "i2", "i1", "i0"]);
+		expect(idsOf(descending)).toEqual(["i5", "i4", "i3", "i2", "i1", "i0"]);
 	});
 
 	it("accepts the mongo-style single-field object form of orderBy", async () => {
 		// { field: -1 } is core's form; the wrapper normalizes it for the service.
-		const { ids } = await index.queryMetadata({
+		const rows = await index.queryMetadata({
 			filters: { rank: { $gte: 0 } },
 			orderBy: { rank: -1 },
 		});
-		expect(ids).toEqual(["i5", "i4", "i3", "i2", "i1", "i0"]);
+		expect(idsOf(rows)).toEqual(["i5", "i4", "i3", "i2", "i1", "i0"]);
 	});
 
 	it("rejects an orderBy object with two fields", async () => {
@@ -179,12 +198,12 @@ describe("queryMetadata with a per-field policy", () => {
 	});
 
 	it("applies topK after the sort", async () => {
-		const { ids } = await index.queryMetadata({
+		const rows = await index.queryMetadata({
 			filters: { rank: { $gte: 0 } },
 			orderBy: "rank",
 			topK: 2,
 		});
-		expect(ids).toEqual(["i0", "i1"]);
+		expect(idsOf(rows)).toEqual(["i0", "i1"]);
 	});
 
 	it("rejects $regex on a non-pattern field, which query() still serves", async () => {
@@ -235,8 +254,8 @@ describe("queryMetadata on a default-posture index", () => {
 	});
 
 	it("filters on equality without any opt-in", async () => {
-		const { ids } = await index.queryMetadata({ filters: { color: "red" } });
-		expect(sorted(ids)).toEqual(EVEN);
+		const rows = await index.queryMetadata({ filters: { color: "red" } });
+		expect(sorted(idsOf(rows))).toEqual(EVEN);
 	});
 
 	it("still needs a pattern field for $regex", async () => {
