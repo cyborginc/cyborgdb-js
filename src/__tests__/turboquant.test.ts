@@ -5,8 +5,8 @@
  * `storagePrecision` picks the on-disk rerank-vector format, chosen at create
  * and immutable. Alongside the existing `float32` / `float16`, the TurboQuant
  * tiers pack 12 / 8 / 6 / 4 bits per dimension, trading a little recall and
- * latency for a large storage saving. `tq4` is only valid with the cosine
- * metric.
+ * latency for a large storage saving. Every tier, `tq4` included, works with
+ * any metric.
  *
  * Two layers of coverage (mirrors cyborgdb-py's tests/test_turboquant.py):
  *
@@ -123,8 +123,8 @@ describe("TurboQuant storagePrecision (model)", () => {
 // -----------------------------------------------------------------------------
 // End-to-end — each TurboQuant tier survives the full index lifecycle.
 //
-// One shared, cosine-metric corpus is built once (cosine is required by `tq4`
-// and valid for every other tier). Each tier gets its own index so a failure
+// One shared, cosine-metric corpus is built once (cosine is valid for every
+// tier). Each tier gets its own index so a failure
 // names the tier that broke. Skipped automatically when no service is reachable.
 // -----------------------------------------------------------------------------
 describe("TurboQuant storagePrecision (integration)", () => {
@@ -279,21 +279,22 @@ describe("TurboQuant storagePrecision (integration)", () => {
 
 	it("tq4 survives the full lifecycle with high self-recall", async () => {
 		if (!serviceUp) return;
-		// tq4 is the most aggressive tier and is only valid with cosine.
+		// tq4 is the most aggressive tier; here it runs on the cosine corpus.
 		const index = await buildTrainedIndex("tq4");
 		await assertSelfRecall(index, "tq4", 0.7);
 	}, 300000);
 
-	it("tq4 with a non-cosine metric is rejected by the service", async () => {
+	it("tq4 is valid with a non-cosine metric", async () => {
 		if (!serviceUp) return;
-		await expect(
-			client.createIndex({
-				indexName: `tq4_bad_${randomBytes(4).toString("hex")}`,
-				indexKey: Client.generateKey(),
-				dimension: DIM,
-				metric: "euclidean",
-				storagePrecision: "tq4",
-			}),
-		).rejects.toThrow();
+		// tq4 is the most aggressive tier, but it works with any metric.
+		const index = await client.createIndex({
+			indexName: `tq4_euclidean_${randomBytes(4).toString("hex")}`,
+			indexKey: Client.generateKey(),
+			dimension: DIM,
+			metric: "euclidean",
+			storagePrecision: "tq4",
+		});
+		created.push(index);
+		expect(index).toBeDefined();
 	}, 30000);
 });
