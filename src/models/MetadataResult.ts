@@ -21,8 +21,9 @@
  * 
  * Split across two TypedDicts because that is how a per-key optional is expressed before
  * ``typing.NotRequired`` (3.11); the package supports 3.10, and inheriting with ``total=False``
- * keeps ``id`` required while making ``score`` optional — one result type, no union, no
- * ``typing_extensions`` dependency.
+ * keeps ``id`` required while making ``score`` optional — one result type, no union.
+ * ``typing_extensions``' TypedDict is preferred when installed (see the import above) so that
+ * pydantic consumers can use this type in models on Python < 3.12, but it is not a dependency.
  * 
  * Note the package ships no ``py.typed`` marker, so this reaches editors reading the source but
  * not a consumer's mypy/pyright — see the plan's v2 note.

@@ -39,8 +39,13 @@ import {
  *         from the first upsert if omitted.
  *     embedding_model (Optional[str]): Optional embedding model name.
  *     metric (Optional[str]): Optional distance metric.
- *     storage_precision (Optional[Literal["float32", "float16"]]): On-disk
- *         rerank-vector dtype. Defaults to float32 in core.
+ *     storage_precision (Optional[Literal["float32", "float16", "tq12", "tq8", "tq6", "tq4"]]):
+ *         On-disk rerank-vector format, chosen at create and immutable.
+ *         Defaults to float32 in core. "float16" halves storage at a small
+ *         precision cost. The TurboQuant tiers "tq12"/"tq8"/"tq6"/"tq4"
+ *         (12/8/6/4 bits per dim) trade storage for a small recall/latency
+ *         cost, with "tq4" the most aggressive (~8x smaller, ~94% recall@100).
+ *         All tiers work with every metric.
  *     metadata_schema (Optional[Dict[str, MetadataFieldPolicy]]): Per-field
  *         metadata indexing policy, keyed by field name (dot-path for
  *         nested fields).  Omitted fields are filterable by default
@@ -137,7 +142,11 @@ export interface CreateIndexRequest {
  */
 export const CreateIndexRequestStoragePrecisionEnum = {
     Float32: 'float32',
-    Float16: 'float16'
+    Float16: 'float16',
+    Tq12: 'tq12',
+    Tq8: 'tq8',
+    Tq6: 'tq6',
+    Tq4: 'tq4'
 } as const;
 export type CreateIndexRequestStoragePrecisionEnum = typeof CreateIndexRequestStoragePrecisionEnum[keyof typeof CreateIndexRequestStoragePrecisionEnum];
 

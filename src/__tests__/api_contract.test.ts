@@ -737,7 +737,44 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
-	describe("16 - EncryptedIndex.train()", () => {
+	describe("16 - EncryptedIndex.queryMetadata()", () => {
+		// Contract coverage for the metadata-only read path, at parity with the
+		// Go and Python contract tests. Deep behavior — schema enforcement,
+		// ordering/paging, the BM25 text leg — lives in query_metadata.test.ts;
+		// here we pin the live API surface: queryMetadata() returns core's
+		// id-only rows for a filter-only query.
+		it("returns id-only rows for a filter-only query", async () => {
+			// testIndex holds ids 0-14 (metadata on 0-9) in default posture
+			// (every field filterable). category "cat_0" matches the i%3===0 ids.
+			const rows = await testIndex.queryMetadata({
+				filters: { category: "cat_0" },
+			});
+
+			expect(Array.isArray(rows)).toBe(true);
+			expect(rows.length).toBeGreaterThan(0);
+			rows.forEach((row: any) => {
+				// A filter-only row carries exactly { id } — there is no `score`
+				// key without a `text` leg to rank by.
+				validateExactKeys(row, new Set(["id"]), "queryMetadata() row");
+				expect(typeof row.id).toBe("string");
+			});
+		});
+
+		it("matches everything with no filters", async () => {
+			const rows = await testIndex.queryMetadata();
+			expect(Array.isArray(rows)).toBe(true);
+			expect(rows.length).toBeGreaterThan(0);
+			rows.forEach((row: any) => {
+				validateExactKeys(
+					row,
+					new Set(["id"]),
+					"queryMetadata() row (no filters)",
+				);
+			});
+		});
+	});
+
+	describe("17 - EncryptedIndex.train()", () => {
 		const validTrainStatuses = ["success", "queued", "in_progress"];
 
 		const waitForTrainingToFinish = async (
@@ -795,7 +832,7 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
-	describe("17 - EncryptedIndex.delete()", () => {
+	describe("18 - EncryptedIndex.delete()", () => {
 		it("should delete vectors by IDs", async () => {
 			const idsToDelete = ["0", "5"];
 			const result = await testIndex.delete({ ids: idsToDelete });
@@ -819,7 +856,7 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
-	describe("18 - Binary Data Upsert and Query", () => {
+	describe("19 - Binary Data Upsert and Query", () => {
 		const binaryTestIds = ["binary_1", "binary_2", "binary_3"];
 		let binaryTestData: Uint8Array[];
 
@@ -906,7 +943,7 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
-	describe("19 - Client.loadIndex()", () => {
+	describe("20 - Client.loadIndex()", () => {
 		it("should load existing index", async () => {
 			const loaded = await client.loadIndex({
 				indexName: testIndexName,
@@ -949,7 +986,7 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
-	describe("20 - EncryptedIndex.deleteIndex()", () => {
+	describe("21 - EncryptedIndex.deleteIndex()", () => {
 		it("should delete the index", async () => {
 			const result = await testIndex.deleteIndex();
 			expect(result).toBeDefined();
@@ -1094,5 +1131,25 @@ describe("SDK Construction (offline)", () => {
 		expect(payload.text_fields).toEqual(["body"]);
 		expect(payload.text_field_weights).toEqual([1]);
 		expect(payload.require_all_terms).toBe(true);
+	});
+
+	// Together with the text-leg test above, this pins the full queryMetadata
+	// param surface to the wire (filters, top_k, order_by, ascending, text,
+	// text_fields, text_field_weights, require_all_terms) — the JS parallel to
+	// py test_api_contract's query_metadata signature check.
+	it("queryMetadata forwards the filter and ordering knobs to the wire", () => {
+		const payload = wire(
+			QueryMetadataRequestToJSON({
+				indexName: "x",
+				filters: { category: "cat_0" },
+				topK: 5,
+				orderBy: "rank",
+				ascending: true,
+			} as never),
+		);
+		expect(payload.filters).toEqual({ category: "cat_0" });
+		expect(payload.top_k).toBe(5);
+		expect(payload.order_by).toBe("rank");
+		expect(payload.ascending).toBe(true);
 	});
 });
