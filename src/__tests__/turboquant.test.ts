@@ -101,7 +101,9 @@ describe("TurboQuant storagePrecision (model)", () => {
 	});
 
 	it("omits storage_precision when not set", () => {
-		const payload = wire(CreateIndexRequestToJSON({ indexName: "idx" } as never));
+		const payload = wire(
+			CreateIndexRequestToJSON({ indexName: "idx" } as never),
+		);
 		expect(payload.storage_precision == null).toBe(true);
 	});
 
@@ -161,7 +163,9 @@ describe("TurboQuant storagePrecision (integration)", () => {
 		return rows;
 	}
 
-	async function buildTrainedIndex(precision: Precision): Promise<EncryptedIndex> {
+	async function buildTrainedIndex(
+		precision: Precision,
+	): Promise<EncryptedIndex> {
 		const index = await client.createIndex({
 			indexName: `tq_${precision}_${randomBytes(4).toString("hex")}`,
 			indexKey: Client.generateKey(),
@@ -235,7 +239,11 @@ describe("TurboQuant storagePrecision (integration)", () => {
 			);
 			return;
 		}
-		client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY, verifySsl: false });
+		client = new Client({
+			baseUrl: BASE_URL,
+			apiKey: API_KEY,
+			verifySsl: false,
+		});
 		vectors = buildCorpus();
 		ids = Array.from({ length: NUM_VECTORS }, (_, i) => String(i));
 	}, 60000);
