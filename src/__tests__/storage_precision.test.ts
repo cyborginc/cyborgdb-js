@@ -1,27 +1,29 @@
 /**
- * TurboQuant storage precision: the `storagePrecision` create-time knob and its
- * quantized tiers `tq12` / `tq8` / `tq6` / `tq4`.
+ * Storage precision: the `storagePrecision` create-time knob and its six tiers
+ * `float32` / `float16` / `tq12` / `tq8` / `tq6` / `tq4`.
  *
  * `storagePrecision` picks the on-disk rerank-vector format, chosen at create
- * and immutable. Alongside the existing `float32` / `float16`, the TurboQuant
- * tiers pack 12 / 8 / 6 / 4 bits per dimension, trading a little recall and
- * latency for a large storage saving. Every tier, `tq4` included, works with
- * any metric.
+ * and immutable. `float32` / `float16` keep the vectors in full/half float; the
+ * four TurboQuant tiers pack 12 / 8 / 6 / 4 bits per dimension, trading a little
+ * recall and latency for a large storage saving. Every tier works with every
+ * metric.
  *
- * Two layers of coverage (mirrors cyborgdb-py's tests/test_turboquant.py):
+ * Two layers of coverage (mirrors cyborgdb-py's tests/test_storage_precision.py):
  *
  * * Model-level (no service) — `CreateIndexRequest` exposes every valid tier on
  *   its precision enum and serializes the value through to the wire dict. Unlike
  *   pydantic, the generated TS model does no runtime validation — invalid tiers
  *   are caught at compile time by the enum/union type, so the "rejects garbage"
  *   checks live in the type system, not here. These are the direct,
- *   deterministic checks that the tiers were wired in.
- * * End-to-end (live service on localhost:8000) — each tier survives the full
- *   create -> upsert -> train -> query round-trip and returns sane, high
- *   self-recall results. Skipped automatically when no service is reachable.
+ *   deterministic checks that the knob was wired in.
+ * * End-to-end (live service on localhost:8000) — each precision survives the
+ *   full create -> upsert -> train -> query round-trip and returns sane, high
+ *   self-recall results. The recall floor scales with the precision: the float
+ *   tiers are near-exact, the quantized tiers tolerate progressively more loss.
+ *   Skipped automatically when no service is reachable.
  *
  * The index-info response does not echo `storage_precision` back, so the
- * end-to-end layer verifies the tiers by behavior, not by reading the value
+ * end-to-end layer verifies each tier by behavior, not by reading the value
  * back off the index.
  */
 
@@ -42,20 +44,19 @@ const BASE_URL = process.env.CYBORGDB_BASE_URL || "http://localhost:8000";
 const API_KEY = process.env.CYBORGDB_API_KEY || "";
 
 type Precision = "float32" | "float16" | "tq12" | "tq8" | "tq6" | "tq4";
-const VALID_PRECISIONS: Precision[] = [
-	"float32",
-	"float16",
-	"tq12",
-	"tq8",
-	"tq6",
-	"tq4",
-];
-const TURBOQUANT_TIERS: Array<"tq12" | "tq8" | "tq6" | "tq4"> = [
-	"tq12",
-	"tq8",
-	"tq6",
-	"tq4",
-];
+
+// Every valid `storagePrecision`, paired with the self-recall floor it should
+// clear end-to-end. The float tiers are effectively exact; the TurboQuant tiers
+// tolerate progressively more quantization loss as the bit budget shrinks.
+const PRECISION_RECALL: Record<Precision, number> = {
+	float32: 0.95,
+	float16: 0.95,
+	tq12: 0.9,
+	tq8: 0.9,
+	tq6: 0.85,
+	tq4: 0.7,
+};
+const VALID_PRECISIONS = Object.keys(PRECISION_RECALL) as Precision[];
 
 // Enough vectors to clear the core training floor (train() silently no-ops
 // below 10k vectors) while staying quick.
@@ -72,7 +73,7 @@ const wire = (obj: unknown) => JSON.parse(JSON.stringify(obj));
 // -----------------------------------------------------------------------------
 // Model-level contract — no service required.
 // -----------------------------------------------------------------------------
-describe("TurboQuant storagePrecision (model)", () => {
+describe("storagePrecision (model)", () => {
 	it("exposes every valid precision on the enum", () => {
 		const enumValues = Object.values(CreateIndexRequestStoragePrecisionEnum);
 		for (const precision of VALID_PRECISIONS) {
@@ -81,7 +82,7 @@ describe("TurboQuant storagePrecision (model)", () => {
 	});
 
 	it("exposes the four TurboQuant tiers on the enum", () => {
-		// The tiers this change adds, called out explicitly.
+		// The quantized tiers, called out explicitly.
 		expect(CreateIndexRequestStoragePrecisionEnum.Tq12).toBe("tq12");
 		expect(CreateIndexRequestStoragePrecisionEnum.Tq8).toBe("tq8");
 		expect(CreateIndexRequestStoragePrecisionEnum.Tq6).toBe("tq6");
@@ -107,27 +108,27 @@ describe("TurboQuant storagePrecision (model)", () => {
 		expect(payload.storage_precision == null).toBe(true);
 	});
 
-	it("round-trips each TurboQuant tier through from/to JSON", () => {
-		for (const tier of TURBOQUANT_TIERS) {
+	it("round-trips every precision through from/to JSON", () => {
+		for (const precision of VALID_PRECISIONS) {
 			const restored = CreateIndexRequestFromJSON({
 				index_name: "idx",
-				storage_precision: tier,
+				storage_precision: precision,
 			});
-			expect(restored.storagePrecision).toBe(tier);
+			expect(restored.storagePrecision).toBe(precision);
 			const payload = wire(CreateIndexRequestToJSON(restored));
-			expect(payload.storage_precision).toBe(tier);
+			expect(payload.storage_precision).toBe(precision);
 		}
 	});
 });
 
 // -----------------------------------------------------------------------------
-// End-to-end — each TurboQuant tier survives the full index lifecycle.
+// End-to-end — each storage precision survives the full index lifecycle.
 //
 // One shared, cosine-metric corpus is built once (cosine is valid for every
-// tier). Each tier gets its own index so a failure
-// names the tier that broke. Skipped automatically when no service is reachable.
+// tier). Each precision gets its own index so a failure names the tier that
+// broke. Skipped automatically when no service is reachable.
 // -----------------------------------------------------------------------------
-describe("TurboQuant storagePrecision (integration)", () => {
+describe("storagePrecision (integration)", () => {
 	let serviceUp = false;
 	let client: Client;
 	let vectors: number[][];
@@ -167,7 +168,7 @@ describe("TurboQuant storagePrecision (integration)", () => {
 		precision: Precision,
 	): Promise<EncryptedIndex> {
 		const index = await client.createIndex({
-			indexName: `tq_${precision}_${randomBytes(4).toString("hex")}`,
+			indexName: `sp_${precision}_${randomBytes(4).toString("hex")}`,
 			indexKey: Client.generateKey(),
 			dimension: DIM,
 			metric: "cosine",
@@ -199,7 +200,8 @@ describe("TurboQuant storagePrecision (integration)", () => {
 
 	// Query with vectors that are in the index; each should find itself.
 	// Exhaustive search (nProbes == nLists) removes IVF partitioning as a
-	// variable, so the only recall loss left is TurboQuant's quantization.
+	// variable, so the only recall loss left is the storage precision's
+	// quantization — which the threshold tolerates.
 	async function assertSelfRecall(
 		index: EncryptedIndex,
 		precision: Precision,
@@ -235,7 +237,7 @@ describe("TurboQuant storagePrecision (integration)", () => {
 		serviceUp = await serviceReachable();
 		if (!serviceUp) {
 			console.warn(
-				`No CyborgDB service reachable at ${BASE_URL} — skipping TurboQuant integration tests.`,
+				`No CyborgDB service reachable at ${BASE_URL} — skipping storage precision integration tests.`,
 			);
 			return;
 		}
@@ -258,37 +260,22 @@ describe("TurboQuant storagePrecision (integration)", () => {
 		}
 	});
 
-	it("tq12 survives the full lifecycle with high self-recall", async () => {
+	// Every precision completes the lifecycle and clears its recall floor. One
+	// case per tier so a failure names the precision that broke.
+	it.each(
+		VALID_PRECISIONS,
+	)("%s survives the full lifecycle with high self-recall", async (precision) => {
 		if (!serviceUp) return;
-		// tq12 is the least aggressive tier, so it should hold the highest recall.
-		const index = await buildTrainedIndex("tq12");
-		await assertSelfRecall(index, "tq12", 0.9);
-	}, 300000);
-
-	it("tq8 survives the full lifecycle with high self-recall", async () => {
-		if (!serviceUp) return;
-		const index = await buildTrainedIndex("tq8");
-		await assertSelfRecall(index, "tq8", 0.9);
-	}, 300000);
-
-	it("tq6 survives the full lifecycle with high self-recall", async () => {
-		if (!serviceUp) return;
-		const index = await buildTrainedIndex("tq6");
-		await assertSelfRecall(index, "tq6", 0.85);
-	}, 300000);
-
-	it("tq4 survives the full lifecycle with high self-recall", async () => {
-		if (!serviceUp) return;
-		// tq4 is the most aggressive tier; here it runs on the cosine corpus.
-		const index = await buildTrainedIndex("tq4");
-		await assertSelfRecall(index, "tq4", 0.7);
+		const index = await buildTrainedIndex(precision);
+		await assertSelfRecall(index, precision, PRECISION_RECALL[precision]);
 	}, 300000);
 
 	it("tq4 is valid with a non-cosine metric", async () => {
 		if (!serviceUp) return;
-		// tq4 is the most aggressive tier, but it works with any metric.
+		// storagePrecision is orthogonal to the metric; tq4 (the most aggressive
+		// tier) is valid with a non-cosine metric too.
 		const index = await client.createIndex({
-			indexName: `tq4_euclidean_${randomBytes(4).toString("hex")}`,
+			indexName: `sp_tq4_euclidean_${randomBytes(4).toString("hex")}`,
 			indexKey: Client.generateKey(),
 			dimension: DIM,
 			metric: "euclidean",
