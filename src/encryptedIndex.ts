@@ -511,7 +511,7 @@ export class EncryptedIndex {
 			});
 			return response as UpsertResponse;
 		} catch (error: unknown) {
-			// Type guard for error with message
+			// Local validation errors are already detailed — re-throw as-is.
 			const hasMessage = (
 				err: unknown,
 			): err is { message: string; stack?: string } => {
@@ -522,18 +522,19 @@ export class EncryptedIndex {
 					typeof (err as { message: unknown }).message === "string"
 				);
 			};
-
-			// Enhance error handling for API errors
-			if (hasMessage(error) && !error.message.startsWith("Invalid")) {
-				// This is likely an API error, enhance it with context
-				const enhancedMessage = `Upsert operation failed: ${error.message}`;
-				const enhancedError = new Error(enhancedMessage);
-				enhancedError.stack = error.stack;
-				throw enhancedError;
+			if (
+				hasMessage(error) &&
+				(error.message.startsWith("Invalid") ||
+					error.message.startsWith("Array length mismatch"))
+			) {
+				throw error;
 			}
 
-			// Re-throw validation errors as-is since they're already detailed
-			throw error;
+			// Everything else is a service interaction: route it through the
+			// single translation point so callers get a typed error. Previously
+			// this branch wrapped API errors in a plain Error, which made the
+			// typed path unreachable from upsert.
+			handleApiError(error, { indexName: this.indexName });
 		}
 	}
 

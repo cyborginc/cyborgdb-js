@@ -65,14 +65,166 @@ const hasStack = (err: unknown): err is { stack: string } => {
 	return typeof err === "object" && err !== null && "stack" in err;
 };
 
+
+// --- Typed error classes --------------------------------------------------
+
+/** Context captured on every typed error. */
+export interface CyborgDBErrorContext {
+	/** HTTP status, or null for transport failures and pre-flight validation. */
+	statusCode?: number | null;
+	/** Service correlation id, or null when the service did not supply one. */
+	requestId?: string | null;
+	/** The service's own message, or null when there was no response. */
+	detail?: string | null;
+	/** Retry-After in seconds, or null when absent. */
+	retryAfter?: number | null;
+	/** Index this call targeted, when the call site knows it. */
+	indexName?: string | null;
+	/** The originating error. */
+	cause?: unknown;
+}
+
 /**
- * Normalize an error from the generated API client and throw a descriptive
- * `Error`. Never returns.
+ * Base class for every error this SDK throws. Catch it to handle any CyborgDB
+ * failure; catch a subclass to handle one kind.
  */
-export function handleApiError(error: unknown): never {
+export class CyborgDBError extends Error {
+	readonly statusCode: number | null;
+	readonly requestId: string | null;
+	readonly detail: string | null;
+	readonly retryAfter: number | null;
+	readonly indexName: string | null;
+	/**
+	 * Whether backing off and retrying can succeed. Fixed per error type —
+	 * retry loops branch on this rather than re-deriving a status table.
+	 */
+	readonly retryable: boolean = false;
+
+	constructor(message: string, context: CyborgDBErrorContext = {}) {
+		super(message, context.cause !== undefined ? { cause: context.cause } : undefined);
+		this.name = new.target.name;
+		this.statusCode = context.statusCode ?? null;
+		this.requestId = context.requestId ?? null;
+		this.detail = context.detail ?? null;
+		this.retryAfter = context.retryAfter ?? null;
+		this.indexName = context.indexName ?? null;
+	}
+}
+
+/**
+ * HTTP 400 and 422, and arguments this SDK rejects before sending the request
+ * (including an unusable `baseUrl`). `statusCode` is null when caught
+ * pre-flight.
+ */
+export class CyborgDBValidationError extends CyborgDBError {
+	readonly retryable = false;
+}
+
+/** HTTP 401 and 403. Check the API key and its permissions. */
+export class CyborgDBAuthenticationError extends CyborgDBError {
+	readonly retryable = false;
+}
+
+/** HTTP 404 — the collection or item does not exist. */
+export class CyborgDBNotFoundError extends CyborgDBError {
+	readonly retryable = false;
+}
+
+/**
+ * HTTP 409 — a state conflict, such as training while training is already in
+ * progress. Poll for the terminal state; a backoff loop must not retry a 409.
+ */
+export class CyborgDBConflictError extends CyborgDBError {
+	readonly retryable = false;
+}
+
+/**
+ * HTTP 429. Honor `retryAfter` when set.
+ *
+ * The service does not rate-limit yet (cyborgdb-core#2386); this type exists so
+ * callers can write the handler once.
+ */
+export class CyborgDBRateLimitError extends CyborgDBError {
+	readonly retryable = true;
+}
+
+/** Any 5xx. Not "ServiceUnavailable": a 500 is a server bug, not unavailability. */
+export class CyborgDBServiceError extends CyborgDBError {
+	readonly retryable = true;
+}
+
+/**
+ * No HTTP response reached the client — DNS failure, connection refused, TLS
+ * failure, or timeout. `statusCode` is null.
+ *
+ * Timeouts land here too: a timeout and a refused connection have the same
+ * caller action, and the difference is diagnostic — read `detail`.
+ */
+export class CyborgDBTransportError extends CyborgDBError {
+	readonly retryable = true;
+}
+
+/**
+ * Build the typed error for an HTTP status. Returns undefined for statuses the
+ * taxonomy does not name, so those keep their existing untyped behavior.
+ */
+function errorForStatus(
+	status: number,
+	message: string,
+	context: CyborgDBErrorContext,
+): CyborgDBError | undefined {
+	if (status === 401 || status === 403)
+		return new CyborgDBAuthenticationError(message, context);
+	if (status === 404) return new CyborgDBNotFoundError(message, context);
+	if (status === 409) return new CyborgDBConflictError(message, context);
+	if (status === 429) return new CyborgDBRateLimitError(message, context);
+	if (status === 400 || status === 422)
+		return new CyborgDBValidationError(message, context);
+	if (status >= 500) return new CyborgDBServiceError(message, context);
+	return undefined;
+}
+
+/** Read one header across the several shapes the generated client hands back. */
+function headerValue(headers: unknown, name: string): string | null {
+	if (!headers || typeof headers !== "object") return null;
+	const get = (headers as { get?: (k: string) => string | null }).get;
+	if (typeof get === "function") {
+		return get.call(headers, name) ?? null;
+	}
+	const lower = name.toLowerCase();
+	for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+		if (key.toLowerCase() === lower && typeof value === "string") return value;
+	}
+	return null;
+}
+
+/** True when nothing answered: no HTTP status exists to key off. */
+function isNetworkFailure(error: unknown): boolean {
+	if (hasResponse(error)) return false;
+	if (hasCode(error)) {
+		return ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "ECONNRESET", "EAI_AGAIN", "EPROTO", "CERT_HAS_EXPIRED"].includes(
+			(error as { code: string }).code,
+		);
+	}
+	return (
+		error instanceof TypeError ||
+		(hasMessage(error) && error.message === "fetch failed")
+	);
+}
+
+/**
+ * Normalize an error from the generated API client and throw the typed error
+ * the taxonomy names for its status. Never returns.
+ *
+ * Statuses the taxonomy does not name keep their previous untyped `Error`, so
+ * this is additive for those paths.
+ */
+export function handleApiError(
+	error: unknown,
+	context: { indexName?: string } = {},
+): never {
 	debugLog("Full error object:", JSON.stringify(error, null, 2));
 
-	// Handle different error formats from typescript-fetch generator
 	if (hasResponse(error)) {
 		debugLog(
 			"HTTP Status Code:",
@@ -93,10 +245,8 @@ export function handleApiError(error: unknown): never {
 		if (hasMessage(error)) {
 			debugLog("Error message:", error.message);
 		}
-		// Log additional error details if available
 		if (hasCause(error)) {
 			debugLog("Error cause:", error.cause);
-			// Log more details about the cause if it's an object
 			if (typeof error.cause === "object" && error.cause !== null) {
 				debugLog("Cause details:", JSON.stringify(error.cause, null, 2));
 			}
@@ -132,55 +282,86 @@ export function handleApiError(error: unknown): never {
 		}
 	}
 
-	if (errorBody) {
-		try {
-			if (typeof errorBody === "object" && "detail" in (errorBody as object)) {
-				const detailValue = (errorBody as { detail: unknown }).detail;
-				if (Array.isArray(detailValue)) {
-					const err = errorBody as HTTPValidationError;
-					throw new Error(`Validation failed: ${JSON.stringify(err.detail)}`);
-				} else {
-					const err = errorBody as ErrorResponseModel;
-					const statusCode =
-						err.statusCode ||
-						(hasResponse(error)
-							? error.response.statusCode || error.response.status
-							: undefined) ||
-						"Unknown status";
-					throw new Error(`${statusCode} - ${err.detail}`);
-				}
-			}
-		} catch (e) {
-			if (isError(e) && e.message.includes("Validation failed")) {
-				throw e;
-			}
-			throw new Error(`Unhandled error format: ${JSON.stringify(errorBody)}`, {
-				cause: e,
-			});
-		}
+	const headers = hasResponse(error) ? error.response.headers : undefined;
+	const retryAfterRaw = headerValue(headers, "Retry-After");
+	const retryAfter =
+		retryAfterRaw !== null && retryAfterRaw !== "" && !Number.isNaN(Number(retryAfterRaw))
+			? Number(retryAfterRaw)
+			: null;
+	const status = hasResponse(error)
+		? (error.response.statusCode ?? error.response.status ?? null)
+		: null;
+
+	const detail = detailOf(errorBody);
+	const base = {
+		statusCode: status,
+		requestId: headerValue(headers, "X-Request-Id"),
+		detail,
+		retryAfter,
+		indexName: context.indexName ?? null,
+		cause: error,
+	};
+
+	// Nothing answered: no status exists to key off.
+	if (status === null && isNetworkFailure(error)) {
+		const causeMsg =
+			hasMessage(error) && error.message === "fetch failed" && hasCause(error)
+				? hasMessage(error.cause)
+					? error.cause.message
+					: String(error.cause)
+				: hasMessage(error)
+					? error.message
+					: "unknown transport failure";
+		throw new CyborgDBTransportError(
+			`Network request failed: ${causeMsg}`,
+			{ ...base, detail: causeMsg },
+		);
 	}
 
-	// Provide more detailed error message for fetch failures
-	const statusCode = hasResponse(error)
-		? error.response.statusCode || error.response.status
-		: "Unknown";
-	let errorMessage = hasMessage(error) ? error.message : "Unknown error";
-
-	// Enhance error message with additional context if available
+	// A 422 from FastAPI carries an array `detail`; keep the original wording.
 	if (
-		hasMessage(error) &&
-		error.message === "fetch failed" &&
-		hasCause(error)
+		typeof errorBody === "object" &&
+		errorBody !== null &&
+		"detail" in errorBody &&
+		Array.isArray((errorBody as { detail: unknown }).detail)
 	) {
-		const causeMsg = hasMessage(error.cause)
-			? error.cause.message
-			: String(error.cause);
-		errorMessage = `Network request failed: ${causeMsg}`;
-	} else if (hasCode(error)) {
+		const err = errorBody as HTTPValidationError;
+		const message = `Validation failed: ${JSON.stringify(err.detail)}`;
+		throw (
+			errorForStatus(status ?? 422, message, {
+				...base,
+				detail: JSON.stringify(err.detail),
+			}) ?? new CyborgDBValidationError(message, base)
+		);
+	}
+
+	if (detail !== null && status !== null) {
+		const message = `${status} - ${detail}`;
+		const typed = errorForStatus(status, message, base);
+		if (typed) throw typed;
+		throw new Error(message);
+	}
+
+	let errorMessage = hasMessage(error) ? error.message : "Unknown error";
+	if (hasCode(error)) {
 		errorMessage = `${errorMessage} (code: ${error.code})`;
 	}
+	const message = `HTTP error ${status ?? "Unknown"}: ${errorMessage}`;
+	if (status !== null) {
+		const typed = errorForStatus(status, message, base);
+		if (typed) throw typed;
+	}
+	throw new Error(message);
+}
 
-	throw new Error(`HTTP error ${statusCode}: ${errorMessage}`);
+/** Pull the service's own message out of a parsed error body. */
+function detailOf(errorBody: unknown): string | null {
+	if (typeof errorBody !== "object" || errorBody === null) return null;
+	if (!("detail" in errorBody)) return null;
+	const value = (errorBody as ErrorResponseModel).detail;
+	if (typeof value === "string") return value;
+	if (value === undefined || value === null) return null;
+	return JSON.stringify(value);
 }
 
 // --- extractErrorDetail (used to detect "index does not exist" on delete) --
