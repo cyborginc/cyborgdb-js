@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { DefaultApi } from "./apis/DefaultApi";
 import { EncryptedIndex } from "./encryptedIndex";
-import { handleApiError } from "./errors";
+import { CyborgDBValidationError, handleApiError } from "./errors";
 import type {
 	CreateIndexRequest,
 	CreateIndexRequestStoragePrecisionEnum,
@@ -34,6 +34,27 @@ import type { HealthResponse } from "./types";
  *   SDK-supplied-KEK indexes have no server-side key to resolve for a
  *   user.
  */
+/**
+ * Reject a `baseUrl` that is not an http(s) URL. `new URL()` throws on
+ * unparseable input and accepts other schemes, so both cases are checked.
+ */
+function assertValidBaseUrl(baseUrl: string): void {
+	let parsed: URL;
+	try {
+		parsed = new URL(baseUrl);
+	} catch (cause) {
+		throw new CyborgDBValidationError(
+			`Invalid baseUrl: ${JSON.stringify(baseUrl)} is not a valid URL`,
+			{ cause },
+		);
+	}
+	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+		throw new CyborgDBValidationError(
+			`Invalid baseUrl: ${JSON.stringify(baseUrl)} must use the http or https scheme`,
+		);
+	}
+}
+
 export class CyborgDB {
 	private api: DefaultApi;
 
@@ -52,6 +73,10 @@ export class CyborgDB {
 		apiKey?: string;
 		verifySsl?: boolean;
 	}) {
+		// Validate before anything else: an unusable baseUrl otherwise surfaces
+		// as a confusing DNS or fetch error on the first call instead of here.
+		assertValidBaseUrl(baseUrl);
+
 		// If baseUrl is http, disable SSL verification
 		if (baseUrl.startsWith("http://")) {
 			verifySsl = false;
