@@ -7,7 +7,6 @@
  * don't carry divergent copies of this logic.
  */
 import type { ErrorResponseModel, HTTPValidationError } from "./models";
-import { isError } from "./types";
 
 // Opt-in verbose diagnostics. Off by default so the SDK doesn't spam the host
 // app's console on every failure — the thrown Error already carries the
@@ -65,7 +64,6 @@ const hasStack = (err: unknown): err is { stack: string } => {
 	return typeof err === "object" && err !== null && "stack" in err;
 };
 
-
 // --- Typed error classes --------------------------------------------------
 
 /** Context captured on every typed error. */
@@ -101,7 +99,10 @@ export class CyborgDBError extends Error {
 	readonly retryable: boolean = false;
 
 	constructor(message: string, context: CyborgDBErrorContext = {}) {
-		super(message, context.cause !== undefined ? { cause: context.cause } : undefined);
+		super(
+			message,
+			context.cause !== undefined ? { cause: context.cause } : undefined,
+		);
 		this.name = new.target.name;
 		this.statusCode = context.statusCode ?? null;
 		this.requestId = context.requestId ?? null;
@@ -192,7 +193,9 @@ function headerValue(headers: unknown, name: string): string | null {
 		return get.call(headers, name) ?? null;
 	}
 	const lower = name.toLowerCase();
-	for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+	for (const [key, value] of Object.entries(
+		headers as Record<string, unknown>,
+	)) {
 		if (key.toLowerCase() === lower && typeof value === "string") return value;
 	}
 	return null;
@@ -202,9 +205,15 @@ function headerValue(headers: unknown, name: string): string | null {
 function isNetworkFailure(error: unknown): boolean {
 	if (hasResponse(error)) return false;
 	if (hasCode(error)) {
-		return ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "ECONNRESET", "EAI_AGAIN", "EPROTO", "CERT_HAS_EXPIRED"].includes(
-			(error as { code: string }).code,
-		);
+		return [
+			"ECONNREFUSED",
+			"ENOTFOUND",
+			"ETIMEDOUT",
+			"ECONNRESET",
+			"EAI_AGAIN",
+			"EPROTO",
+			"CERT_HAS_EXPIRED",
+		].includes((error as { code: string }).code);
 	}
 	return (
 		error instanceof TypeError ||
@@ -285,7 +294,9 @@ export function handleApiError(
 	const headers = hasResponse(error) ? error.response.headers : undefined;
 	const retryAfterRaw = headerValue(headers, "Retry-After");
 	const retryAfter =
-		retryAfterRaw !== null && retryAfterRaw !== "" && !Number.isNaN(Number(retryAfterRaw))
+		retryAfterRaw !== null &&
+		retryAfterRaw !== "" &&
+		!Number.isNaN(Number(retryAfterRaw))
 			? Number(retryAfterRaw)
 			: null;
 	const status = hasResponse(error)
@@ -312,10 +323,10 @@ export function handleApiError(
 				: hasMessage(error)
 					? error.message
 					: "unknown transport failure";
-		throw new CyborgDBTransportError(
-			`Network request failed: ${causeMsg}`,
-			{ ...base, detail: causeMsg },
-		);
+		throw new CyborgDBTransportError(`Network request failed: ${causeMsg}`, {
+			...base,
+			detail: causeMsg,
+		});
 	}
 
 	// A 422 from FastAPI carries an array `detail`; keep the original wording.

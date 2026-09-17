@@ -19,8 +19,8 @@ export { EncryptedIndex } from "./encryptedIndex";
 export {
 	CyborgDBAuthenticationError,
 	CyborgDBConflictError,
-	type CyborgDBErrorContext,
 	CyborgDBError,
+	type CyborgDBErrorContext,
 	CyborgDBNotFoundError,
 	CyborgDBRateLimitError,
 	CyborgDBServiceError,
