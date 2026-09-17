@@ -15,6 +15,18 @@ export {
 // Export demo utilities
 export { getDemoApiKey } from "./demo";
 export { EncryptedIndex } from "./encryptedIndex";
+// Export the typed error classes
+export {
+	CyborgDBAuthenticationError,
+	CyborgDBConflictError,
+	CyborgDBError,
+	type CyborgDBErrorContext,
+	CyborgDBNotFoundError,
+	CyborgDBRateLimitError,
+	CyborgDBServiceError,
+	CyborgDBTransportError,
+	CyborgDBValidationError,
+} from "./errors";
 // Export integrations
 export * from "./integrations";
 // Export commonly used types and interfaces
