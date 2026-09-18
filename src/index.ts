@@ -1,3 +1,14 @@
+/**
+ * Entry point for the `cyborgdb` package.
+ *
+ * Everything reachable from here must run on Node, in browsers, and on Edge
+ * runtimes (Vercel Edge, Cloudflare Workers), which provide no Node builtins.
+ * The LangChain integration is deliberately *not* re-exported: it imports
+ * `@langchain/core`, an optional peer dependency, so pulling it in here would
+ * make the whole package fail to import for anyone who hasn't installed it.
+ * Import it from `cyborgdb/integrations/langchain` instead.
+ */
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const VERSION = require("../package.json").version;
 
@@ -27,8 +38,6 @@ export {
 	CyborgDBTransportError,
 	CyborgDBValidationError,
 } from "./errors";
-// Export integrations
-export * from "./integrations";
 // Export commonly used types and interfaces
 export {
 	BatchQueryRequest,

@@ -11,6 +11,7 @@
 import type { Document, DocumentInterface } from "@langchain/core/documents";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import { VectorStore } from "@langchain/core/vectorstores";
+import { randomBytes } from "../../bytes";
 import { CyborgDB } from "../../client";
 import type { EncryptedIndex } from "../../encryptedIndex";
 import type { QueryResultItem, VectorItem } from "../../models";
@@ -86,39 +87,11 @@ export class CyborgVectorStore extends VectorStore {
 
 	/**
 	 * Generate a secure 32-byte key for use with CyborgDB indexes.
+	 *
+	 * @throws If the host provides no Web Crypto implementation.
 	 */
 	static generateKey(): Uint8Array {
-		// Generate a random 32-byte key
-		if (typeof window !== "undefined" && window.crypto) {
-			const key = new Uint8Array(32);
-			window.crypto.getRandomValues(key);
-			return key;
-		} else {
-			// Node.js environment
-			try {
-				const g = (
-					typeof globalThis !== "undefined"
-						? globalThis
-						: typeof window !== "undefined"
-							? window
-							: typeof self !== "undefined"
-								? self
-								: {}
-				) as any;
-				const crypto = g.crypto || g.require?.("crypto");
-				if (crypto?.randomBytes) {
-					return new Uint8Array(crypto.randomBytes(32));
-				}
-			} catch (_e) {
-				// Fallback
-			}
-			// Fallback to Math.random (less secure)
-			const key = new Uint8Array(32);
-			for (let i = 0; i < 32; i++) {
-				key[i] = Math.floor(Math.random() * 256);
-			}
-			return key;
-		}
+		return randomBytes(32);
 	}
 
 	/**

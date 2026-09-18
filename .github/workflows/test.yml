@@ -28,6 +28,28 @@ jobs:
       - name: Run linting
         run: npm run lint
 
+  edge_compat:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout SDK code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install SDK dependencies
+        run: npm ci
+
+      - name: Check entry point is free of Node builtins
+        run: npm run check:edge
+
+      - name: Run Edge runtime and encoding tests
+        run: npx jest src/__tests__/edge_runtime.test.ts src/__tests__/bytes.test.ts --coverage=false
+
   compute_version:
     runs-on: ubuntu-latest
     outputs:
