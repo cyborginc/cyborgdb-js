@@ -1,4 +1,5 @@
 import type { DefaultApi } from "./apis/DefaultApi";
+import { toBase64, toBytes, toHex, viewBytes } from "./bytes";
 import { extractErrorDetail, handleApiError } from "./errors";
 import type {
 	BinaryQueryBatch,
@@ -62,7 +63,7 @@ export class EncryptedIndex {
 	) {
 		this.indexName = indexName;
 		this.indexKeyHex = indexKey
-			? Buffer.from(indexKey).toString("hex")
+			? toHex(indexKey)
 			: undefined;
 		this.api = api;
 	}
@@ -481,9 +482,7 @@ export class EncryptedIndex {
 						if (typeof item.contents === "string") {
 							contentValue = item.contents;
 						} else {
-							contentValue = Buffer.from(item.contents as any).toString(
-								"base64",
-							);
+							contentValue = toBase64(toBytes(item.contents));
 						}
 					} catch (error) {
 						throw new Error(
@@ -999,7 +998,7 @@ export class EncryptedIndex {
 			}
 
 			// Convert Float32Array to base64
-			const vectorsB64 = Buffer.from(float32Vectors.buffer).toString("base64");
+			const vectorsB64 = toBase64(viewBytes(float32Vectors));
 
 			// Build the batch
 			const batch: BinaryVectorBatch = {
@@ -1100,7 +1099,7 @@ export class EncryptedIndex {
 			}
 
 			// Convert Float32Array to base64
-			const vectorsB64 = Buffer.from(float32Vectors.buffer).toString("base64");
+			const vectorsB64 = toBase64(viewBytes(float32Vectors));
 
 			// Build the batch
 			const batch: BinaryQueryBatch = {
