@@ -226,7 +226,10 @@ async function resolveCache(
  * @throws RangeError if the decompressed stream exceeds `maxBytes`.
  */
 async function gunzip(
-	compressed: Uint8Array,
+	// `Uint8Array<ArrayBuffer>` rather than a bare `Uint8Array`: a stream chunk
+	// must be a `BufferSource`, which excludes views over a SharedArrayBuffer.
+	// The only caller builds this straight from `response.arrayBuffer()`.
+	compressed: Uint8Array<ArrayBuffer>,
 	maxBytes: number,
 ): Promise<Uint8Array> {
 	if (typeof DecompressionStream === "undefined") {
@@ -236,7 +239,9 @@ async function gunzip(
 		);
 	}
 
-	const source = new ReadableStream<Uint8Array>({
+	// Typed as BufferSource, not Uint8Array, to line up with
+	// DecompressionStream's `writable: WritableStream<BufferSource>`.
+	const source = new ReadableStream<BufferSource>({
 		start(controller) {
 			controller.enqueue(compressed);
 			controller.close();

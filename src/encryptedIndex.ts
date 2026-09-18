@@ -62,9 +62,7 @@ export class EncryptedIndex {
 		api: DefaultApi,
 	) {
 		this.indexName = indexName;
-		this.indexKeyHex = indexKey
-			? toHex(indexKey)
-			: undefined;
+		this.indexKeyHex = indexKey ? toHex(indexKey) : undefined;
 		this.api = api;
 	}
 

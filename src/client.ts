@@ -277,9 +277,7 @@ export class CyborgDB {
 		this.validateKeyLength(indexKey);
 
 		try {
-			const keyHex = indexKey
-				? toHex(indexKey)
-				: undefined;
+			const keyHex = indexKey ? toHex(indexKey) : undefined;
 
 			const createRequest: CreateIndexRequest = {
 				indexName: indexName,
@@ -344,9 +342,7 @@ export class CyborgDB {
 		try {
 			// Convert binary key to hex string format expected by API. Omit it
 			// entirely for fully-KMS-managed indexes (server resolves the KEK).
-			const keyHex = indexKey
-				? toHex(indexKey)
-				: undefined;
+			const keyHex = indexKey ? toHex(indexKey) : undefined;
 
 			// Prepare request with index identifier and (optional) authentication key
 			const request: IndexOperationRequest = {

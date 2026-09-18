@@ -218,9 +218,7 @@ describe("Edge runtime compatibility", () => {
 		// Decoding here (in Node) must reproduce the exact float bytes the
 		// sandbox encoded, proving the Buffer-free path is byte-identical.
 		expect(
-			new Float32Array(
-				new Uint8Array(Buffer.from(upsertB64, "base64")).buffer,
-			),
+			new Float32Array(new Uint8Array(Buffer.from(upsertB64, "base64")).buffer),
 		).toEqual(Float32Array.from([1, 2, 3, 4, 5, 6, 7, 8]));
 		expect(
 			new Float32Array(new Uint8Array(Buffer.from(queryB64, "base64")).buffer),
