@@ -126,6 +126,27 @@ describe("CyborgDB SSL Verification", () => {
 			expect(originalConsoleInfo).not.toHaveBeenCalled();
 			expect(originalConsoleWarn).not.toHaveBeenCalled();
 		});
+
+		test.each([
+			"https://localhost.evil.com",
+			"https://127.0.0.1.evil.com",
+			"https://notlocalhost.example.com",
+			"https://my-localhost-proxy.example.com",
+			"https://api.example.com/?region=localhost",
+		])(
+			"should keep SSL verification on for %s, which is not a local host",
+			(baseUrl) => {
+				// KNOWN BUG — fails today. cyborgdb-core#2399: the host check is a
+				// substring match over the whole URL, so any of these connects
+				// without verifying the server certificate. Go gets this right by
+				// parsing the URL and comparing url.Hostname() exactly.
+				new CyborgDB({ baseUrl, apiKey: CYBORGDB_API_KEY });
+
+				expect(originalConsoleInfo).not.toHaveBeenCalledWith(
+					"SSL verification disabled for localhost (development mode)",
+				);
+			},
+		);
 	});
 
 	describe("Explicit SSL Configuration", () => {

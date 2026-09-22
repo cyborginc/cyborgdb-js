@@ -435,17 +435,34 @@ describe("BM25 metadata-filter narrowing (two full_text fields)", () => {
 		expect(got).toEqual(new Set(["a"]));
 	});
 
-	it("accepts field weights and keeps the matched set stable", async () => {
-		// Per-field weights (parallel to the searched fields) are forwarded and
-		// accepted; the matched set is unchanged by re-weighting.
-		const got = idSet(
+	it("flips the top result when the field weights flip", async () => {
+		// `a`/`c` match in title only, `b` in body only. 10:1 against 1:10 is a
+		// 100x swing — wider than any term-frequency or field-length difference
+		// here, so the flip does not ride on the per-field BM25 formula.
+		const titleHeavy = (
 			await index.queryMetadata({
 				text: "quantum",
 				textFields: ["title", "body"],
-				textFieldWeights: [2.0, 1.0],
-			}),
-		);
-		expect(got).toEqual(QUANTUM_ANY_FIELD);
+				textFieldWeights: [10.0, 1.0],
+			})
+		).map((r) => r.id);
+		const bodyHeavy = (
+			await index.queryMetadata({
+				text: "quantum",
+				textFields: ["title", "body"],
+				textFieldWeights: [1.0, 10.0],
+			})
+		).map((r) => r.id);
+
+		// Re-weighting reorders; it never filters.
+		expect(new Set(titleHeavy)).toEqual(QUANTUM_ANY_FIELD);
+		expect(new Set(bodyHeavy)).toEqual(QUANTUM_ANY_FIELD);
+		// The winner changes. If the service ignored the weights both lists
+		// would be identical, which the previous set-equality check could not
+		// have caught.
+		expect(QUANTUM_IN_TITLE.has(titleHeavy[0])).toBe(true);
+		expect(bodyHeavy[0]).toBe("b");
+		expect(titleHeavy[0]).not.toBe(bodyHeavy[0]);
 	});
 });
 
