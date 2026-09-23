@@ -35,6 +35,15 @@ import type {
 	VectorMetadata,
 } from "./types";
 
+// The generated QueryResponse uses an empty Results interface that carries no
+// type information. This helper centralises the unavoidable cast so every
+// call site stays readable.
+function narrowGeneratedResults<M extends object>(
+	r: GeneratedQueryResponse,
+): QueryResponse<M>["results"] {
+	return (r as unknown as QueryResponse<M>).results;
+}
+
 export class EncryptedIndex {
 	private indexName: string = "";
 	// Hex-encoded key, computed once in the constructor since the key never
@@ -499,9 +508,8 @@ export class EncryptedIndex {
 						id: item.id,
 						vector: item.vector,
 						contents: contentValue,
-						metadata: (item.metadata ?? undefined) as
-							| { [key: string]: unknown }
-							| undefined,
+						metadata: (item.metadata ??
+							undefined) as GeneratedVectorItem["metadata"],
 					};
 				},
 			);
@@ -688,7 +696,7 @@ export class EncryptedIndex {
 				throw new Error("No response received from query API");
 			}
 
-			const rawResults = (apiResponse as unknown as QueryResponse<M>).results;
+			const rawResults = narrowGeneratedResults<M>(apiResponse);
 			let results: QueryResponse<M>["results"] = rawResults;
 
 			if (

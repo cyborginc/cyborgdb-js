@@ -127,3 +127,46 @@ void readmeQuickstart;
 void interfaceMetadataCaller;
 void genericParamCaller;
 void validFilter;
+
+// ---------------------------------------------------------------------------
+// docs/langchain-integration.md snippets
+// ---------------------------------------------------------------------------
+import type { EmbeddingsInterface } from "@langchain/core/embeddings";
+import { CyborgVectorStore } from "cyborgdb";
+
+async function langchainQuickStart(embeddings: EmbeddingsInterface) {
+	const vectorStore = new CyborgVectorStore(embeddings, {
+		indexName: "my-encrypted-index",
+		indexKey: "base64key==",
+		apiKey: "your-api-key",
+		baseUrl: "http://localhost:8000",
+		embedding: embeddings,
+		dimension: 384,
+		metric: "cosine",
+	});
+
+	// Adding documents
+	const documents = [
+		{
+			pageContent: "TypeScript is a typed superset of JavaScript",
+			metadata: { source: "docs", topic: "programming" },
+		},
+	];
+	await vectorStore.addDocuments(documents);
+
+	// Similarity search with FilterExpression
+	const filter: FilterExpression = { topic: "programming" };
+	const results = await vectorStore.similaritySearch("typescript", 5, filter);
+
+	results.forEach((doc) => {
+		console.log(doc.pageContent);
+	});
+
+	// Search with scores
+	const scored = await vectorStore.similaritySearchWithScore("neural networks", 3);
+	scored.forEach(([doc, score]) => {
+		console.log(`Score: ${score}, Content: ${doc.pageContent}`);
+	});
+}
+
+void langchainQuickStart;

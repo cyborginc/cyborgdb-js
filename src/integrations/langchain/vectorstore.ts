@@ -48,7 +48,7 @@ export class CyborgVectorStore extends VectorStore {
 	private indexKey?: Uint8Array;
 	private kmsName?: string;
 	private dimension?: number;
-	private metric: "cosine" | "euclidean" | "squared_euclidean";
+	private metric: NonNullable<CyborgVectorStoreConfig["metric"]>;
 
 	_vectorstoreType(): string {
 		return "cyborgdb";
@@ -221,20 +221,22 @@ export class CyborgVectorStore extends VectorStore {
 		const vectors = await this.embeddings.embedDocuments(texts);
 
 		// Build items for upsert
-		const items: VectorItem[] = texts.map((text, i) => {
-			const metadata = Array.isArray(metadatas)
-				? metadatas[i]
-				: metadatas || {};
+		const items: VectorItem<Record<string, unknown>>[] = texts.map(
+			(text, i) => {
+				const metadata = Array.isArray(metadatas)
+					? metadatas[i]
+					: metadatas || {};
 
-			return {
-				id: ids[i],
-				vector: vectors[i],
-				metadata: {
-					...metadata,
-					_content: text,
-				} as VectorItem["metadata"],
-			};
-		});
+				return {
+					id: ids[i],
+					vector: vectors[i],
+					metadata: {
+						...metadata,
+						_content: text,
+					},
+				};
+			},
+		);
 
 		// Upsert to index
 		await this.index.upsert({ items });
@@ -286,14 +288,16 @@ export class CyborgVectorStore extends VectorStore {
 		const ids = options?.ids || documents.map(() => this.generateId());
 
 		// Build items for upsert
-		const items: VectorItem[] = vectors.map((vector, i) => ({
-			id: ids[i],
-			vector,
-			metadata: {
-				...documents[i].metadata,
-				_content: documents[i].pageContent,
-			} as VectorItem["metadata"],
-		}));
+		const items: VectorItem<Record<string, unknown>>[] = vectors.map(
+			(vector, i) => ({
+				id: ids[i],
+				vector,
+				metadata: {
+					...documents[i].metadata,
+					_content: documents[i].pageContent,
+				},
+			}),
+		);
 
 		// Upsert to index
 		await this.index.upsert({ items });
@@ -477,13 +481,13 @@ export class CyborgVectorStore extends VectorStore {
 		}
 
 		// Handle flat (single query) and nested (batch query) results
-		const rawResults2 = results.results;
+		const rawResults = results.results;
 		const queryResults: QueryResultItem[] =
-			(Array.isArray(rawResults2) &&
-			rawResults2.length > 0 &&
-			Array.isArray(rawResults2[0])
-				? (rawResults2 as QueryResultItem[][])[0]
-				: (rawResults2 as QueryResultItem[])) ?? [];
+			(Array.isArray(rawResults) &&
+			rawResults.length > 0 &&
+			Array.isArray(rawResults[0])
+				? (rawResults as QueryResultItem[][])[0]
+				: (rawResults as QueryResultItem[])) ?? [];
 
 		return queryResults.map((item: QueryResultItem) => {
 			const metadata = { ...(item.metadata || {}) } as Record<string, unknown>;
@@ -546,13 +550,13 @@ export class CyborgVectorStore extends VectorStore {
 		}
 
 		// Handle flat (single query) and nested (batch query) results
-		const rawResults3 = results.results;
+		const rawResults = results.results;
 		const queryResults: QueryResultItem[] =
-			(Array.isArray(rawResults3) &&
-			rawResults3.length > 0 &&
-			Array.isArray(rawResults3[0])
-				? (rawResults3 as QueryResultItem[][])[0]
-				: (rawResults3 as QueryResultItem[])) ?? [];
+			(Array.isArray(rawResults) &&
+			rawResults.length > 0 &&
+			Array.isArray(rawResults[0])
+				? (rawResults as QueryResultItem[][])[0]
+				: (rawResults as QueryResultItem[])) ?? [];
 
 		return queryResults.map((item: QueryResultItem) => {
 			const metadata = { ...(item.metadata || {}) } as Record<string, unknown>;

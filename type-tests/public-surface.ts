@@ -131,6 +131,36 @@ type HTTPVEInputIsAny = IsAny<
 >;
 const _httpveCheck: HTTPVEInputIsAny = false;
 
+// ---------------------------------------------------------------------------
+// 8. IsExact<A, B> — confirm parameterised metadata resolves precisely
+// ---------------------------------------------------------------------------
+type IsExact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+interface TitleMeta {
+	title: string;
+}
+
+// VectorItem<TitleMeta>["metadata"] must be exactly TitleMeta | null | undefined
+type VectorItemMetaExact = IsExact<
+	VectorItem<TitleMeta>["metadata"],
+	TitleMeta | null | undefined
+>;
+const _viMetaExact: VectorItemMetaExact = true;
+
+// QueryResultItem<TitleMeta>["metadata"] must be exactly TitleMeta | null | undefined
+type QRIMetaExact = IsExact<
+	QueryResultItem<TitleMeta>["metadata"],
+	TitleMeta | null | undefined
+>;
+const _qriMetaExact: QRIMetaExact = true;
+
+// HTTPValidationError detail input is exactly unknown
+type HTTPVEInputExact = IsExact<
+	NonNullable<HTTPValidationError["detail"]>[0]["input"],
+	unknown
+>;
+const _httpveExact: HTTPVEInputExact = true;
+
 // Silence unused variable warnings
 void _goodItem;
 void _goodFilter;
@@ -144,3 +174,6 @@ void testUpsertArrayForm;
 void testQueryResult;
 void testGetMetadata;
 void store;
+void _viMetaExact;
+void _qriMetaExact;
+void _httpveExact;

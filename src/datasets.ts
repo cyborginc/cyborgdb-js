@@ -82,7 +82,7 @@ export interface SampleDataset {
 	/** All vectors, aligned with `ids` / `metadata`. */
 	vectors: number[][];
 	/** Per-vector metadata, aligned with `ids` / `vectors`. */
-	metadata: Record<string, unknown>[];
+	metadata: VectorMetadata[];
 
 	// ---- ground-truth fixture data (for recall / accuracy validation) ----
 	/** Query vectors (superset of `sampleQueries`). */
@@ -183,7 +183,7 @@ function hydrate(raw: RawSampleDataset): SampleDataset {
 	const items: VectorItem[] = raw.ids.map((id, i) => ({
 		id,
 		vector: raw.vectors[i],
-		metadata: raw.metadata[i] as VectorMetadata,
+		metadata: raw.metadata[i],
 	}));
 	return {
 		...raw,
