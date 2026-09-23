@@ -118,7 +118,7 @@ export class CyborgDB {
 				});
 
 				fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
-					return globalThis.fetch(url, { ...init, agent } as any);
+					return globalThis.fetch(url, { ...init, agent } as RequestInit);
 				};
 
 				console.warn("SSL verification disabled in Node.js environment");

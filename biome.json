@@ -16,11 +16,23 @@
 		"rules": {
 			"recommended": true,
 			"suspicious": {
-				"noExplicitAny": "off"
+				"noExplicitAny": "error"
 			}
 		}
 	},
 	"formatter": {
 		"enabled": true
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["src/__tests__/**"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "off"
+					}
+				}
+			}
+		}
+	]
 }

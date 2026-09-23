@@ -32,7 +32,9 @@
 		"test:quickflow:built": "npm run build && jest __tests__/quick_flow.test.ts",
 		"test": "jest",
 		"test:watch": "jest --watch",
-		"test:coverage": "jest --coverage"
+		"test:coverage": "jest --coverage",
+		"test:types": "tsc --noEmit -p type-tests/tsconfig.json",
+		"check-surface": "node scripts/check-public-any.mjs"
 	},
 	"repository": {
 		"type": "git",

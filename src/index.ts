@@ -1,5 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-export const VERSION = require("../package.json").version;
+export const VERSION: string = require("../package.json").version;
 
 // Main SDK exports
 export { CyborgDB as Client } from "./client";
@@ -29,41 +29,41 @@ export {
 } from "./errors";
 // Export integrations
 export * from "./integrations";
-// Export commonly used types and interfaces
+// Export commonly used types and interfaces — generated types with no `any` on the surface
 export {
-	BatchQueryRequest,
 	BM25Config,
 	CreateIndexRequest,
 	DeleteRequest,
 	ErrorResponseModel,
 	GetRequest,
-	GetResponseModel,
-	HTTPValidationError,
 	IndexOperationRequest,
 	MetadataFieldPolicy,
 	MetadataResult,
-	QueryResponse,
-	QueryResultItem,
 	TrainRequest,
-	UpsertRequest,
-	VectorItem,
 } from "./models";
-// Export custom strongly-typed interfaces
+// Hand-written wrapper types replace the generated ones for names that had `any` on the surface
 export {
+	BatchQueryRequest,
 	DeleteResponse,
 	FilterExpression,
 	FilterOperator,
 	FilterValue,
+	GetResponseModel,
 	GetResultItem,
 	getErrorMessage,
 	HealthResponse,
+	HTTPValidationError,
 	isError,
 	isJsonValue,
 	JsonArray,
 	JsonObject,
 	JsonPrimitive,
 	JsonValue,
+	QueryResponse,
+	QueryResultItem,
 	TrainResponse,
+	UpsertRequest,
 	UpsertResponse,
+	VectorItem,
 	VectorMetadata,
 } from "./types";

@@ -5,7 +5,7 @@
  * throughout the SDK, improving type safety and developer experience.
  */
 
-import type { GetResultItemModel } from "./models";
+import type * as models from "./models";
 
 /**
  * Represents any valid JSON primitive value
@@ -150,11 +150,11 @@ export interface HealthResponse {
 }
 
 /**
- * Get operation result item with proper typing
- * Extends GetResultItemModel from models with enhanced type safety for metadata and contents
+ * Get operation result item with proper typing.
+ * Generic over the metadata shape M; defaults to VectorMetadata (JsonObject).
  */
-export interface GetResultItem
-	extends Omit<GetResultItemModel, "metadata" | "contents"> {
+export interface GetResultItem<M extends object = VectorMetadata>
+	extends Omit<models.GetResultItemModel, "metadata" | "contents"> {
 	/**
 	 * The stored content, returned verbatim as a string (if included). Text
 	 * contents round-trip as the original UTF-8 string. Binary contents that
@@ -165,8 +165,82 @@ export interface GetResultItem
 	/**
 	 * Metadata associated with the vector (if included)
 	 */
-	metadata?: VectorMetadata;
+	metadata?: M;
 }
+
+/**
+ * A vector item generic over the metadata shape M.
+ * Replaces the generated VectorItem at the export boundary.
+ */
+export type VectorItem<M extends object = VectorMetadata> = Omit<
+	models.VectorItem,
+	"metadata" | "contents"
+> & {
+	metadata?: M | null;
+	contents?: string | Uint8Array | null;
+};
+
+/**
+ * Upsert request generic over the metadata shape M.
+ * Replaces the generated UpsertRequest at the export boundary.
+ */
+export type UpsertRequest<M extends object = VectorMetadata> = Omit<
+	models.UpsertRequest,
+	"items"
+> & {
+	items: VectorItem<M>[];
+};
+
+/**
+ * Query result item generic over the metadata shape M.
+ * Replaces the generated QueryResultItem at the export boundary.
+ */
+export type QueryResultItem<M extends object = VectorMetadata> = Omit<
+	models.QueryResultItem,
+	"metadata"
+> & {
+	metadata?: M | null;
+};
+
+/**
+ * Query response generic over the metadata shape M.
+ * Replaces the generated QueryResponse at the export boundary.
+ */
+export type QueryResponse<M extends object = VectorMetadata> = Omit<
+	models.QueryResponse,
+	"results"
+> & {
+	results: QueryResultItem<M>[] | QueryResultItem<M>[][];
+};
+
+/**
+ * Get response model generic over the metadata shape M.
+ * Replaces the generated GetResponseModel at the export boundary.
+ */
+export type GetResponseModel<M extends object = VectorMetadata> = Omit<
+	models.GetResponseModel,
+	"results"
+> & {
+	results: (Omit<models.GetResultItemModel, "metadata"> & {
+		metadata?: M | null;
+	})[];
+};
+
+/**
+ * Batch query request with FilterExpression replacing the any-typed filters field.
+ * Replaces the generated BatchQueryRequest at the export boundary.
+ */
+export type BatchQueryRequest = Omit<models.BatchQueryRequest, "filters"> & {
+	filters?: FilterExpression | null;
+};
+
+/**
+ * HTTP validation error with unknown input replacing the any-typed input field.
+ * Replaces the generated HTTPValidationError at the export boundary.
+ */
+export type HTTPValidationError = Omit<models.HTTPValidationError, "detail"> & {
+	detail?: (Omit<models.ValidationError, "input"> & { input?: unknown })[];
+};
 
 /**
  * Type guard to check if a value is a valid JSON value

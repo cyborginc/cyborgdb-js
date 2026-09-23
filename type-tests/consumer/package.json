@@ -1,0 +1,16 @@
+{
+	"name": "cyborgdb-consumer-typecheck",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Standalone consumer project that type-checks public API usage patterns",
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"cyborgdb": "file:../../cyborgdb-0.17.0.tgz"
+	},
+	"devDependencies": {
+		"@langchain/core": "^1.1.19",
+		"typescript": "^6.0.3"
+	}
+}

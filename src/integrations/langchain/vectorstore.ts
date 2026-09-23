@@ -8,13 +8,18 @@
  *   npm install @langchain/core
  */
 
+import type { Callbacks } from "@langchain/core/callbacks/manager";
 import type { Document, DocumentInterface } from "@langchain/core/documents";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import { VectorStore } from "@langchain/core/vectorstores";
 import { CyborgDB } from "../../client";
 import type { EncryptedIndex } from "../../encryptedIndex";
-import type { QueryResultItem, VectorItem } from "../../models";
-import type { FilterExpression, GetResultItem } from "../../types";
+import type {
+	FilterExpression,
+	GetResultItem,
+	QueryResultItem,
+	VectorItem,
+} from "../../types";
 
 export interface CyborgVectorStoreConfig {
 	indexName: string;
@@ -35,7 +40,7 @@ export interface CyborgVectorStoreConfig {
 }
 
 export class CyborgVectorStore extends VectorStore {
-	declare FilterType: Record<string, any>;
+	declare FilterType: FilterExpression;
 
 	private client: CyborgDB;
 	private index?: EncryptedIndex;
@@ -43,7 +48,7 @@ export class CyborgVectorStore extends VectorStore {
 	private indexKey?: Uint8Array;
 	private kmsName?: string;
 	private dimension?: number;
-	private metric: string;
+	private metric: "cosine" | "euclidean" | "squared_euclidean";
 
 	_vectorstoreType(): string {
 		return "cyborgdb";
@@ -72,7 +77,7 @@ export class CyborgVectorStore extends VectorStore {
 			this.indexKey = config.indexKey;
 		}
 		this.dimension = config.dimension;
-		this.metric = config.metric || "cosine";
+		this.metric = config.metric ?? "cosine";
 
 		// Create client
 		this.client = new CyborgDB({
@@ -96,15 +101,19 @@ export class CyborgVectorStore extends VectorStore {
 		} else {
 			// Node.js environment
 			try {
-				const g = (
-					typeof globalThis !== "undefined"
-						? globalThis
-						: typeof window !== "undefined"
-							? window
-							: typeof self !== "undefined"
-								? self
-								: {}
-				) as any;
+				const g = (typeof globalThis !== "undefined"
+					? globalThis
+					: typeof window !== "undefined"
+						? window
+						: typeof self !== "undefined"
+							? self
+							: {}) as unknown as {
+					crypto?: {
+						randomBytes?: (n: number) => Uint8Array;
+						getRandomValues?: (buf: Uint8Array) => Uint8Array;
+					};
+					require?: (m: string) => { randomBytes: (n: number) => Buffer };
+				};
 				const crypto = g.crypto || g.require?.("crypto");
 				if (crypto?.randomBytes) {
 					return new Uint8Array(crypto.randomBytes(32));
@@ -139,9 +148,16 @@ export class CyborgVectorStore extends VectorStore {
 		try {
 			// Check if index already exists
 			const existingIndexes = await this.client.listIndexes();
-			const indexExists = Array.isArray(existingIndexes)
-				? existingIndexes.includes(this.indexName)
-				: (existingIndexes as any).indices?.includes(this.indexName) || false;
+			const existingIndexesUnknown: unknown = existingIndexes;
+			const indexExists = Array.isArray(existingIndexesUnknown)
+				? existingIndexesUnknown.includes(this.indexName)
+				: typeof existingIndexesUnknown === "object" &&
+						existingIndexesUnknown !== null &&
+						"indices" in existingIndexesUnknown
+					? ((
+							existingIndexesUnknown as { indices?: string[] }
+						).indices?.includes(this.indexName) ?? false)
+					: false;
 
 			if (indexExists) {
 				// Load existing index using loadIndex method
@@ -162,7 +178,7 @@ export class CyborgVectorStore extends VectorStore {
 					indexKey: this.indexKey,
 					kmsName: this.kmsName,
 					dimension: this.dimension,
-					metric: this.metric as any,
+					metric: this.metric,
 				});
 			}
 		} catch (error) {
@@ -216,7 +232,7 @@ export class CyborgVectorStore extends VectorStore {
 				metadata: {
 					...metadata,
 					_content: text,
-				},
+				} as VectorItem["metadata"],
 			};
 		});
 
@@ -276,7 +292,7 @@ export class CyborgVectorStore extends VectorStore {
 			metadata: {
 				...documents[i].metadata,
 				_content: documents[i].pageContent,
-			},
+			} as VectorItem["metadata"],
 		}));
 
 		// Upsert to index
@@ -369,7 +385,7 @@ export class CyborgVectorStore extends VectorStore {
 		query: string,
 		k = 4,
 		filter?: this["FilterType"],
-		_callbacks?: any,
+		_callbacks?: Callbacks,
 	): Promise<DocumentInterface[]> {
 		await this.initializeIndex();
 
@@ -392,20 +408,17 @@ export class CyborgVectorStore extends VectorStore {
 			return [];
 		}
 
-		// Handle batch query results - results.results is of type Results
-		let queryResults: QueryResultItem[];
-		if (Array.isArray(results.results)) {
-			queryResults = results.results as QueryResultItem[];
-		} else if (results.results && typeof results.results === "object") {
-			// If results.results is an object with a results property
-			const innerResults = (results.results as any).results;
-			queryResults = Array.isArray(innerResults) ? innerResults : [];
-		} else {
-			queryResults = [];
-		}
+		// Handle flat (single query) and nested (batch query) results
+		const rawResults = results.results;
+		const queryResults: QueryResultItem[] =
+			(Array.isArray(rawResults) &&
+			rawResults.length > 0 &&
+			Array.isArray(rawResults[0])
+				? (rawResults as QueryResultItem[][])[0]
+				: (rawResults as QueryResultItem[])) ?? [];
 
 		return queryResults.map((item: QueryResultItem) => {
-			const metadata = { ...(item.metadata || {}) };
+			const metadata = { ...(item.metadata || {}) } as Record<string, unknown>;
 
 			let content = "";
 			if (metadata._content !== undefined) {
@@ -440,7 +453,7 @@ export class CyborgVectorStore extends VectorStore {
 		query: string,
 		k = 4,
 		filter?: this["FilterType"],
-		_callbacks?: any,
+		_callbacks?: Callbacks,
 	): Promise<[DocumentInterface, number][]> {
 		await this.initializeIndex();
 
@@ -463,20 +476,17 @@ export class CyborgVectorStore extends VectorStore {
 			return [];
 		}
 
-		// Handle batch query results - results.results is of type Results
-		let queryResults: QueryResultItem[];
-		if (Array.isArray(results.results)) {
-			queryResults = results.results as QueryResultItem[];
-		} else if (results.results && typeof results.results === "object") {
-			// If results.results is an object with a results property
-			const innerResults = (results.results as any).results;
-			queryResults = Array.isArray(innerResults) ? innerResults : [];
-		} else {
-			queryResults = [];
-		}
+		// Handle flat (single query) and nested (batch query) results
+		const rawResults2 = results.results;
+		const queryResults: QueryResultItem[] =
+			(Array.isArray(rawResults2) &&
+			rawResults2.length > 0 &&
+			Array.isArray(rawResults2[0])
+				? (rawResults2 as QueryResultItem[][])[0]
+				: (rawResults2 as QueryResultItem[])) ?? [];
 
 		return queryResults.map((item: QueryResultItem) => {
-			const metadata = { ...(item.metadata || {}) };
+			const metadata = { ...(item.metadata || {}) } as Record<string, unknown>;
 
 			let content = "";
 			if (metadata._content !== undefined) {
@@ -535,20 +545,17 @@ export class CyborgVectorStore extends VectorStore {
 			return [];
 		}
 
-		// Handle batch query results - results.results is of type Results
-		let queryResults: QueryResultItem[];
-		if (Array.isArray(results.results)) {
-			queryResults = results.results as QueryResultItem[];
-		} else if (results.results && typeof results.results === "object") {
-			// If results.results is an object with a results property
-			const innerResults = (results.results as any).results;
-			queryResults = Array.isArray(innerResults) ? innerResults : [];
-		} else {
-			queryResults = [];
-		}
+		// Handle flat (single query) and nested (batch query) results
+		const rawResults3 = results.results;
+		const queryResults: QueryResultItem[] =
+			(Array.isArray(rawResults3) &&
+			rawResults3.length > 0 &&
+			Array.isArray(rawResults3[0])
+				? (rawResults3 as QueryResultItem[][])[0]
+				: (rawResults3 as QueryResultItem[])) ?? [];
 
 		return queryResults.map((item: QueryResultItem) => {
-			const metadata = { ...(item.metadata || {}) };
+			const metadata = { ...(item.metadata || {}) } as Record<string, unknown>;
 
 			let content = "";
 			if (metadata._content !== undefined) {
@@ -613,7 +620,7 @@ export class CyborgVectorStore extends VectorStore {
 			k: number;
 			fetchK?: number;
 			lambda?: number;
-			filter?: Record<string, any>;
+			filter?: FilterExpression;
 		},
 	): Promise<DocumentInterface[]> {
 		const { k, fetchK = k * 2, lambda = 0.5, filter } = options;

@@ -7,8 +7,11 @@ import type {
 	BinaryVectorBatch,
 	CreateUserRequest,
 	DeleteRequest,
+	GetResponseModel as GeneratedGetResponseModel,
+	QueryResponse as GeneratedQueryResponse,
+	UpsertRequest as GeneratedUpsertRequest,
+	VectorItem as GeneratedVectorItem,
 	GetRequest,
-	GetResponseModel,
 	IndexInfoResponseModel,
 	IndexOperationRequest,
 	ListIDsRequest,
@@ -17,18 +20,19 @@ import type {
 	MetadataResult,
 	QueryMetadataRequest,
 	QueryMetadataResponse,
-	QueryResponse,
 	Request,
 	TrainRequest,
-	UpsertRequest,
-	VectorItem,
 } from "./models";
 import type {
 	DeleteResponse,
 	FilterExpression,
 	GetResultItem,
+	QueryResponse,
+	QueryResultItem,
 	TrainResponse,
 	UpsertResponse,
+	VectorItem,
+	VectorMetadata,
 } from "./types";
 
 export class EncryptedIndex {
@@ -170,13 +174,13 @@ export class EncryptedIndex {
 	 * @param include Fields to include in results
 	 * @returns Promise with the retrieved vectors
 	 */
-	async get({
+	async get<M extends object = VectorMetadata>({
 		ids,
 		include = ["vector", "contents", "metadata"],
 	}: {
 		ids: string[];
 		include?: string[];
-	}): Promise<GetResultItem[]> {
+	}): Promise<GetResultItem<M>[]> {
 		try {
 			const includeFields: string[] = [];
 			if (include.includes("vector")) includeFields.push("vector");
@@ -189,17 +193,16 @@ export class EncryptedIndex {
 				include: includeFields,
 			});
 
-			const response = await this.api.getVectorsV1VectorsGetPost({
-				getRequest,
-			});
+			const response: GeneratedGetResponseModel =
+				await this.api.getVectorsV1VectorsGetPost({
+					getRequest,
+				});
 
-			// Process the results to match Python SDK format
-			const responseBody: GetResponseModel = response;
-			const items = responseBody.results || [];
+			const items = response.results || [];
 
 			// Convert results to the expected format
-			return items.map((item): GetResultItem => {
-				const result: GetResultItem = { id: item.id };
+			return items.map((item): GetResultItem<M> => {
+				const result: GetResultItem<M> = { id: item.id };
 
 				if (item.vector) result.vector = item.vector;
 				if (item.contents != null) {
@@ -207,7 +210,7 @@ export class EncryptedIndex {
 					// string), matching the Python SDK's get().
 					result.contents = item.contents;
 				}
-				if (item.metadata) result.metadata = item.metadata;
+				if (item.metadata) result.metadata = item.metadata as M;
 				return result;
 			});
 		} catch (error: unknown) {
@@ -266,17 +269,17 @@ export class EncryptedIndex {
 	 * @returns Promise resolving to operation result with status and details
 	 * @throws Error with detailed validation information for invalid inputs
 	 */
-	async upsert({
+	async upsert<M extends object = VectorMetadata>({
 		items,
 		ids,
 		vectors,
 		metadata,
 		contents,
 	}: {
-		items?: VectorItem[];
+		items?: VectorItem<M>[];
 		ids?: string[];
 		vectors?: number[][] | Float32Array;
-		metadata?: (Record<string, unknown> | null)[];
+		metadata?: (M | null)[];
 		contents?: (string | null)[];
 	}): Promise<UpsertResponse> {
 		// Route to binary endpoint if vectors is Float32Array
@@ -296,11 +299,11 @@ export class EncryptedIndex {
 					`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`,
 				);
 			}
-			return this._upsertBinary({ ids, vectors, metadata, contents });
+			return this._upsertBinary<M>({ ids, vectors, metadata, contents });
 		}
 
 		try {
-			let finalItems: VectorItem[] = [];
+			let finalItems: VectorItem<M>[] = [];
 
 			// Case 1: items provided
 			if (items !== undefined) {
@@ -473,35 +476,37 @@ export class EncryptedIndex {
 			}
 
 			// Convert items to the format expected by the API
-			const processedItems: VectorItem[] = finalItems.map((item, index) => {
-				let contentValue: string | undefined;
+			const processedItems: GeneratedVectorItem[] = finalItems.map(
+				(item, index) => {
+					let contentValue: string | undefined;
 
-				if (item.contents) {
-					try {
-						if (typeof item.contents === "string") {
-							contentValue = item.contents;
-						} else {
-							contentValue = Buffer.from(item.contents as any).toString(
-								"base64",
+					if (item.contents) {
+						try {
+							if (typeof item.contents === "string") {
+								contentValue = item.contents;
+							} else {
+								contentValue = Buffer.from(item.contents).toString("base64");
+							}
+						} catch (error) {
+							throw new Error(
+								`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : "Unknown error"}`,
+								{ cause: error },
 							);
 						}
-					} catch (error) {
-						throw new Error(
-							`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : "Unknown error"}`,
-							{ cause: error },
-						);
 					}
-				}
 
-				return {
-					id: item.id,
-					vector: item.vector,
-					contents: contentValue,
-					metadata: item.metadata || undefined,
-				};
-			});
+					return {
+						id: item.id,
+						vector: item.vector,
+						contents: contentValue,
+						metadata: (item.metadata ?? undefined) as
+							| { [key: string]: unknown }
+							| undefined,
+					};
+				},
+			);
 
-			const upsertRequest: UpsertRequest = this.withKey({
+			const upsertRequest: GeneratedUpsertRequest = this.withKey({
 				indexName: this.indexName,
 				items: processedItems,
 			});
@@ -568,7 +573,7 @@ export class EncryptedIndex {
 	 * @returns Promise resolving to QueryResponse
 	 * @throws Error if neither queryVectors nor queryContents provided
 	 */
-	async query({
+	async query<M extends object = VectorMetadata>({
 		queryVectors,
 		queryContents,
 		topK,
@@ -602,7 +607,7 @@ export class EncryptedIndex {
 		alpha?: number;
 		rrfK?: number;
 		windowMult?: number;
-	}): Promise<QueryResponse> {
+	}): Promise<QueryResponse<M>> {
 		// Route to binary endpoint if queryVectors is Float32Array
 		if (queryVectors instanceof Float32Array) {
 			if (!dimension) {
@@ -610,7 +615,7 @@ export class EncryptedIndex {
 					"Invalid query call: 'dimension' is required when using Float32Array queryVectors",
 				);
 			}
-			return this._queryBinary({
+			return this._queryBinary<M>({
 				queryVectors,
 				topK,
 				nProbes,
@@ -674,27 +679,28 @@ export class EncryptedIndex {
 				windowMult: windowMult ?? undefined,
 			});
 
-			const response = await this.api.queryVectorsV1VectorsQueryPost({
-				request: requestData,
-			});
+			const apiResponse: GeneratedQueryResponse =
+				await this.api.queryVectorsV1VectorsQueryPost({
+					request: requestData,
+				});
 
-			if (!response) {
+			if (!apiResponse) {
 				throw new Error("No response received from query API");
 			}
 
-			const finalResponse = response;
+			const rawResults = (apiResponse as unknown as QueryResponse<M>).results;
+			let results: QueryResponse<M>["results"] = rawResults;
 
 			if (
 				isSingleQuery &&
-				finalResponse.results &&
-				Array.isArray(finalResponse.results) &&
-				finalResponse.results.length === 1 &&
-				Array.isArray(finalResponse.results[0])
+				Array.isArray(rawResults) &&
+				rawResults.length === 1 &&
+				Array.isArray(rawResults[0])
 			) {
-				finalResponse.results = finalResponse.results[0];
+				results = rawResults[0] as QueryResultItem<M>[];
 			}
 
-			return finalResponse;
+			return { ...apiResponse, results } as QueryResponse<M>;
 		} catch (error: unknown) {
 			handleApiError(error);
 		}
@@ -930,7 +936,7 @@ export class EncryptedIndex {
 	 * Internal method: Add or update vectors using binary format for efficiency.
 	 * Called automatically by upsert() when Float32Array is passed.
 	 */
-	private async _upsertBinary({
+	private async _upsertBinary<M extends object = VectorMetadata>({
 		ids,
 		vectors,
 		metadata,
@@ -938,7 +944,7 @@ export class EncryptedIndex {
 	}: {
 		ids: string[];
 		vectors: number[][] | Float32Array;
-		metadata?: (Record<string, unknown> | null)[];
+		metadata?: (M | null)[];
 		contents?: (string | null)[];
 	}): Promise<UpsertResponse> {
 		try {
@@ -1030,7 +1036,7 @@ export class EncryptedIndex {
 	 * Internal method: Query vectors using binary format for efficiency.
 	 * Called automatically by query() when Float32Array is passed.
 	 */
-	private async _queryBinary({
+	private async _queryBinary<M extends object = VectorMetadata>({
 		queryVectors,
 		topK,
 		nProbes,
@@ -1062,7 +1068,7 @@ export class EncryptedIndex {
 		alpha?: number;
 		rrfK?: number;
 		windowMult?: number;
-	}): Promise<QueryResponse> {
+	}): Promise<QueryResponse<M>> {
 		try {
 			// Convert vectors to Float32Array if needed and get dimension
 			let float32Vectors: Float32Array;
@@ -1127,11 +1133,11 @@ export class EncryptedIndex {
 				windowMult: windowMult ?? undefined,
 			});
 
-			const response =
+			const response: GeneratedQueryResponse =
 				await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({
 					binaryQueryRequest,
 				});
-			return response;
+			return response as unknown as QueryResponse<M>;
 		} catch (error: unknown) {
 			handleApiError(error);
 		}

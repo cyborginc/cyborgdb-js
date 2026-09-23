@@ -21,7 +21,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
-import type { VectorItem } from "./models";
+import type { VectorItem, VectorMetadata } from "./types";
 
 /**
  * Base URL for hosted sample datasets (public-read S3 bucket).
@@ -183,7 +183,7 @@ function hydrate(raw: RawSampleDataset): SampleDataset {
 	const items: VectorItem[] = raw.ids.map((id, i) => ({
 		id,
 		vector: raw.vectors[i],
-		metadata: raw.metadata[i],
+		metadata: raw.metadata[i] as VectorMetadata,
 	}));
 	return {
 		...raw,
