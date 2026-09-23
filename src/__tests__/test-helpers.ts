@@ -52,6 +52,24 @@ export async function waitForIds(
 	);
 }
 
+/**
+ * Block until `predicate` holds. For conditions neither id helper expresses —
+ * a rewritten field becoming searchable, say. `description` is what the failure
+ * message says was being waited for.
+ */
+export async function waitFor(
+	predicate: () => Promise<boolean>,
+	description: string,
+	timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await predicate()) return;
+		await delay(POLL_INTERVAL_MS);
+	}
+	throw new Error(`timed out after ${timeoutMs}ms waiting for: ${description}`);
+}
+
 /** Block until none of `gone` are visible — the delete-side counterpart. */
 export async function waitUntilGone(
 	index: EncryptedIndex,
