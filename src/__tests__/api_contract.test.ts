@@ -141,19 +141,20 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(client2).toBeInstanceOf(Client);
 		});
 
-		it("should reject unexpected parameters", () => {
+		it("ignores unexpected constructor parameters", async () => {
 			const invalidParams = {
 				baseUrl: BASE_URL,
 				apiKey: API_KEY,
 				unexpectedParam: "should fail",
 			};
 
-			try {
-				new Client(invalidParams as any);
-				expect(true).toBe(true);
-			} catch (error) {
-				expect(error).toBeDefined();
-			}
+			// Extra keys are ignored rather than rejected. Asserted as the actual
+			// contract: the previous try/catch passed on either outcome, so it
+			// could not have caught a change in either direction.
+			const client = new Client(invalidParams as any);
+			expect(client).toBeInstanceOf(Client);
+			const health = await client.getHealth();
+			expect(health.status).toBe("healthy");
 		});
 
 		it("should require baseUrl parameter", () => {
@@ -639,21 +640,15 @@ describe("CyborgDB API Contract Tests", () => {
 				include: ["distance", "metadata"],
 			});
 
-			const results = Array.isArray(response.results)
-				? response.results
-				: [response.results];
-			if (results.length > 0) {
-				const firstResults = Array.isArray(results[0]) ? results[0] : results;
-				if (firstResults.length > 0) {
-					const firstResult = firstResults[0];
-					const expectedKeys = new Set(["id", "distance", "metadata"]);
-					validateExactKeys(
-						firstResult,
-						expectedKeys,
-						"query() with include=[distance, metadata]",
-					);
-				}
-			}
+			// Anchored: the guarded form passed silently when the query returned
+			// nothing, which is exactly the regression worth catching.
+			const rows = flattenResults(response.results);
+			expect(rows.length).toBeGreaterThan(0);
+			validateExactKeys(
+				rows[0],
+				new Set(["id", "distance", "metadata"]),
+				"query() with include=[distance, metadata]",
+			);
 		});
 
 		it("should query with metadata filters", async () => {
@@ -664,16 +659,13 @@ describe("CyborgDB API Contract Tests", () => {
 				include: ["metadata"],
 			});
 
-			const results = Array.isArray(response.results)
-				? response.results
-				: [response.results];
-			if (results.length > 0) {
-				const firstResults = Array.isArray(results[0]) ? results[0] : results;
-				firstResults.forEach((result: any) => {
-					if (result.metadata) {
-						expect(result.metadata.category).toBe("cat_0");
-					}
-				});
+			// Three nested guards previously meant an empty result — or rows with
+			// no metadata at all — passed. Both are now failures.
+			const rows = flattenResults(response.results);
+			expect(rows.length).toBeGreaterThan(0);
+			for (const row of rows) {
+				expect(row.metadata).toBeDefined();
+				expect((row.metadata as any).category).toBe("cat_0");
 			}
 		});
 
@@ -900,12 +892,11 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(response).toBeDefined();
 			expect(response.results).toBeDefined();
 
-			const results = Array.isArray(response.results)
-				? response.results
-				: [response.results];
-			if (results.length > 0) {
-				const queryResults = Array.isArray(results[0]) ? results[0] : results;
-
+			// The outer `if (results.length > 0)` meant an empty response skipped
+			// every assertion below, including the "at least one binary item" one.
+			const queryResults = flattenResults(response.results);
+			expect(queryResults.length).toBeGreaterThan(0);
+			{
 				// Should find at least one binary item
 				const binaryResults = queryResults.filter(
 					(r: any) => r.metadata && r.metadata.type === "binary",

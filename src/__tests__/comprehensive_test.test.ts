@@ -45,35 +45,54 @@ describe("SSL Verification Tests", () => {
 	const localhostUrl = "http://localhost:8000";
 	const productionUrl = "https://api.cyborgdb.com";
 
+	// The resolved verifySsl decision is not readable off the client, so these
+	// assert the two signals that do change with it: the warning the client
+	// emits when verification is off, and — for localhost — that a client built
+	// this way actually works. `expect(client).toBeDefined()` was the previous
+	// assertion and could only fail if the constructor returned undefined.
+	// ssl-verification.test.ts covers the auto-detection matrix in depth.
+
 	test("should handle SSL auto-detection for localhost URLs", async () => {
 		const client = new Client({
 			baseUrl: localhostUrl,
 			apiKey,
 			verifySsl: false,
 		});
-		expect(client).toBeDefined();
 
-		// Basic connectivity test
 		const health = await client.getHealth();
-		expect(typeof health).toBeTruthy();
+		expect(health.status).toBe("healthy");
 	});
 
 	test("should handle explicit SSL verification disable", async () => {
-		const client = new Client({
-			baseUrl: productionUrl,
-			apiKey,
-			verifySsl: false,
-		});
-		expect(client).toBeDefined();
+		const warn = jest.spyOn(console, "warn").mockImplementation();
+		try {
+			new Client({ baseUrl: productionUrl, apiKey, verifySsl: false });
+			// Turning verification off against a non-local host must warn.
+			expect(
+				warn.mock.calls.some(([msg]) =>
+					String(msg).includes("SSL verification is disabled"),
+				),
+			).toBe(true);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	test("should handle explicit SSL verification enable", async () => {
-		const client = new Client({
-			baseUrl: productionUrl,
-			apiKey,
-			verifySsl: true,
-		});
-		expect(client).toBeDefined();
+		const warn = jest.spyOn(console, "warn").mockImplementation();
+		try {
+			new Client({ baseUrl: productionUrl, apiKey, verifySsl: true });
+			// The differential against the test above: with verification on there
+			// is nothing to warn about. Without this pair either test would pass
+			// on a client that ignored verifySsl entirely.
+			expect(
+				warn.mock.calls.some(([msg]) =>
+					String(msg).includes("SSL verification is disabled"),
+				),
+			).toBe(false);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	test("should handle SSL certificate validation scenarios", async () => {
@@ -84,8 +103,10 @@ describe("SSL Verification Tests", () => {
 		});
 
 		try {
-			await client.getHealth();
-			expect(true).toBe(true);
+			const health = await client.getHealth();
+			// Reaching a real host is the success path: the response must be a
+			// real health payload, not merely "no exception thrown".
+			expect(health).toHaveProperty("status");
 		} catch (error: any) {
 			const networkErrors = [
 				"ENOTFOUND",
@@ -108,11 +129,11 @@ describe("SSL Verification Tests", () => {
 	});
 
 	test("should auto-detect connection method", async () => {
+		// `typeof health` is always a non-empty string, so the previous
+		// assertion held no matter what getHealth returned.
 		const client = createClient();
-		expect(client).toBeDefined();
-
 		const health = await client.getHealth();
-		expect(typeof health).toBeTruthy();
+		expect(health.status).toBe("healthy");
 	});
 });
 
@@ -163,11 +184,12 @@ describe("DiskIVF Index Tests", () => {
 		const queryVector = testVectors[0];
 		const results = await index.query({ queryVectors: [queryVector], topK: 5 });
 
-		expect(results.results).toBeDefined();
-		expect(Array.isArray(results.results)).toBe(true);
-		if (results.results.length > 0 && results.results[0].length > 0) {
-			expect(results.results[0][0]).toHaveProperty("id");
-		}
+		// Anchored on the seeded corpus: a guarded `if (length > 0)` would let an
+		// empty result set pass silently, which is the failure most worth catching.
+		const rows = flattenResults(results.results);
+		expect(rows).toHaveLength(5);
+		expect(rows[0]).toHaveProperty("id");
+		expect(testIds).toContain(rows[0].id);
 	});
 
 	test("should create DiskIVF index without explicit dimension", async () => {
