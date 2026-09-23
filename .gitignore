@@ -212,3 +212,7 @@ typings
 pr.md
 pr-review.md
 
+
+# agent-ops planning artifacts (never merge to main)
+plan.md
+spec.md
