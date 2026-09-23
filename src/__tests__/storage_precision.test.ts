@@ -30,6 +30,7 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
+import { waitFor } from "./test-helpers";
 import { Client, type EncryptedIndex } from "../index";
 import {
 	CreateIndexRequestFromJSON,
@@ -186,7 +187,10 @@ describe("storagePrecision (integration)", () => {
 				vectors: vectors.slice(start, end),
 			});
 		}
-		await sleep(1000);
+		await waitFor(
+			async () => (await index.listIds()).count === NUM_VECTORS,
+			`all ${NUM_VECTORS} vectors become visible to listIds`,
+		);
 		expect((await index.listIds()).count).toBe(NUM_VECTORS);
 
 		await index.train({ nLists: N_LISTS });

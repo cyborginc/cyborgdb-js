@@ -21,7 +21,7 @@ import {
 	TrainRequestToJSON,
 	UpsertRequestToJSON,
 } from "../models";
-import { flattenResults } from "./test-helpers";
+import { flattenResults, waitFor, waitUntilGone } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
 jest.setTimeout(120000);
@@ -238,7 +238,6 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(await index.getDimension()).toBe(dimension);
 
 			await index.deleteIndex();
-			await sleep(1000); // Backend has eventual consistency for deletions
 		});
 
 		it("should create DiskIVF index without dimension (auto-detected on upsert)", async () => {
@@ -251,7 +250,6 @@ describe("CyborgDB API Contract Tests", () => {
 			});
 
 			await index.deleteIndex();
-			await sleep(1000); // Backend has eventual consistency for deletions
 		});
 
 		it("should create DiskIVF index with float16 storagePrecision", async () => {
@@ -267,7 +265,6 @@ describe("CyborgDB API Contract Tests", () => {
 			});
 
 			await index.deleteIndex();
-			await sleep(1000);
 		});
 
 		it("should create index with embedding model", async () => {
@@ -281,7 +278,6 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(await embeddingIndex.getDimension()).toBe(384); // all-MiniLM-L6-v2 dimension
 
 			// Wait for index to be ready
-			await sleep(2000);
 		});
 
 		it("should reject duplicate index creation", async () => {
@@ -305,7 +301,6 @@ describe("CyborgDB API Contract Tests", () => {
 
 			// Clean up
 			await firstIndex.deleteIndex();
-			await sleep(1000); // Backend has eventual consistency for deletions
 		});
 
 		it("should reject unexpected parameters", async () => {
@@ -318,7 +313,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await client.createIndex(invalidParams as any);
 			expect(result).toBeDefined();
 			await result.deleteIndex();
-			await sleep(1000); // Backend has eventual consistency for deletions
 		});
 
 		it("should create main test index for subsequent tests", async () => {
@@ -331,10 +325,11 @@ describe("CyborgDB API Contract Tests", () => {
 
 			expect(testIndex).toBeDefined();
 
-			// Wait for index to be fully initialized
-			await sleep(2000);
+			await waitFor(
+				async () => (await client.listIndexes()).includes(testIndexName),
+				`${testIndexName} appears in listIndexes`,
+			);
 
-			// Verify index was created and is accessible
 			const indexes = await client.listIndexes();
 			expect(indexes).toContain(testIndexName);
 
@@ -395,7 +390,6 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
 		});
 
 		it("should upsert with items array format (contents as string, auto-embed)", async () => {
@@ -413,7 +407,6 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
 		});
 
 		it("should upsert remaining test items", async () => {
@@ -430,7 +423,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.upsert({ items });
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
 		});
 
 		it("should upsert with parallel arrays format (ids + vectors)", async () => {
@@ -440,7 +432,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.upsert({ ids, vectors });
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
 		});
 
 		it("should reject vectors with wrong dimensions", async () => {
@@ -717,16 +708,12 @@ describe("CyborgDB API Contract Tests", () => {
 			});
 			expect(response1.results).toBeDefined();
 
-			await sleep(500);
-
 			const multipleVectors = [testVectors[5], testVectors[6]];
 			const response2 = await testIndex.query({
 				queryVectors: multipleVectors,
 				topK: 2,
 			});
 			expect(Array.isArray(response2.results)).toBe(true);
-
-			await sleep(500);
 
 			const response3 = await testIndex.query({
 				queryVectors: testVectors[7],
@@ -828,7 +815,6 @@ describe("CyborgDB API Contract Tests", () => {
 			});
 			expect(validTrainStatuses).toContain(result.status);
 
-			await sleep(2000);
 		});
 	});
 
@@ -840,7 +826,7 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
+			await waitUntilGone(testIndex, idsToDelete);
 
 			const listResult = await testIndex.listIds();
 			idsToDelete.forEach((id) => {
@@ -852,7 +838,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.delete({ ids: ["9"] });
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
 		});
 	});
 
@@ -883,7 +868,6 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
 		});
 
 		it("should retrieve binary contents via get()", async () => {
@@ -939,7 +923,6 @@ describe("CyborgDB API Contract Tests", () => {
 		it("should clean up binary test data", async () => {
 			const result = await testIndex.delete({ ids: binaryTestIds });
 			expect(result.status).toBe("success");
-			await sleep(1000);
 		});
 	});
 
@@ -992,7 +975,10 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
 
-			await sleep(1000);
+			await waitFor(
+				async () => !(await client.listIndexes()).includes(testIndexName),
+				`${testIndexName} disappears from listIndexes`,
+			);
 
 			const indexes = await client.listIndexes();
 			expect(indexes).not.toContain(testIndexName);

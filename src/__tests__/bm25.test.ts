@@ -37,7 +37,6 @@ const newClient = () =>
 const randVec = () => Array.from({ length: DIM }, () => Math.random());
 const newIndexName = (prefix: string) =>
 	`${prefix}_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Pull the ids out of queryMetadata's `{ id }` rows into a Set. */
 const idSet = (rows: MetadataResult[]) => new Set(rows.map((r) => r.id));
@@ -99,7 +98,10 @@ describe("BM25 full-text search (single full_text field)", () => {
 				metadata: { body, topic },
 			})),
 		});
-		await sleep(2000);
+		await waitForIds(
+			index,
+			DOCS.map(([id]) => id),
+		);
 	});
 
 	afterAll(async () => {
@@ -407,7 +409,10 @@ describe("BM25 metadata-filter narrowing (two full_text fields)", () => {
 				metadata: { title, body, lang },
 			})),
 		});
-		await sleep(2000);
+		await waitForIds(
+			index,
+			ROWS.map(([id]) => id),
+		);
 	});
 
 	afterAll(async () => {
@@ -507,7 +512,7 @@ describe("BM25 not configured (no full_text field)", () => {
 				metadata: { body: "quantum computing" },
 			})),
 		});
-		await sleep(2000);
+		await waitForIds(index, ["i0", "i1", "i2", "i3"]);
 	});
 
 	afterAll(async () => {
