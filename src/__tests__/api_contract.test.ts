@@ -250,6 +250,14 @@ describe("CyborgDB API Contract Tests", () => {
 				indexKey: tempIndexKey,
 			});
 
+			// The point of the test is the auto-detection, so assert it: the index
+			// has no dimension until an upsert gives it one. Creating and deleting
+			// without asserting could only have failed on a thrown error.
+			await index.upsert({
+				items: [{ id: "probe", vector: generateTestVectors(1, 64)[0] }],
+			});
+			expect(await index.getDimension()).toBe(64);
+
 			await index.deleteIndex();
 		});
 
@@ -264,6 +272,18 @@ describe("CyborgDB API Contract Tests", () => {
 				metric: "cosine",
 				storagePrecision: "float16",
 			});
+
+			// The index-info response does not echo storage_precision back, so the
+			// tier is verified by behaviour: a float16 index must still round-trip
+			// a vector and return it as its own nearest neighbour. Creating and
+			// deleting asserted nothing at all.
+			const probe = generateTestVectors(1, dimension)[0];
+			await index.upsert({ items: [{ id: "probe", vector: probe }] });
+			const rows = flattenResults(
+				(await index.query({ queryVectors: probe, topK: 1 })).results,
+			);
+			expect(rows).toHaveLength(1);
+			expect(rows[0].id).toBe("probe");
 
 			await index.deleteIndex();
 		});
@@ -524,6 +544,8 @@ describe("CyborgDB API Contract Tests", () => {
 				include: ["metadata"],
 			});
 
+			// Anchored first: forEach over an empty array runs no assertions.
+			expect(results).toHaveLength(idsToGet.length);
 			results.forEach((result: any) => {
 				validateExactKeys(
 					result,
@@ -540,6 +562,7 @@ describe("CyborgDB API Contract Tests", () => {
 				include: [],
 			});
 
+			expect(results).toHaveLength(idsToGet.length);
 			results.forEach((result: any) => {
 				validateExactKeys(
 					result,
@@ -561,25 +584,21 @@ describe("CyborgDB API Contract Tests", () => {
 			expect(response).toBeDefined();
 			expect(response).toHaveProperty("results");
 
-			const results = Array.isArray(response.results)
-				? response.results
-				: [response.results];
-			expect(Array.isArray(results)).toBe(true);
-
-			if (results.length > 0 && Array.isArray(results[0])) {
-				const firstQueryResults = results[0];
-
-				firstQueryResults.forEach((match: any) => {
-					validateExactKeys(
-						match,
-						new Set(["id", "distance"]),
-						"query() result item",
-					);
-					expect(typeof match.id).toBe("string");
-					expect(typeof match.distance).toBe("number");
-					expect(match.distance).toBeGreaterThanOrEqual(0);
-				});
-			}
+			// Anchored on the seeded corpus. The guard this replaces skipped every
+			// assertion below when the query came back empty — the one outcome
+			// most worth failing on.
+			const rows = flattenResults(response.results);
+			expect(rows.length).toBeGreaterThan(0);
+			rows.forEach((match: any) => {
+				validateExactKeys(
+					match,
+					new Set(["id", "distance"]),
+					"query() result item",
+				);
+				expect(typeof match.id).toBe("string");
+				expect(typeof match.distance).toBe("number");
+				expect(match.distance).toBeGreaterThanOrEqual(0);
+			});
 		});
 
 		it("should query with nested array (single vector) format", async () => {
@@ -676,17 +695,16 @@ describe("CyborgDB API Contract Tests", () => {
 				topK: 3,
 			});
 
-			expect(response).toBeDefined();
-			expect(response.results).toBeDefined();
-			const results = Array.isArray(response.results)
-				? response.results
-				: [response.results];
-			expect(Array.isArray(results)).toBe(true);
-
-			// Should return some results from our auto-embedded items
-			if (results.length > 0 && Array.isArray(results[0])) {
-				const firstResults = results[0];
-				expect(firstResults.length).toBeGreaterThan(0);
+			// Auto-embedding is the whole point of this test, so the empty result
+			// has to fail. The guard this replaces meant the service could embed
+			// nothing, match nothing, and still pass.
+			const rows = flattenResults(response.results);
+			expect(rows.length).toBeGreaterThan(0);
+			// Only the three auto-embedded items exist in this index, so every hit
+			// must be one of them — not merely "some rows came back".
+			const embeddedIds = new Set(["embed_0", "embed_1", "embed_2"]);
+			for (const row of rows) {
+				expect(embeddedIds.has(row.id)).toBe(true);
 			}
 		});
 	});
