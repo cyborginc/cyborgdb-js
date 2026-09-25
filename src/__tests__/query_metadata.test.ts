@@ -440,3 +440,90 @@ describe("queryMetadata on a default-posture index", () => {
 		).rejects.toThrow();
 	});
 });
+
+describe("datetime handling", () => {
+	// Native Date values passed as metadata. Core stores epoch millis and
+	// supports range filters; JSON.stringify turns a Date into an ISO 8601
+	// string, so equality matches but every range comparison fails.
+	// Mirrors py TestDatetimeHandling.
+	const BASE = new Date(Date.UTC(2026, 0, 1));
+	const plusDays = (n: number) =>
+		new Date(BASE.getTime() + n * 24 * 60 * 60 * 1000);
+
+	let client: Client;
+	let index: EncryptedIndex;
+
+	beforeAll(async () => {
+		client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY, verifySsl: false });
+		index = await client.createIndex({
+			indexName: `datetime_${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: DIM,
+			metric: "euclidean",
+			metadataSchema: {
+				created: { filterable: true },
+				createdMs: { filterable: true },
+			},
+		});
+		await index.upsert({
+			items: [0, 1, 2].map((i) => ({
+				id: `t${i}`,
+				vector: Array.from({ length: DIM }, () => Math.random()),
+				metadata: {
+					created: plusDays(10 * i),
+					createdMs: plusDays(10 * i).getTime(),
+				},
+			})),
+		});
+		await waitForIds(index, ["t0", "t1", "t2"]);
+	});
+
+	afterAll(async () => {
+		try {
+			await index.deleteIndex();
+		} catch {
+			// best-effort cleanup
+		}
+	});
+
+	// Unlike Python, TypeScript's FilterExpression does not admit a Date at
+	// all — these casts are what a caller would have to write to get a Date
+	// past the compiler. The cast is deliberate: it pins what the service does
+	// when the types are bypassed, which is the behaviour cyborgdb-core#2396
+	// describes.
+	const dateFilter = (v: unknown) => v as FilterExpression;
+
+	it("matches equality on a datetime", async () => {
+		// Survives because it degenerates to string comparison.
+		const got = await index.queryMetadata({
+			filters: dateFilter({ created: BASE }),
+		});
+		expect(new Set(idsOf(got))).toEqual(new Set(["t0"]));
+	});
+
+	it("supports a range on a datetime", async () => {
+		// KNOWN BUG — fails today. cyborgdb-core#2396: the ISO string reaches
+		// the service, which rejects it with "$gte requires a numeric value".
+		const got = await index.queryMetadata({
+			filters: dateFilter({ created: { $gte: plusDays(5) } }),
+		});
+		expect(new Set(idsOf(got))).toEqual(new Set(["t1", "t2"]));
+	});
+
+	it("supports ranges on epoch millis", async () => {
+		// The workaround callers need today.
+		const cutoff = plusDays(5).getTime();
+		const got = await index.queryMetadata({
+			filters: { createdMs: { $gte: cutoff } },
+		});
+		expect(new Set(idsOf(got))).toEqual(new Set(["t1", "t2"]));
+	});
+
+	it("round-trips epoch millis exactly", async () => {
+		// A float conversion anywhere would corrupt the low digits.
+		const row = (await index.get({ ids: ["t0"], include: ["metadata"] }))[0];
+		expect((row.metadata as Record<string, unknown>).createdMs).toBe(
+			BASE.getTime(),
+		);
+	});
+});

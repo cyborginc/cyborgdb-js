@@ -1107,3 +1107,64 @@ describe("hybrid fusion (deterministic)", () => {
 		expect(first.map((r) => r.score)).toEqual(second.map((r) => r.score));
 	});
 });
+
+describe("metadata field policy defaults", () => {
+	// The `fullText` shorthand the SDK documents but cannot currently send.
+	// Mirrors py TestMetadataFieldPolicyDefaults.
+	let client: Client;
+	const created: EncryptedIndex[] = [];
+
+	const WANT = { filterable: false, pattern: false, fullText: true };
+
+	const makeIndex = async (
+		opts: Record<string, unknown>,
+	): Promise<EncryptedIndex> => {
+		const index = await client.createIndex({
+			indexName: newIndexName("policy"),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			...opts,
+		});
+		created.push(index);
+		return index;
+	};
+
+	beforeAll(() => {
+		client = newClient();
+	});
+
+	afterAll(async () => {
+		for (const index of created) {
+			try {
+				await index.deleteIndex();
+			} catch {
+				// best-effort cleanup
+			}
+		}
+	});
+
+	it("accepts fullText alone", async () => {
+		// KNOWN BUG — fails today. cyborgdb-core#2393: the field policy defaults
+		// filterable=true and always serialises it, so the request carries
+		// filterable=true + fullText=true and the service 422s.
+		const index = await makeIndex({
+			metadataSchema: { title: { fullText: true } },
+		});
+		expect((await index.metadataSchema()).title).toEqual(WANT);
+	});
+
+	it("accepts fullText when filterable is spelled out", async () => {
+		// The workaround callers need today — and the anchor that makes the
+		// failure above meaningful rather than a blanket "schemas are broken".
+		const index = await makeIndex({
+			metadataSchema: { title: { fullText: true, filterable: false } },
+		});
+		expect((await index.metadataSchema()).title).toEqual(WANT);
+	});
+
+	it("treats textFields as equivalent sugar", async () => {
+		const index = await makeIndex({ textFields: ["title"] });
+		expect((await index.metadataSchema()).title).toEqual(WANT);
+	});
+});
