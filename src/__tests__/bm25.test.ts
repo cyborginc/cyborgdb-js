@@ -18,7 +18,12 @@ import {
 	type MetadataResult,
 	type QueryResultItem,
 } from "../index";
-import { flattenResults } from "./test-helpers";
+import {
+	flattenResults,
+	waitFor,
+	waitForIds,
+	waitUntilGone,
+} from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
 jest.setTimeout(120000);
@@ -32,7 +37,6 @@ const newClient = () =>
 const randVec = () => Array.from({ length: DIM }, () => Math.random());
 const newIndexName = (prefix: string) =>
 	`${prefix}_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Pull the ids out of queryMetadata's `{ id }` rows into a Set. */
 const idSet = (rows: MetadataResult[]) => new Set(rows.map((r) => r.id));
@@ -54,6 +58,22 @@ const DOCS: [string, string, string][] = [
 // "quantum computing" — both terms in d0/d4, only "quantum" in d2.
 const BOTH_TERMS = new Set(["d0", "d4"]);
 const ANY_TERM = new Set(["d0", "d2", "d4"]);
+
+const HYBRID_DIM = 4;
+
+// Ported from cyborgdb-core tests/bm25_api_test.py via py test_bm25.py.
+// Distances to the query are strictly ordered — d2 (0.0125) < d1 (1.8125) <
+// d0 (1.9125) < d3 (2.0125) — so no assertion rests on a tie-break. The
+// euclidean metric and dimension 4 are load-bearing: change either and the
+// ordering stops holding.
+const HYBRID_DOCS: [string, number[], string, string, string][] = [
+	["d0", [1.0, 0.0, 0.0, 0.0], "apple banana", "date date elder", "ann"],
+	["d1", [0.0, 1.0, 0.0, 0.0], "banana", "date", "bob"],
+	["d2", [0.0, 0.0, 1.0, 0.0], "cherry", "elder", "ann"],
+	["d3", [0.0, 0.0, 0.0, 1.0], "apple", "fig", "bob"],
+];
+const HYBRID_QUERY_VECTOR = [0.05, 0.1, 1.0, 0.0];
+const HYBRID_TEXT = "apple date";
 
 describe("BM25 full-text search (single full_text field)", () => {
 	let client: Client;
@@ -78,7 +98,10 @@ describe("BM25 full-text search (single full_text field)", () => {
 				metadata: { body, topic },
 			})),
 		});
-		await sleep(2000);
+		await waitForIds(
+			index,
+			DOCS.map(([id]) => id),
+		);
 	});
 
 	afterAll(async () => {
@@ -386,7 +409,10 @@ describe("BM25 metadata-filter narrowing (two full_text fields)", () => {
 				metadata: { title, body, lang },
 			})),
 		});
-		await sleep(2000);
+		await waitForIds(
+			index,
+			ROWS.map(([id]) => id),
+		);
 	});
 
 	afterAll(async () => {
@@ -435,17 +461,34 @@ describe("BM25 metadata-filter narrowing (two full_text fields)", () => {
 		expect(got).toEqual(new Set(["a"]));
 	});
 
-	it("accepts field weights and keeps the matched set stable", async () => {
-		// Per-field weights (parallel to the searched fields) are forwarded and
-		// accepted; the matched set is unchanged by re-weighting.
-		const got = idSet(
+	it("flips the top result when the field weights flip", async () => {
+		// `a`/`c` match in title only, `b` in body only. 10:1 against 1:10 is a
+		// 100x swing — wider than any term-frequency or field-length difference
+		// here, so the flip does not ride on the per-field BM25 formula.
+		const titleHeavy = (
 			await index.queryMetadata({
 				text: "quantum",
 				textFields: ["title", "body"],
-				textFieldWeights: [2.0, 1.0],
-			}),
-		);
-		expect(got).toEqual(QUANTUM_ANY_FIELD);
+				textFieldWeights: [10.0, 1.0],
+			})
+		).map((r) => r.id);
+		const bodyHeavy = (
+			await index.queryMetadata({
+				text: "quantum",
+				textFields: ["title", "body"],
+				textFieldWeights: [1.0, 10.0],
+			})
+		).map((r) => r.id);
+
+		// Re-weighting reorders; it never filters.
+		expect(new Set(titleHeavy)).toEqual(QUANTUM_ANY_FIELD);
+		expect(new Set(bodyHeavy)).toEqual(QUANTUM_ANY_FIELD);
+		// The winner changes. If the service ignored the weights both lists
+		// would be identical, which the previous set-equality check could not
+		// have caught.
+		expect(QUANTUM_IN_TITLE.has(titleHeavy[0])).toBe(true);
+		expect(bodyHeavy[0]).toBe("b");
+		expect(titleHeavy[0]).not.toBe(bodyHeavy[0]);
 	});
 });
 
@@ -469,7 +512,7 @@ describe("BM25 not configured (no full_text field)", () => {
 				metadata: { body: "quantum computing" },
 			})),
 		});
-		await sleep(2000);
+		await waitForIds(index, ["i0", "i1", "i2", "i3"]);
 	});
 
 	afterAll(async () => {
@@ -517,5 +560,609 @@ describe("MetadataResult contract (offline)", () => {
 		const row = MetadataResultFromJSON({ id: "d0", score: 1.25 });
 		expect(row.id).toBe("d0");
 		expect(row.score).toBeCloseTo(1.25);
+	});
+});
+
+describe("BM25 analyzer", () => {
+	// Observable behaviour of the tokenizer/stemmer pipeline. Not configurable
+	// from the SDK — only reported as `analyzerVersion` — so a change here would
+	// otherwise go unnoticed. Every expectation was measured against a running
+	// service, not assumed. Mirrors py TestBM25Analyzer.
+	let client: Client;
+	let index: EncryptedIndex;
+
+	const ROWS: Record<string, string> = {
+		stem: "running runner runs",
+		punct: "mind-killer, fear! (really)",
+		accent: "café résumé naïve",
+		stop: "the a an and or but of",
+		num: "version 42 build 7",
+		case: "MixedCase WORD",
+		plural: "boxes churches",
+	};
+
+	const ids = async (text: string) =>
+		idSet(await index.queryMetadata({ text }));
+
+	beforeAll(async () => {
+		client = newClient();
+		index = await client.createIndex({
+			indexName: newIndexName("bm25_analyzer"),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			textFields: ["body"],
+		});
+		await index.upsert({
+			items: Object.entries(ROWS).map(([id, body]) => ({
+				id,
+				vector: [0.1, 0.2, 0.3, 0.4],
+				metadata: { body },
+			})),
+		});
+		await waitForIds(index, Object.keys(ROWS));
+	});
+
+	afterAll(async () => {
+		try {
+			await index.deleteIndex();
+		} catch {
+			// best-effort cleanup
+		}
+	});
+
+	it.each(["run", "runs", "runner", "running"])("stems %s", async (term) => {
+		expect(await ids(term)).toContain("stem");
+	});
+
+	it("stems plurals to their singular", async () => {
+		expect(await ids("box")).toContain("plural");
+		expect(await ids("church")).toContain("plural");
+	});
+
+	it("strips punctuation and splits hyphens", async () => {
+		expect(await ids("mind")).toContain("punct");
+		expect(await ids("killer")).toContain("punct");
+		expect(await ids("fear")).toContain("punct");
+	});
+
+	it("folds case both ways", async () => {
+		expect(await ids("mixedcase")).toContain("case");
+		expect(await ids("WORD")).toContain("case");
+	});
+
+	it.each(["the", "and", "of"])("drops the stop word %s", async (term) => {
+		expect(await ids(term)).toEqual(new Set());
+	});
+
+	it("indexes numeric tokens", async () => {
+		expect(await ids("42")).toContain("num");
+	});
+
+	it("does not fold accents", async () => {
+		// A limitation, pinned deliberately: adding accent folding is a
+		// user-visible search change and should break this test.
+		expect(await ids("café")).toContain("accent");
+		expect(await ids("cafe")).toEqual(new Set());
+	});
+});
+
+// Each pair below differs in exactly one BM25 property:
+//   IDF      "zeppelin" in one document, "common" in five; both candidates are
+//            the same length and match one query term, so only rarity separates.
+//   LENGTH   same term and term-frequency, very different lengths.
+//   TF       same length, different term-frequency.
+const SCORING_DOCS: [string, string][] = [
+	["idf_rare", "zeppelin padding padding padding"],
+	["idf_common", "common padding padding padding"],
+	["c1", "common padding padding padding"],
+	["c2", "common padding padding padding"],
+	["c3", "common padding padding padding"],
+	["c4", "common padding padding padding"],
+	["len_short", "target"],
+	["len_long", `target ${"filler ".repeat(24)}`],
+	["tf_one", "saturate alpha beta gamma delta"],
+	["tf_many", "saturate saturate saturate saturate saturate"],
+];
+
+const scoringItems = () =>
+	SCORING_DOCS.map(([id, body]) => ({
+		id,
+		vector: [0.1, 0.2, 0.3, 0.4],
+		metadata: { body },
+	}));
+
+describe("BM25 scoring properties", () => {
+	// IDF, length normalisation and term-frequency saturation through the SDK.
+	// Only relative order is asserted, never an absolute score: scores shift
+	// legitimately with `analyzerVersion`. Mirrors py TestBM25ScoringProperties.
+	let client: Client;
+	let index: EncryptedIndex;
+
+	const ranked = async (text: string) =>
+		(await index.queryMetadata({ text })).map((r) => r.id);
+	const scores = async (text: string) =>
+		Object.fromEntries(
+			(await index.queryMetadata({ text })).map((r) => [r.id, r.score ?? 0]),
+		);
+
+	beforeAll(async () => {
+		client = newClient();
+		index = await client.createIndex({
+			indexName: newIndexName("bm25_scoring"),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			textFields: ["body"],
+		});
+		await index.upsert({ items: scoringItems() });
+		await waitForIds(
+			index,
+			SCORING_DOCS.map(([id]) => id),
+		);
+	});
+
+	afterAll(async () => {
+		try {
+			await index.deleteIndex();
+		} catch {
+			// best-effort cleanup
+		}
+	});
+
+	it("ranks a rare term above a common one", async () => {
+		const order = await ranked("zeppelin common");
+		expect(order).toContain("idf_rare");
+		expect(order).toContain("idf_common");
+		expect(order.indexOf("idf_rare")).toBeLessThan(order.indexOf("idf_common"));
+	});
+
+	it("ranks a shorter document above a longer one", async () => {
+		expect((await ranked("target")).slice(0, 2)).toEqual([
+			"len_short",
+			"len_long",
+		]);
+	});
+
+	it("scores higher term frequency higher", async () => {
+		expect((await ranked("saturate")).slice(0, 2)).toEqual([
+			"tf_many",
+			"tf_one",
+		]);
+	});
+
+	it("still scores a term present in every document", async () => {
+		// IDF shrinks with document frequency but must not reach zero.
+		const got = await scores("common");
+		expect(new Set(Object.keys(got))).toEqual(
+			new Set(["idf_common", "c1", "c2", "c3", "c4"]),
+		);
+		for (const [id, score] of Object.entries(got)) {
+			expect(`${id}:${score > 0}`).toBe(`${id}:true`);
+		}
+	});
+});
+
+describe("BM25 tuning parameters", () => {
+	// `bm25K1` and `bm25B` change ranking, not just `describe` output. Each test
+	// builds a second index differing in one parameter and asserts the ranking
+	// difference that parameter is responsible for. Mirrors py
+	// TestBM25TuningParameters.
+	let client: Client;
+	const indexes: EncryptedIndex[] = [];
+
+	const seeded = async (label: string, opts: Record<string, number> = {}) => {
+		const index = await client.createIndex({
+			indexName: newIndexName(`bm25_tune_${label}`),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			textFields: ["body"],
+			...opts,
+		});
+		indexes.push(index);
+		await index.upsert({ items: scoringItems() });
+		await waitForIds(
+			index,
+			SCORING_DOCS.map(([id]) => id),
+		);
+		return index;
+	};
+
+	const rankedIn = async (index: EncryptedIndex, text: string) =>
+		(await index.queryMetadata({ text })).map((r) => r.id);
+	const scoresIn = async (index: EncryptedIndex, text: string) =>
+		Object.fromEntries(
+			(await index.queryMetadata({ text })).map((r) => [r.id, r.score ?? 0]),
+		);
+
+	beforeAll(() => {
+		client = newClient();
+	});
+
+	afterAll(async () => {
+		for (const index of indexes) {
+			try {
+				await index.deleteIndex();
+			} catch {
+				// best-effort cleanup
+			}
+		}
+	});
+
+	it("removes the length penalty at b=0", async () => {
+		const defaultB = await seeded("bdefault");
+		const noLength = await seeded("bzero", { bm25B: 0.0 });
+
+		expect((await rankedIn(defaultB, "target")).slice(0, 2)).toEqual([
+			"len_short",
+			"len_long",
+		]);
+
+		const got = await scoresIn(noLength, "target");
+		expect(new Set(Object.keys(got))).toEqual(
+			new Set(["len_short", "len_long"]),
+		);
+		expect(got.len_short).toBeCloseTo(got.len_long, 5);
+	});
+
+	it("makes scoring binary at k1=0", async () => {
+		// At k1=0 the tf component collapses to presence/absence. The default
+		// case is asserted alongside so the comparison means something.
+		const defaultK1 = await seeded("kdefault");
+		const binary = await seeded("kzero", { bm25K1: 0.0 });
+
+		const defaults = await scoresIn(defaultK1, "saturate");
+		expect(defaults.tf_many).toBeGreaterThan(defaults.tf_one);
+
+		const flat = await scoresIn(binary, "saturate");
+		expect(flat.tf_many).toBeCloseTo(flat.tf_one, 5);
+	});
+});
+
+describe("BM25 lifecycle", () => {
+	// BM25 after mutation. Scores depend on corpus-wide statistics (document
+	// count, total length) that feed IDF and length normalisation. CEI tests
+	// those hard at its own layer; nothing checked they are wired through
+	// core -> service -> SDK, where stale statistics would skew every score with
+	// no error surface. Mirrors py TestBM25Lifecycle.
+	let client: Client;
+	let index: EncryptedIndex;
+
+	const ids = async (text: string) =>
+		idSet(await index.queryMetadata({ text }));
+
+	beforeEach(async () => {
+		client = newClient();
+		index = await client.createIndex({
+			indexName: newIndexName("bm25_lifecycle"),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			textFields: ["body"],
+		});
+		await index.upsert({
+			items: ["alpha beta", "alpha gamma", "delta epsilon", "alpha zeta"].map(
+				(body, i) => ({
+					id: `m${i}`,
+					vector: Array.from({ length: HYBRID_DIM }, (_, j) =>
+						i === j ? 1.0 : 0.0,
+					),
+					metadata: { body },
+				}),
+			),
+		});
+		await waitForIds(index, ["m0", "m1", "m2", "m3"]);
+	});
+
+	afterEach(async () => {
+		try {
+			await index.deleteIndex();
+		} catch {
+			// best-effort cleanup
+		}
+	});
+
+	it("drops a deleted document from text results", async () => {
+		expect(await ids("alpha")).toEqual(new Set(["m0", "m1", "m3"]));
+		await index.delete({ ids: ["m1"] });
+		await waitUntilGone(index, ["m1"]);
+		expect(await ids("alpha")).toEqual(new Set(["m0", "m3"]));
+	});
+
+	it("never resurfaces a deleted document", async () => {
+		await index.delete({ ids: ["m0"] });
+		await waitUntilGone(index, ["m0"]);
+		for (const text of ["alpha", "alpha beta", "beta"]) {
+			expect(await ids(text)).not.toContain("m0");
+		}
+	});
+
+	it("moves a document between results when its text field is rewritten", async () => {
+		expect(await ids("alpha")).not.toContain("m2");
+		await index.upsert({
+			items: [
+				{
+					id: "m2",
+					vector: [0.0, 0.0, 1.0, 0.0],
+					metadata: { body: "alpha omega" },
+				},
+			],
+		});
+		await waitFor(
+			async () => (await ids("alpha")).has("m2"),
+			"m2 becomes searchable for 'alpha' after its body was rewritten",
+		);
+		// ...and the old term no longer matches it: the update replaced the
+		// document's postings rather than adding to them.
+		expect(await ids("delta")).not.toContain("m2");
+	});
+
+	it("does not double-count a re-upserted document", async () => {
+		// Double-counted corpus statistics would shift IDF and the length
+		// normaliser, moving every score.
+		const before = Object.fromEntries(
+			(await index.queryMetadata({ text: "alpha" })).map((r) => [
+				r.id,
+				r.score ?? 0,
+			]),
+		);
+		// `marker` rides along only to give the poll below something to observe;
+		// `body` is byte-identical, so BM25 must be unaffected.
+		await index.upsert({
+			items: [
+				{
+					id: "m0",
+					vector: [1.0, 0.0, 0.0, 0.0],
+					metadata: { body: "alpha beta", marker: "reupserted" },
+				},
+			],
+		});
+		await waitFor(
+			async () =>
+				(await index.queryMetadata({ filters: { marker: "reupserted" } }))
+					.length === 1,
+			"the re-upserted m0 carries its new marker",
+		);
+
+		const after = Object.fromEntries(
+			(await index.queryMetadata({ text: "alpha" })).map((r) => [
+				r.id,
+				r.score ?? 0,
+			]),
+		);
+		expect(new Set(Object.keys(after))).toEqual(new Set(Object.keys(before)));
+		for (const id of Object.keys(before)) {
+			expect(after[id]).toBeCloseTo(before[id], 5);
+		}
+	});
+});
+
+describe("hybrid fusion (deterministic)", () => {
+	// Hybrid fusion with hand-chosen vectors, so the fused ranking is a fact
+	// rather than noise. Core proves the fusion maths; these prove the wiring.
+	// Mirrors py TestHybridFusionDeterministic.
+	let client: Client;
+	let index: EncryptedIndex;
+
+	type HybridOpts = Parameters<EncryptedIndex["query"]>[0];
+
+	const hybrid = async (opts: HybridOpts = {}) =>
+		flattenResults(
+			(
+				await index.query({
+					queryVectors: HYBRID_QUERY_VECTOR,
+					text: HYBRID_TEXT,
+					topK: 4,
+					...opts,
+				})
+			).results,
+		);
+	const hybridIds = async (opts: HybridOpts = {}) =>
+		(await hybrid(opts)).map((r) => r.id);
+	const textOnlyIds = async () =>
+		(await index.queryMetadata({ text: HYBRID_TEXT, topK: 4 })).map(
+			(r) => r.id,
+		);
+	const vectorOnlyIds = async () =>
+		flattenResults(
+			(await index.query({ queryVectors: HYBRID_QUERY_VECTOR, topK: 4 }))
+				.results,
+		).map((r) => r.id);
+
+	beforeAll(async () => {
+		client = newClient();
+		index = await client.createIndex({
+			indexName: newIndexName("hybrid_fusion"),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			// filterable spelled out because of cyborgdb-core#2393.
+			metadataSchema: {
+				title: { fullText: true, filterable: false },
+				body: { fullText: true, filterable: false },
+				author: { filterable: true },
+			},
+		});
+		await index.upsert({
+			items: HYBRID_DOCS.map(([id, vector, title, body, author]) => ({
+				id,
+				vector,
+				metadata: { title, body, author },
+			})),
+		});
+		await waitForIds(
+			index,
+			HYBRID_DOCS.map(([id]) => id),
+		);
+	});
+
+	afterAll(async () => {
+		try {
+			await index.deleteIndex();
+		} catch {
+			// best-effort cleanup
+		}
+	});
+
+	it("reproduces the pure BM25 ranking at alpha=0", async () => {
+		// Anchored as well as compared: agreement alone would hold if both legs
+		// returned the same wrong answer. "apple date" matches d0 on both terms,
+		// d1 and d3 on one each, and d2 on neither.
+		expect(await hybridIds({ alpha: 0.0 })).toEqual(await textOnlyIds());
+		expect(new Set(await hybridIds({ alpha: 0.0 }))).toEqual(
+			new Set(["d0", "d1", "d3"]),
+		);
+	});
+
+	it("reproduces the pure vector ranking at alpha=1", async () => {
+		// Distances to the query vector are strictly ordered, so the expected
+		// order is fixed rather than merely consistent.
+		expect(await hybridIds({ alpha: 1.0 })).toEqual(await vectorOnlyIds());
+		expect(await hybridIds({ alpha: 1.0 })).toEqual(["d2", "d1", "d0", "d3"]);
+	});
+
+	it("has disagreeing alpha endpoints", async () => {
+		// Without this, both tests above would pass vacuously if the two
+		// rankings ever coincided.
+		expect(await textOnlyIds()).not.toEqual(await vectorOnlyIds());
+	});
+
+	it("promotes a document neither leg ranked first", async () => {
+		// Vector order d2, d1, d0, d3; text order d0, then d1/d3. At the
+		// defaults (alpha 0.5, rrfK 60) d0 wins on agreement across both legs
+		// (0.5/61 + 0.5/63) ahead of d1 (0.5/62 + 0.5/62), while d2 — rank 1 on
+		// vectors, absent from text — falls to last on 0.5/61 alone. Either
+		// ordering of the d1/d3 text tie fuses the same way.
+		expect(await hybridIds()).toEqual(["d0", "d1", "d3", "d2"]);
+	});
+
+	it("reaches the fusion with rrfK", async () => {
+		// RRF contributes 1/(k + rank) per leg, so a smaller k raises every
+		// score. Asserted on scores, not order: on four documents the order
+		// margins are under 1% and would flake.
+		const small = Object.fromEntries(
+			(await hybrid({ rrfK: 1.0 })).map((r) => [r.id, r.score ?? 0]),
+		);
+		const large = Object.fromEntries(
+			(await hybrid({ rrfK: 60.0 })).map((r) => [r.id, r.score ?? 0]),
+		);
+		expect(new Set(Object.keys(small))).toEqual(new Set(Object.keys(large)));
+		expect(small).not.toEqual(large);
+		for (const id of Object.keys(small)) {
+			expect(`${id}:${small[id] > large[id]}`).toBe(`${id}:true`);
+		}
+	});
+
+	it("rejects windowMult below one", async () => {
+		// Only the bound is assertable: search is exhaustive on an untrained
+		// index, so the candidate window cannot affect the ranking.
+		await expect(hybrid({ windowMult: 0 })).rejects.toThrow();
+	});
+
+	it("returns the fused winner's metadata with include", async () => {
+		const results = await hybrid({ include: ["metadata"], topK: 2 });
+		expect(results).toHaveLength(2);
+		for (const row of results) {
+			expect(row.metadata).toBeDefined();
+			expect(row.metadata).toHaveProperty("title");
+		}
+		expect(results[0].id).toBe("d0");
+		expect(results[0].metadata?.author).toBe("ann");
+	});
+
+	it("fuses each row of a batch independently", async () => {
+		// Two identical vectors must fuse identically and match the
+		// single-vector result: the text leg applies per row, not per batch.
+		const expected = await hybridIds();
+		const batched = (
+			await index.query({
+				queryVectors: [HYBRID_QUERY_VECTOR, HYBRID_QUERY_VECTOR],
+				text: HYBRID_TEXT,
+				topK: 4,
+			})
+		).results as unknown as QueryResultItem[][];
+		expect(batched).toHaveLength(2);
+		for (const row of batched) {
+			expect(row.map((r) => r.id)).toEqual(expected);
+		}
+	});
+
+	it("prefilters both legs of the hybrid", async () => {
+		// author=ann keeps d0 and d2; the order must be the fused order
+		// restricted to them, not an arbitrary subset.
+		expect(await hybridIds({ filters: { author: "ann" } })).toEqual([
+			"d0",
+			"d2",
+		]);
+	});
+
+	it("returns identical results for repeated queries", async () => {
+		// Precondition for every order assertion above.
+		const first = await hybrid();
+		const second = await hybrid();
+		expect(first.map((r) => r.id)).toEqual(second.map((r) => r.id));
+		expect(first.map((r) => r.score)).toEqual(second.map((r) => r.score));
+	});
+});
+
+describe("metadata field policy defaults", () => {
+	// The `fullText` shorthand the SDK documents but cannot currently send.
+	// Mirrors py TestMetadataFieldPolicyDefaults.
+	let client: Client;
+	const created: EncryptedIndex[] = [];
+
+	const WANT = { filterable: false, pattern: false, fullText: true };
+
+	const makeIndex = async (
+		opts: Record<string, unknown>,
+	): Promise<EncryptedIndex> => {
+		const index = await client.createIndex({
+			indexName: newIndexName("policy"),
+			indexKey: new Uint8Array(randomBytes(32)),
+			dimension: HYBRID_DIM,
+			metric: "euclidean",
+			...opts,
+		});
+		created.push(index);
+		return index;
+	};
+
+	beforeAll(() => {
+		client = newClient();
+	});
+
+	afterAll(async () => {
+		for (const index of created) {
+			try {
+				await index.deleteIndex();
+			} catch {
+				// best-effort cleanup
+			}
+		}
+	});
+
+	it("accepts fullText alone", async () => {
+		// KNOWN BUG — fails today. cyborgdb-core#2393: the field policy defaults
+		// filterable=true and always serialises it, so the request carries
+		// filterable=true + fullText=true and the service 422s.
+		const index = await makeIndex({
+			metadataSchema: { title: { fullText: true } },
+		});
+		expect((await index.metadataSchema()).title).toEqual(WANT);
+	});
+
+	it("accepts fullText when filterable is spelled out", async () => {
+		// The workaround callers need today — and the anchor that makes the
+		// failure above meaningful rather than a blanket "schemas are broken".
+		const index = await makeIndex({
+			metadataSchema: { title: { fullText: true, filterable: false } },
+		});
+		expect((await index.metadataSchema()).title).toEqual(WANT);
+	});
+
+	it("treats textFields as equivalent sugar", async () => {
+		const index = await makeIndex({ textFields: ["title"] });
+		expect((await index.metadataSchema()).title).toEqual(WANT);
 	});
 });
