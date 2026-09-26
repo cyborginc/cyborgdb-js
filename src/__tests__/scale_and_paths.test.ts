@@ -43,9 +43,7 @@ function mulberry32(seed: number): () => number {
 
 const rng = mulberry32(20260918);
 const randomVectors = (count: number, dim = DIM): number[][] =>
-	Array.from({ length: count }, () =>
-		Array.from({ length: dim }, () => rng()),
-	);
+	Array.from({ length: count }, () => Array.from({ length: dim }, () => rng()));
 
 const SCALE_VECTORS = randomVectors(SCALE_N);
 const SCALE_IDS = Array.from(
@@ -60,21 +58,22 @@ function bruteForceNearest(
 	ids: string[],
 	k: number,
 ): string[] {
-	return vectors
-		.map((v, i) => ({
-			id: ids[i],
-			i,
-			d: v.reduce((acc, x, j) => acc + (x - query[j]) ** 2, 0),
-		}))
-		// Stable on ties: fall back to insertion order, matching numpy's
-		// kind="stable" argsort in the Python fixture.
-		.sort((a, b) => a.d - b.d || a.i - b.i)
-		.slice(0, k)
-		.map((r) => r.id);
+	return (
+		vectors
+			.map((v, i) => ({
+				id: ids[i],
+				i,
+				d: v.reduce((acc, x, j) => acc + (x - query[j]) ** 2, 0),
+			}))
+			// Stable on ties: fall back to insertion order, matching numpy's
+			// kind="stable" argsort in the Python fixture.
+			.sort((a, b) => a.d - b.d || a.i - b.i)
+			.slice(0, k)
+			.map((r) => r.id)
+	);
 }
 
-const flatten = (vectors: number[][]) =>
-	Float32Array.from(vectors.flatMap((v) => v));
+const flatten = (vectors: number[][]) => Float32Array.from(vectors.flat());
 
 describe("binary/JSON path parity", () => {
 	// The binary and JSON encoders must be interchangeable. Two encodings of the
@@ -258,13 +257,23 @@ describe("include projection", () => {
 
 	it("honours the supported include values", async () => {
 		const withDistance = flattenResults(
-			(await index.query({ queryVectors: vector, topK: 1, include: ["distance"] }))
-				.results,
+			(
+				await index.query({
+					queryVectors: vector,
+					topK: 1,
+					include: ["distance"],
+				})
+			).results,
 		);
 		expect(withDistance[0]).toHaveProperty("distance");
 		const withMetadata = flattenResults(
-			(await index.query({ queryVectors: vector, topK: 1, include: ["metadata"] }))
-				.results,
+			(
+				await index.query({
+					queryVectors: vector,
+					topK: 1,
+					include: ["metadata"],
+				})
+			).results,
 		);
 		expect(withMetadata[0].metadata).toEqual({ n: 1 });
 	});
@@ -340,9 +349,7 @@ describe("large batch", () => {
 		const got = flattenResults(
 			(await index.query({ queryVectors: query, topK: 10 })).results,
 		).map((r) => r.id);
-		expect(got).toEqual(
-			bruteForceNearest(query, SCALE_VECTORS, SCALE_IDS, 10),
-		);
+		expect(got).toEqual(bruteForceNearest(query, SCALE_VECTORS, SCALE_IDS, 10));
 	});
 
 	it("filters at scale", async () => {
@@ -357,9 +364,7 @@ describe("large batch", () => {
 				).results,
 			).map((r) => r.id),
 		);
-		expect(got).toEqual(
-			new Set(SCALE_IDS.filter((_, n) => n % 10 === 3)),
-		);
+		expect(got).toEqual(new Set(SCALE_IDS.filter((_, n) => n % 10 === 3)));
 	});
 
 	it("keeps topK a prefix invariant", async () => {

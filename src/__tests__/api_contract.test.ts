@@ -410,7 +410,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.upsert({ items });
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
-
 		});
 
 		it("should upsert with items array format (contents as string, auto-embed)", async () => {
@@ -427,7 +426,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await embeddingIndex.upsert({ items });
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
-
 		});
 
 		it("should upsert remaining test items", async () => {
@@ -443,7 +441,6 @@ describe("CyborgDB API Contract Tests", () => {
 
 			const result = await testIndex.upsert({ items });
 			expect(result.status).toBe("success");
-
 		});
 
 		it("should upsert with parallel arrays format (ids + vectors)", async () => {
@@ -452,7 +449,6 @@ describe("CyborgDB API Contract Tests", () => {
 
 			const result = await testIndex.upsert({ ids, vectors });
 			expect(result.status).toBe("success");
-
 		});
 
 		it("should reject vectors with wrong dimensions", async () => {
@@ -824,7 +820,6 @@ describe("CyborgDB API Contract Tests", () => {
 				nLists: 5,
 			});
 			expect(validTrainStatuses).toContain(result.status);
-
 		});
 	});
 
@@ -847,7 +842,6 @@ describe("CyborgDB API Contract Tests", () => {
 		it("should delete additional vector", async () => {
 			const result = await testIndex.delete({ ids: ["9"] });
 			expect(result.status).toBe("success");
-
 		});
 	});
 
@@ -877,7 +871,6 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.upsert({ items });
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
-
 		});
 
 		it("should retrieve binary contents via get()", async () => {

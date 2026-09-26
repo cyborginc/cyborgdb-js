@@ -714,9 +714,7 @@ describe("BM25 scoring properties", () => {
 		const order = await ranked("zeppelin common");
 		expect(order).toContain("idf_rare");
 		expect(order).toContain("idf_common");
-		expect(order.indexOf("idf_rare")).toBeLessThan(
-			order.indexOf("idf_common"),
-		);
+		expect(order.indexOf("idf_rare")).toBeLessThan(order.indexOf("idf_common"));
 	});
 
 	it("ranks a shorter document above a longer one", async () => {

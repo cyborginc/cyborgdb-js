@@ -30,13 +30,13 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
-import { waitFor } from "./test-helpers";
 import { Client, type EncryptedIndex } from "../index";
 import {
 	CreateIndexRequestFromJSON,
 	CreateIndexRequestStoragePrecisionEnum,
 	CreateIndexRequestToJSON,
 } from "../models";
+import { waitFor } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();

@@ -85,13 +85,14 @@ const OPERATOR_SCHEMA = {
 	tags: { filterable: true },
 	author: { filterable: true },
 };
-const OPERATOR_ROWS: Array<[string, string, number, string[], string | null]> = [
-	["o0", "red", 0, ["design", "search"], "ada"],
-	["o1", "green", 10, ["design"], "bob"],
-	["o2", "blue", 20, ["search"], null],
-	["o3", "red", 30, [], "ada"],
-	["o4", "green", 40, ["design", "search", "ml"], null],
-];
+const OPERATOR_ROWS: Array<[string, string, number, string[], string | null]> =
+	[
+		["o0", "red", 0, ["design", "search"], "ada"],
+		["o1", "green", 10, ["design"], "bob"],
+		["o2", "blue", 20, ["search"], null],
+		["o3", "red", 30, [], "ada"],
+		["o4", "green", 40, ["design", "search", "ml"], null],
+	];
 const ALL_OPS = ["o0", "o1", "o2", "o3", "o4"];
 
 // Each expected answer is a proper subset of the corpus, so a filter that
@@ -121,7 +122,11 @@ describe("filter operators on both read paths", () => {
 	let index: EncryptedIndex;
 
 	beforeAll(async () => {
-		client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY, verifySsl: false });
+		client = new Client({
+			baseUrl: BASE_URL,
+			apiKey: API_KEY,
+			verifySsl: false,
+		});
 		index = await client.createIndex({
 			indexName: `operators_${randomUUID().replace(/-/g, "").slice(0, 8)}`,
 			indexKey: new Uint8Array(randomBytes(32)),
@@ -134,7 +139,10 @@ describe("filter operators on both read paths", () => {
 				id,
 				vector: Array.from({ length: DIM }, () => Math.random()),
 				// `author` is omitted rather than null: these exercise absence.
-				metadata: author === null ? { color, rank, tags } : { color, rank, tags, author },
+				metadata:
+					author === null
+						? { color, rank, tags }
+						: { color, rank, tags, author },
 			})),
 		});
 		await waitForIds(index, ALL_OPS);
@@ -163,17 +171,23 @@ describe("filter operators on both read paths", () => {
 			).map((r) => r.id),
 		);
 
-	it.each(OPERATOR_CASES)("resolves %s on the metadata path", async (_n, filters, expected) => {
+	it.each(
+		OPERATOR_CASES,
+	)("resolves %s on the metadata path", async (_n, filters, expected) => {
 		expect(await metaIds(filters)).toEqual(sorted(expected));
 	});
 
-	it.each(OPERATOR_CASES)("resolves %s on the vector path", async (_n, filters, expected) => {
+	it.each(
+		OPERATOR_CASES,
+	)("resolves %s on the vector path", async (_n, filters, expected) => {
 		// query() post-filters over decrypted metadata rather than resolving
 		// from the index; the answers must still match.
 		expect(await vectorIds(filters)).toEqual(sorted(expected));
 	});
 
-	it.each(OPERATOR_CASES)("agrees across both paths for %s", async (name, filters, expected) => {
+	it.each(
+		OPERATOR_CASES,
+	)("agrees across both paths for %s", async (_name, filters, expected) => {
 		// Anchored as well as compared: a bug in the shared filter parser would
 		// break both paths identically and slip past an agreement-only check.
 		const meta = await metaIds(filters);
@@ -197,7 +211,9 @@ describe("filter operators on both read paths", () => {
 	});
 
 	it("treats a bare value on an array field as contains", async () => {
-		expect(await metaIds({ tags: "design" })).toEqual(sorted(["o0", "o1", "o4"]));
+		expect(await metaIds({ tags: "design" })).toEqual(
+			sorted(["o0", "o1", "o4"]),
+		);
 	});
 
 	it("treats $in on an array field as any-of", async () => {
@@ -214,7 +230,9 @@ describe("filter operators on both read paths", () => {
 
 	it("matches no membership for an empty array", async () => {
 		expect(await metaIds({ tags: "design" })).not.toContain("o3");
-		expect(await metaIds({ tags: { $in: ["design", "ml"] } })).not.toContain("o3");
+		expect(await metaIds({ tags: { $in: ["design", "ml"] } })).not.toContain(
+			"o3",
+		);
 	});
 
 	it("matches everything for an empty filter", async () => {
@@ -240,7 +258,9 @@ describe("filter operators on both read paths", () => {
 		// two empty results would otherwise satisfy the comparison.
 		expect(await metaIds({ rank: 20 })).toEqual(["o2"]);
 		expect(await metaIds({ rank: 20.0 })).toEqual(["o2"]);
-		expect(await metaIds({ rank: { $gte: 20 } })).toEqual(sorted(["o2", "o3", "o4"]));
+		expect(await metaIds({ rank: { $gte: 20 } })).toEqual(
+			sorted(["o2", "o3", "o4"]),
+		);
 	});
 
 	it("rejects $not, which openapi.json documents", async () => {
@@ -454,7 +474,11 @@ describe("datetime handling", () => {
 	let index: EncryptedIndex;
 
 	beforeAll(async () => {
-		client = new Client({ baseUrl: BASE_URL, apiKey: API_KEY, verifySsl: false });
+		client = new Client({
+			baseUrl: BASE_URL,
+			apiKey: API_KEY,
+			verifySsl: false,
+		});
 		index = await client.createIndex({
 			indexName: `datetime_${randomUUID().replace(/-/g, "").slice(0, 8)}`,
 			indexKey: new Uint8Array(randomBytes(32)),
