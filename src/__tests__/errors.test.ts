@@ -9,6 +9,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { CyborgDB } from "../client";
+import type { EncryptedIndex } from "../encryptedIndex";
 import {
 	CyborgDBAuthenticationError,
 	CyborgDBConflictError,
@@ -105,10 +106,17 @@ describe("typed errors", () => {
 		expect((err as CyborgDBError).cause).toBeDefined();
 	});
 
-	it("leaves a status the taxonomy does not name untyped", async () => {
-		const err = await errorFromStatus(418);
-		expect(err).toBeInstanceOf(Error);
-		expect(err).not.toBeInstanceOf(CyborgDBError);
+	it.each([
+		405, 413, 418,
+	])("throws the base CyborgDBError for unmapped HTTP %i", async (status) => {
+		const err = await errorFromStatus(status);
+		expect(err).toBeInstanceOf(CyborgDBError);
+		expect(err?.constructor).toBe(CyborgDBError);
+		const typed = err as CyborgDBError;
+		expect(typed.statusCode).toBe(status);
+		expect(typed.detail).toBe("synthetic failure");
+		expect(typed.requestId).toBe("req-abc123");
+		expect(typed.retryable).toBe(false);
 	});
 
 	it("throws CyborgDBTransportError when nothing answers", async () => {
@@ -192,6 +200,99 @@ describe("handleApiError", () => {
 			statusCode: 404,
 		});
 		expect(() => handleApiError(original)).toThrow(original);
+	});
+});
+
+// Checks that run before any request: typed as CyborgDBValidationError with
+// the original message (not re-wrapped as "HTTP error Unknown: ..."), and
+// nothing but the loadIndex describe reaches the server.
+describe("pre-flight argument checks", () => {
+	let url: string;
+	let close: () => Promise<void>;
+	const paths: string[] = [];
+
+	beforeAll(async () => {
+		const server: Server = createServer((req, res) => {
+			paths.push(req.url ?? "");
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ index_name: "idx", dimension: 2 }));
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+	});
+
+	afterAll(async () => {
+		await close();
+	});
+
+	const load = () =>
+		new CyborgDB({ baseUrl: url, apiKey: "k" }).loadIndex({
+			indexName: "idx",
+			indexKey: new Uint8Array(32),
+		});
+
+	const cases: Array<[string, (index: EncryptedIndex) => Promise<unknown>]> = [
+		[
+			"upsert with mismatched ids and vectors",
+			(i) => i.upsert({ ids: ["a", "b"], vectors: [[0.1, 0.2]] }),
+		],
+		[
+			"upsert item without vector or contents",
+			(i) => i.upsert({ items: [{ id: "a" }] }),
+		],
+		[
+			"upsert contents of an unsupported type",
+			(i) =>
+				i.upsert({
+					items: [{ id: "a", vector: [0.1, 0.2], contents: 42 as never }],
+				}),
+		],
+		[
+			"upsert Float32Array without ids",
+			(i) => i.upsert({ vectors: new Float32Array(2) } as never),
+		],
+		["query with nothing to search", (i) => i.query({})],
+		[
+			"query Float32Array without dimension",
+			(i) => i.query({ queryVectors: new Float32Array(2) }),
+		],
+		[
+			"queryMetadata orderBy with two keys",
+			(i) => i.queryMetadata({ orderBy: { a: 1, b: -1 } }),
+		],
+	];
+
+	it.each(cases)("%s", async (_label, call) => {
+		const index = await load();
+		paths.length = 0;
+		const err = await call(index).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(CyborgDBValidationError);
+		const typed = err as CyborgDBValidationError;
+		expect(typed.statusCode).toBeNull();
+		expect(typed.message).not.toMatch(/^HTTP error/);
+		expect(paths).toEqual([]);
+	});
+
+	it.each([
+		[
+			"createIndex without indexKey or kmsName",
+			(c: CyborgDB) => c.createIndex({ indexName: "idx" }),
+		],
+		[
+			"loadIndex with a short key",
+			(c: CyborgDB) =>
+				c.loadIndex({ indexName: "idx", indexKey: new Uint8Array(3) }),
+		],
+	])("%s", async (_label, call) => {
+		paths.length = 0;
+		const err = await call(new CyborgDB({ baseUrl: url, apiKey: "k" })).catch(
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(CyborgDBValidationError);
+		expect(paths).toEqual([]);
 	});
 });
 

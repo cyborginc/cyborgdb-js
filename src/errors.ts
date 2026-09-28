@@ -167,7 +167,7 @@ export class CyborgDBTransportError extends CyborgDBError {
 
 /**
  * Build the typed error for an HTTP status. Returns undefined for statuses the
- * taxonomy does not name, so those keep their existing untyped behavior.
+ * taxonomy does not name; callers fall back to the base `CyborgDBError`.
  */
 function errorForStatus(
 	status: number,
@@ -237,8 +237,9 @@ function isNetworkFailure(error: unknown): boolean {
  * Normalize an error from the generated API client and throw the typed error
  * the taxonomy names for its status. Never returns.
  *
- * Statuses the taxonomy does not name keep their previous untyped `Error`, so
- * this is additive for those paths.
+ * Statuses the taxonomy does not name (405, 413, ...) throw the base
+ * `CyborgDBError`. Only a failure with no status that is not a network
+ * failure stays a plain `Error`.
  */
 export function handleApiError(
 	error: unknown,
@@ -367,9 +368,9 @@ export function handleApiError(
 
 	if (detail !== null && status !== null) {
 		const message = `${status} - ${detail}`;
-		const typed = errorForStatus(status, message, base);
-		if (typed) throw typed;
-		throw new Error(message);
+		throw (
+			errorForStatus(status, message, base) ?? new CyborgDBError(message, base)
+		);
 	}
 
 	let errorMessage = hasMessage(error) ? error.message : "Unknown error";
@@ -378,8 +379,9 @@ export function handleApiError(
 	}
 	const message = `HTTP error ${status ?? "Unknown"}: ${errorMessage}`;
 	if (status !== null) {
-		const typed = errorForStatus(status, message, base);
-		if (typed) throw typed;
+		throw (
+			errorForStatus(status, message, base) ?? new CyborgDBError(message, base)
+		);
 	}
 	throw new Error(message);
 }

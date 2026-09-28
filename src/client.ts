@@ -188,7 +188,9 @@ export class CyborgDB {
 	 */
 	private validateKeyLength(indexKey?: Uint8Array): void {
 		if (indexKey !== undefined && indexKey.length !== 32) {
-			throw new Error(`indexKey must be 32 bytes, got ${indexKey.length}`);
+			throw new CyborgDBValidationError(
+				`indexKey must be 32 bytes, got ${indexKey.length}`,
+			);
 		}
 	}
 
@@ -266,7 +268,9 @@ export class CyborgDB {
 	}) {
 		// Local guard mirrored from the py/go SDKs: at least one of the two.
 		if (indexKey === undefined && kmsName === undefined) {
-			throw new Error("createIndex requires indexKey, kmsName, or both");
+			throw new CyborgDBValidationError(
+				"createIndex requires indexKey, kmsName, or both",
+			);
 		}
 		// Validate the key only when present (still must be 32 bytes).
 		this.validateKeyLength(indexKey);
