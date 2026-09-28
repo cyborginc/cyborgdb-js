@@ -98,10 +98,6 @@ export interface UpsertResponse {
 	 */
 	status: string;
 	/**
-	 * Number of vectors upserted
-	 */
-	upsertedCount?: number;
-	/**
 	 * Additional message or details
 	 */
 	message?: string;
@@ -115,10 +111,6 @@ export interface DeleteResponse {
 	 * Status of the operation
 	 */
 	status: string;
-	/**
-	 * Number of vectors deleted
-	 */
-	deletedCount?: number;
 	/**
 	 * Additional message or details
 	 */
