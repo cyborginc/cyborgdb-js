@@ -1198,7 +1198,7 @@ export class EncryptedIndex {
 		try {
 			const response = await this.api.listUsersV1IndexesIndexNameUsersGet({
 				indexName: this.indexName,
-				...(this.indexKeyHex !== undefined && { indexKey: this.indexKeyHex }),
+				...(this.indexKeyHex !== undefined && { xIndexKey: this.indexKeyHex }),
 			});
 			return response.users.map((u) => ({
 				userId: u.userId,
@@ -1224,7 +1224,7 @@ export class EncryptedIndex {
 			await this.api.deleteUserV1IndexesIndexNameUsersUserIdDelete({
 				indexName: this.indexName,
 				userId,
-				...(this.indexKeyHex !== undefined && { indexKey: this.indexKeyHex }),
+				...(this.indexKeyHex !== undefined && { xIndexKey: this.indexKeyHex }),
 			});
 		} catch (error: unknown) {
 			handleApiError(error);
