@@ -149,6 +149,52 @@ describe("typed errors", () => {
 	});
 });
 
+// describeIndex classifies the error first; loadIndex must not re-wrap it.
+describe("loadIndex", () => {
+	async function loadIndexError(status: number): Promise<unknown> {
+		const { url, close } = await serverReturning(status);
+		try {
+			const client = new CyborgDB({ baseUrl: url, apiKey: "test-key" });
+			await client.loadIndex({
+				indexName: "missing",
+				indexKey: new Uint8Array(32),
+			});
+			throw new Error(`HTTP ${status}: expected a rejection, got success`);
+		} catch (err) {
+			return err;
+		} finally {
+			await close();
+		}
+	}
+
+	it.each(TAXONOMY)("keeps HTTP %i typed", async (status, expected) => {
+		const err = await loadIndexError(status);
+		expect(err).toBeInstanceOf(expected);
+		const typed = err as CyborgDBError;
+		expect(typed.statusCode).toBe(status);
+		expect(typed.detail).toBe("synthetic failure");
+		expect(typed.indexName).toBe("missing");
+	});
+
+	it("keeps a transport failure typed", async () => {
+		const { url, close } = await serverReturning(200);
+		await close();
+		const client = new CyborgDB({ baseUrl: url, apiKey: "test-key" });
+		await expect(
+			client.loadIndex({ indexName: "missing", indexKey: new Uint8Array(32) }),
+		).rejects.toBeInstanceOf(CyborgDBTransportError);
+	});
+});
+
+describe("handleApiError", () => {
+	it("rethrows an already-typed error unchanged", () => {
+		const original = new CyborgDBNotFoundError("404 - gone", {
+			statusCode: 404,
+		});
+		expect(() => handleApiError(original)).toThrow(original);
+	});
+});
+
 describe("baseUrl validation", () => {
 	it.each([
 		["empty", ""],

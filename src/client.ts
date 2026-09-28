@@ -353,7 +353,7 @@ export class CyborgDB {
 			// Extract and return the structured response
 			return apiResponse;
 		} catch (error: unknown) {
-			handleApiError(error);
+			handleApiError(error, { indexName });
 		}
 	}
 
@@ -409,21 +409,9 @@ export class CyborgDB {
 	}): Promise<EncryptedIndex> {
 		// Validate the key only when present (KMS-backed indexes supply none).
 		this.validateKeyLength(indexKey);
-		try {
-			// Validate that the index exists and the key is correct
-			const response = await this.describeIndex(indexName, indexKey);
-
-			const loadedIndex: EncryptedIndex = new EncryptedIndex(
-				response.indexName,
-				indexKey,
-				this.api,
-			);
-
-			return loadedIndex;
-		} catch (error: unknown) {
-			// Enhance error context with operation details
-			handleApiError(error);
-		}
+		// Validate that the index exists and the key is correct
+		const response = await this.describeIndex(indexName, indexKey);
+		return new EncryptedIndex(response.indexName, indexKey, this.api);
 	}
 
 	/**

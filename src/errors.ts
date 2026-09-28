@@ -244,6 +244,10 @@ export function handleApiError(
 	error: unknown,
 	context: { indexName?: string } = {},
 ): never {
+	// Already classified by an inner call; a second pass would find no
+	// response on it and downgrade it to a plain Error.
+	if (error instanceof CyborgDBError) throw error;
+
 	debugLog("Full error object:", JSON.stringify(error, null, 2));
 
 	if (hasResponse(error)) {
