@@ -128,6 +128,48 @@ describe("typed errors", () => {
 		);
 	});
 
+	it("names the reason when localhost refuses the connection", async () => {
+		const { url, close } = await serverReturning(200);
+		await close();
+		const port = new URL(url).port;
+		const client = new CyborgDB({
+			baseUrl: `http://localhost:${port}`,
+			apiKey: "test-key",
+		});
+		const err = await client.listIndexes().catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(CyborgDBTransportError);
+		expect((err as Error).message).toMatch(/ECONNREFUSED/);
+	});
+
+	it("describes a multi-address failure from its inner errors", () => {
+		// What Node raises when every address `localhost` resolves to refuses.
+		const aggregate = Object.assign(
+			new AggregateError(
+				[
+					new Error("connect ECONNREFUSED ::1:9"),
+					new Error("connect ECONNREFUSED 127.0.0.1:9"),
+				],
+				"",
+			),
+			{ code: "ECONNREFUSED" },
+		);
+		const fetchError = new FetchError(
+			new TypeError("fetch failed", { cause: aggregate }),
+			"The request failed and the interceptors did not return an alternative response",
+		);
+		const err = (() => {
+			try {
+				handleApiError(fetchError);
+			} catch (e) {
+				return e;
+			}
+		})();
+		expect(err).toBeInstanceOf(CyborgDBTransportError);
+		expect((err as Error).message).toBe(
+			"Network request failed: connect ECONNREFUSED ::1:9; connect ECONNREFUSED 127.0.0.1:9",
+		);
+	});
+
 	// Built in this realm on purpose. A real rejection from Jest's global
 	// fetch comes from another realm, skips the runtime's FetchError wrapping,
 	// and so passes the test above even when unwrapping is broken.

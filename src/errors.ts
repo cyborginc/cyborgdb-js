@@ -213,6 +213,26 @@ function unwrapFetchError(error: unknown): unknown {
 		: error;
 }
 
+/**
+ * Human-readable reason for a transport failure. A host that resolves to
+ * several addresses (`localhost` -> `::1` and `127.0.0.1`) fails with an
+ * `AggregateError` whose own message is empty; its per-address errors carry
+ * the detail.
+ */
+function describeTransportFailure(error: unknown): string {
+	if (hasMessage(error) && error.message !== "") return error.message;
+	const inner = (error as { errors?: unknown }).errors;
+	if (Array.isArray(inner)) {
+		const messages = inner
+			.filter(hasMessage)
+			.map((e) => e.message)
+			.filter((m) => m !== "");
+		if (messages.length > 0) return messages.join("; ");
+	}
+	if (hasCode(error)) return String(error.code);
+	return "unknown transport failure";
+}
+
 /** True when nothing answered: no HTTP status exists to key off. */
 function isNetworkFailure(error: unknown): boolean {
 	if (hasResponse(error)) return false;
@@ -333,16 +353,13 @@ export function handleApiError(
 	// Nothing answered: no status exists to key off.
 	const transportError = unwrapFetchError(error);
 	if (status === null && isNetworkFailure(transportError)) {
-		const causeMsg =
+		const causeMsg = describeTransportFailure(
 			hasMessage(transportError) &&
-			transportError.message === "fetch failed" &&
-			hasCause(transportError)
-				? hasMessage(transportError.cause)
-					? transportError.cause.message
-					: String(transportError.cause)
-				: hasMessage(transportError)
-					? transportError.message
-					: "unknown transport failure";
+				transportError.message === "fetch failed" &&
+				hasCause(transportError)
+				? transportError.cause
+				: transportError,
+		);
 		throw new CyborgDBTransportError(`Network request failed: ${causeMsg}`, {
 			...base,
 			detail: causeMsg,

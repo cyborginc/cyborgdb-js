@@ -599,6 +599,15 @@ describe("CyborgDB SSL Verification", () => {
 						} else if (req.url === "/v1/indexes/list") {
 							res.writeHead(401, { "Content-Type": "application/json" });
 							res.end(JSON.stringify({ detail: "Invalid API key" }));
+						} else if (req.url?.startsWith("/redirect/")) {
+							const [, , code, target] = req.url.split("/");
+							res.writeHead(Number(code), { Location: `/${target}` });
+							res.end();
+						} else if (req.url === "/loop") {
+							res.writeHead(302, { Location: "/loop" });
+							res.end();
+						} else if (req.url === "/stall") {
+							// Never answers; the client's inactivity timeout must fire.
 						} else if (req.url === "/echo") {
 							res.writeHead(200, { "Content-Type": "application/json" });
 							res.end(
@@ -669,6 +678,48 @@ describe("CyborgDB SSL Verification", () => {
 				header: "yes",
 				body: '{"a":1}',
 			});
+		});
+
+		test.each([
+			[307, "POST", '{"a":1}'],
+			[308, "POST", '{"a":1}'],
+			[303, "GET", ""],
+			[302, "GET", ""],
+		])("insecure fetch follows a %i redirect as %s", async (code, method, body) => {
+			const insecureFetch = (await createInsecureFetch()) as typeof fetch;
+			const res = await insecureFetch(
+				`https://127.0.0.1:${port}/redirect/${code}/echo`,
+				{
+					method: "POST",
+					headers: { "X-Test": "yes", "Content-Type": "application/json" },
+					body: JSON.stringify({ a: 1 }),
+				},
+			);
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ method, header: "yes", body });
+		});
+
+		test("insecure fetch gives up on a redirect loop", async () => {
+			const insecureFetch = (await createInsecureFetch()) as typeof fetch;
+			const err = await insecureFetch(`https://127.0.0.1:${port}/loop`).catch(
+				(e: unknown) => e,
+			);
+			expect(err).toBeInstanceOf(TypeError);
+			expect((err as Error).message).toBe("fetch failed");
+			expect(((err as Error).cause as Error).message).toMatch(/redirects/);
+		});
+
+		test("insecure fetch times out a server that never answers", async () => {
+			const insecureFetch = (await createInsecureFetch({
+				inactivityTimeoutMs: 200,
+			})) as typeof fetch;
+			const err = await insecureFetch(`https://127.0.0.1:${port}/stall`).catch(
+				(e: unknown) => e,
+			);
+			expect(err).toBeInstanceOf(TypeError);
+			expect(((err as Error).cause as { code?: string }).code).toBe(
+				"ETIMEDOUT",
+			);
 		});
 
 		test("insecure fetch handles bodiless responses", async () => {
