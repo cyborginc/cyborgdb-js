@@ -201,6 +201,18 @@ function headerValue(headers: unknown, name: string): string | null {
 	return null;
 }
 
+/**
+ * The generated runtime wraps every rejected fetch in a `FetchError` whose
+ * `cause` is the actual socket failure; classify that instead of the wrapper.
+ */
+function unwrapFetchError(error: unknown): unknown {
+	return error instanceof Error &&
+		error.name === "FetchError" &&
+		hasCause(error)
+		? error.cause
+		: error;
+}
+
 /** True when nothing answered: no HTTP status exists to key off. */
 function isNetworkFailure(error: unknown): boolean {
 	if (hasResponse(error)) return false;
@@ -314,14 +326,17 @@ export function handleApiError(
 	};
 
 	// Nothing answered: no status exists to key off.
-	if (status === null && isNetworkFailure(error)) {
+	const transportError = unwrapFetchError(error);
+	if (status === null && isNetworkFailure(transportError)) {
 		const causeMsg =
-			hasMessage(error) && error.message === "fetch failed" && hasCause(error)
-				? hasMessage(error.cause)
-					? error.cause.message
-					: String(error.cause)
-				: hasMessage(error)
-					? error.message
+			hasMessage(transportError) &&
+			transportError.message === "fetch failed" &&
+			hasCause(transportError)
+				? hasMessage(transportError.cause)
+					? transportError.cause.message
+					: String(transportError.cause)
+				: hasMessage(transportError)
+					? transportError.message
 					: "unknown transport failure";
 		throw new CyborgDBTransportError(`Network request failed: ${causeMsg}`, {
 			...base,

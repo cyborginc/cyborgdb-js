@@ -18,7 +18,9 @@ import {
 	CyborgDBServiceError,
 	CyborgDBTransportError,
 	CyborgDBValidationError,
+	handleApiError,
 } from "../errors";
+import { FetchError } from "../runtime";
 
 /** status -> [class, retryable]. */
 const TAXONOMY: Array<[number, typeof CyborgDBError, boolean]> = [
@@ -116,6 +118,34 @@ describe("typed errors", () => {
 		await expect(client.listIndexes()).rejects.toBeInstanceOf(
 			CyborgDBTransportError,
 		);
+	});
+
+	// Built in this realm on purpose. A real rejection from Jest's global
+	// fetch comes from another realm, skips the runtime's FetchError wrapping,
+	// and so passes the test above even when unwrapping is broken.
+	it("unwraps the runtime's FetchError into CyborgDBTransportError", () => {
+		const socketError = Object.assign(
+			new Error("connect ECONNREFUSED 127.0.0.1:1"),
+			{ code: "ECONNREFUSED" },
+		);
+		const fetchError = new FetchError(
+			new TypeError("fetch failed", { cause: socketError }),
+			"The request failed and the interceptors did not return an alternative response",
+		);
+		let err: unknown;
+		try {
+			handleApiError(fetchError);
+		} catch (e) {
+			err = e;
+		}
+		expect(err).toBeInstanceOf(CyborgDBTransportError);
+		const typed = err as CyborgDBTransportError;
+		expect(typed.message).toBe(
+			"Network request failed: connect ECONNREFUSED 127.0.0.1:1",
+		);
+		expect(typed.statusCode).toBeNull();
+		expect(typed.retryable).toBe(true);
+		expect(typed.cause).toBe(fetchError);
 	});
 });
 
