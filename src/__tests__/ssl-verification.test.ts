@@ -8,8 +8,16 @@
  * npm test -- ssl-verification.test.ts
  */
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer, type Server } from "node:https";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import dotenv from "dotenv";
 import { CyborgDB } from "../client";
+import { CyborgDBAuthenticationError } from "../errors";
+import { createInsecureFetch } from "../insecureFetch";
 
 // Load environment variables
 dotenv.config();
@@ -23,40 +31,17 @@ const TEST_PRODUCTION_URL = "https://api.cyborgdb.com";
 describe("CyborgDB SSL Verification", () => {
 	let originalConsoleInfo: jest.SpyInstance;
 	let originalConsoleWarn: jest.SpyInstance;
-	let originalAxiosDefaults: any;
 
 	beforeEach(() => {
 		// Mock console methods to capture SSL-related messages
 		originalConsoleInfo = jest.spyOn(console, "info").mockImplementation();
 		originalConsoleWarn = jest.spyOn(console, "warn").mockImplementation();
-
-		// Store original axios defaults to restore later
-		if (typeof require !== "undefined") {
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const axios = require("axios");
-				originalAxiosDefaults = { ...axios.defaults };
-			} catch (_e) {
-				// axios not available in this environment
-			}
-		}
 	});
 
 	afterEach(() => {
 		// Restore console methods
 		originalConsoleInfo.mockRestore();
 		originalConsoleWarn.mockRestore();
-
-		// Restore axios defaults if they were modified
-		if (originalAxiosDefaults && typeof require !== "undefined") {
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const axios = require("axios");
-				Object.assign(axios.defaults, originalAxiosDefaults);
-			} catch (_e) {
-				// axios not available
-			}
-		}
 	});
 
 	describe("Constructor SSL Auto-Detection", () => {
@@ -71,24 +56,10 @@ describe("CyborgDB SSL Verification", () => {
 			expect(originalConsoleWarn).toHaveBeenCalledWith(
 				"SSL verification is disabled. Not recommended for production.",
 			);
-			// In Node.js, we may also get additional warnings about SSL configuration
-			if (
-				typeof process !== "undefined" &&
-				process.versions &&
-				process.versions.node
-			) {
-				// Either the SSL is successfully disabled or we get a fallback warning
-				const warnCalls = originalConsoleWarn.mock.calls.map(
-					(call: any[]) => call[0],
-				);
-				const hasNodeWarning = warnCalls.includes(
-					"SSL verification disabled in Node.js environment",
-				);
-				const hasFallbackWarning = warnCalls.includes(
-					"Could not configure SSL verification - using default fetch",
-				);
-				expect(hasNodeWarning || hasFallbackWarning).toBe(true);
-			}
+			// Plain http has no certificate to skip, so no custom fetch is installed
+			expect(originalConsoleWarn).not.toHaveBeenCalledWith(
+				"SSL verification disabled in Node.js environment",
+			);
 		});
 
 		test("should auto-detect and disable SSL verification for HTTPS localhost URLs", () => {
@@ -191,7 +162,7 @@ describe("CyborgDB SSL Verification", () => {
 			process.versions &&
 			process.versions.node;
 
-		test("should configure axios HTTPS agent in Node.js when SSL verification is disabled", () => {
+		test("should install the insecure fetch in Node.js when SSL verification is disabled", () => {
 			if (!isNodeJS) {
 				console.log("Skipping Node.js specific test in browser environment");
 				return;
@@ -219,21 +190,9 @@ describe("CyborgDB SSL Verification", () => {
 				"Could not configure SSL verification - using default fetch",
 			);
 			expect(hasNodeWarning || hasFallbackWarning).toBe(true);
-
-			// Verify axios defaults were modified (if axios is available)
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const axios = require("axios");
-				expect(axios.defaults.httpsAgent).toBeDefined();
-				expect(axios.defaults.httpsAgent.options.rejectUnauthorized).toBe(
-					false,
-				);
-			} catch (_e) {
-				console.log("Axios not available for HTTPS agent verification");
-			}
 		});
 
-		test("should not configure axios HTTPS agent when SSL verification is enabled", () => {
+		test("should not install the insecure fetch when SSL verification is enabled", () => {
 			if (!isNodeJS) {
 				console.log("Skipping Node.js specific test in browser environment");
 				return;
@@ -307,6 +266,32 @@ describe("CyborgDB SSL Verification", () => {
 				shouldDisableSSL: false,
 				expectedLog: null,
 				description: "LAN IP should enable SSL by default",
+			},
+			{
+				url: "https://[::1]:8000",
+				shouldDisableSSL: true,
+				expectedLog: "info",
+				description: "IPv6 loopback should disable SSL",
+			},
+			{
+				url: "https://localhost.evil.com",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description:
+					"hostname merely starting with localhost should enable SSL",
+			},
+			{
+				url: "https://127.0.0.1.nip.io",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description:
+					"hostname merely starting with 127.0.0.1 should enable SSL",
+			},
+			{
+				url: "https://evil.com/localhost",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "localhost in the path should enable SSL",
 			},
 		];
 
@@ -559,6 +544,138 @@ describe("CyborgDB SSL Verification", () => {
 					expect(isNetworkError).toBe(true);
 				}
 			}
+		});
+	});
+
+	// Runs against a real self-signed server. With NODE_TLS_REJECT_UNAUTHORIZED
+	// set, Node skips verification process-wide and every case passes whether
+	// or not the SDK relaxed it. Jest sandboxes process.env, so it can't be
+	// cleared from here; the suite refuses to run instead.
+	describe("Self-signed HTTPS server", () => {
+		let server: Server;
+		let port: number;
+		let certDir: string;
+
+		beforeAll(async () => {
+			if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== undefined) {
+				throw new Error(
+					"Unset NODE_TLS_REJECT_UNAUTHORIZED to run the self-signed HTTPS tests",
+				);
+			}
+			certDir = mkdtempSync(join(tmpdir(), "cyborgdb-tls-"));
+			const keyPath = join(certDir, "key.pem");
+			const certPath = join(certDir, "cert.pem");
+			execFileSync(
+				"openssl",
+				[
+					"req",
+					"-x509",
+					"-newkey",
+					"rsa:2048",
+					"-nodes",
+					"-days",
+					"1",
+					"-subj",
+					"/CN=localhost",
+					"-addext",
+					"subjectAltName=DNS:localhost,IP:127.0.0.1",
+					"-keyout",
+					keyPath,
+					"-out",
+					certPath,
+				],
+				{ stdio: "ignore" },
+			);
+
+			server = createServer(
+				{ key: readFileSync(keyPath), cert: readFileSync(certPath) },
+				(req, res) => {
+					const chunks: Buffer[] = [];
+					req.on("data", (c) => chunks.push(c));
+					req.on("end", () => {
+						if (req.url === "/v1/health") {
+							res.writeHead(200, { "Content-Type": "application/json" });
+							res.end(JSON.stringify({ status: "healthy" }));
+						} else if (req.url === "/v1/indexes/list") {
+							res.writeHead(401, { "Content-Type": "application/json" });
+							res.end(JSON.stringify({ detail: "Invalid API key" }));
+						} else if (req.url === "/echo") {
+							res.writeHead(200, { "Content-Type": "application/json" });
+							res.end(
+								JSON.stringify({
+									method: req.method,
+									header: req.headers["x-test"],
+									body: Buffer.concat(chunks).toString(),
+								}),
+							);
+						} else {
+							res.writeHead(204);
+							res.end();
+						}
+					});
+				},
+			);
+			await new Promise<void>((resolve) =>
+				server.listen(0, "127.0.0.1", resolve),
+			);
+			port = (server.address() as AddressInfo).port;
+		});
+
+		afterAll(async () => {
+			await new Promise((resolve) => server?.close(resolve) ?? resolve(null));
+			if (certDir) rmSync(certDir, { recursive: true, force: true });
+		});
+
+		test("loopback host with verifySsl unset connects", async () => {
+			const client = new CyborgDB({ baseUrl: `https://localhost:${port}` });
+			await expect(client.getHealth()).resolves.toEqual({ status: "healthy" });
+		});
+
+		test("verifySsl=false connects", async () => {
+			const client = new CyborgDB({
+				baseUrl: `https://127.0.0.1:${port}`,
+				verifySsl: false,
+			});
+			await expect(client.getHealth()).resolves.toEqual({ status: "healthy" });
+		});
+
+		test("verifySsl=true rejects the self-signed certificate", async () => {
+			const client = new CyborgDB({
+				baseUrl: `https://localhost:${port}`,
+				verifySsl: true,
+			});
+			await expect(client.getHealth()).rejects.toThrow();
+		});
+
+		test("error responses still map to typed errors", async () => {
+			const client = new CyborgDB({
+				baseUrl: `https://localhost:${port}`,
+				apiKey: "bad-key",
+			});
+			await expect(client.listIndexes()).rejects.toBeInstanceOf(
+				CyborgDBAuthenticationError,
+			);
+		});
+
+		test("insecure fetch forwards method, headers and body", async () => {
+			const insecureFetch = (await createInsecureFetch()) as typeof fetch;
+			const res = await insecureFetch(`https://127.0.0.1:${port}/echo`, {
+				method: "POST",
+				headers: { "X-Test": "yes" },
+				body: JSON.stringify({ a: 1 }),
+			});
+			expect(await res.json()).toEqual({
+				method: "POST",
+				header: "yes",
+				body: '{"a":1}',
+			});
+		});
+
+		test("insecure fetch handles bodiless responses", async () => {
+			const insecureFetch = (await createInsecureFetch()) as typeof fetch;
+			const res = await insecureFetch(`https://127.0.0.1:${port}/empty`);
+			expect(res.status).toBe(204);
+			expect(await res.text()).toBe("");
 		});
 	});
 });
