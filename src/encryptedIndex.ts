@@ -18,7 +18,6 @@ import type {
 	MetadataResult,
 	QueryMetadataRequest,
 	QueryMetadataResponse,
-	QueryResponse,
 	Request,
 	TrainRequest,
 	UpsertRequest,
@@ -28,6 +27,7 @@ import type {
 	DeleteResponse,
 	FilterExpression,
 	GetResultItem,
+	QueryResponse,
 	TrainResponse,
 	UpsertResponse,
 } from "./types";
@@ -679,7 +679,7 @@ export class EncryptedIndex {
 				throw new Error("No response received from query API");
 			}
 
-			const finalResponse = response;
+			const finalResponse = response as QueryResponse;
 
 			if (
 				isSingleQuery &&
@@ -1128,7 +1128,7 @@ export class EncryptedIndex {
 				await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({
 					binaryQueryRequest,
 				});
-			return response;
+			return response as QueryResponse;
 		} catch (error: unknown) {
 			handleApiError(error);
 		}
