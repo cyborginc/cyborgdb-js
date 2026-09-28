@@ -42,8 +42,8 @@ export class EncryptedIndex {
 	private api: DefaultApi;
 
 	// Lazy-cached describe-derived metadata. `dimension` and `metric`
-	// are immutable post-creation, so the first describe populates
-	// both and we reuse the values. `n_lists` is NOT cached because
+	// are immutable once set, so the first describe that returns them
+	// populates the cache. `n_lists` is NOT cached because
 	// training mutates it (default 1 → trained cluster count).
 	// `isTrained` is also not cached — same reason.
 	private dimensionCached?: number;
@@ -104,21 +104,29 @@ export class EncryptedIndex {
 			handleApiError(error);
 		}
 	}
+	private async refreshDimensionAndMetric(): Promise<{
+		dimension: number;
+		metric: string;
+	}> {
+		const response = await this.describeIndex(this.indexName);
+		// 0 means the dimension is not set yet (index created without one,
+		// no upsert so far); caching it would hide the value the first
+		// upsert fixes.
+		if (response.dimension !== 0) this.dimensionCached = response.dimension;
+		this.metricCached = response.metric;
+		return { dimension: response.dimension, metric: response.metric };
+	}
+	/**
+	 * Vector dimension. `0` until the first upsert when the index was created
+	 * without an explicit `dimension`; cached once it is known.
+	 */
 	public async getDimension(): Promise<number> {
-		if (this.dimensionCached === undefined) {
-			const response = await this.describeIndex(this.indexName);
-			this.dimensionCached = response.dimension;
-			this.metricCached = response.metric;
-		}
-		return this.dimensionCached;
+		return (
+			this.dimensionCached ?? (await this.refreshDimensionAndMetric()).dimension
+		);
 	}
 	public async getMetric(): Promise<string> {
-		if (this.metricCached === undefined) {
-			const response = await this.describeIndex(this.indexName);
-			this.dimensionCached = response.dimension;
-			this.metricCached = response.metric;
-		}
-		return this.metricCached;
+		return this.metricCached ?? (await this.refreshDimensionAndMetric()).metric;
 	}
 	public async getNLists(): Promise<number> {
 		// Fetched fresh on every read — training mutates this server-side.
