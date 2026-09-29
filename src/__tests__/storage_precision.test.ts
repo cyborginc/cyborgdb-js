@@ -36,6 +36,7 @@ import {
 	CreateIndexRequestStoragePrecisionEnum,
 	CreateIndexRequestToJSON,
 } from "../models";
+import { waitFor } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -186,7 +187,10 @@ describe("storagePrecision (integration)", () => {
 				vectors: vectors.slice(start, end),
 			});
 		}
-		await sleep(1000);
+		await waitFor(
+			async () => (await index.listIds()).count === NUM_VECTORS,
+			`all ${NUM_VECTORS} vectors become visible to listIds`,
+		);
 		expect((await index.listIds()).count).toBe(NUM_VECTORS);
 
 		await index.train({ nLists: N_LISTS });

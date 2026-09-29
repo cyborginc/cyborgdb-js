@@ -303,6 +303,24 @@ describe("CyborgDB SSL Verification", () => {
 				expectedLog: null,
 				description: "localhost in the path should enable SSL",
 			},
+			{
+				url: "https://notlocalhost.example.com",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "hostname containing localhost should enable SSL",
+			},
+			{
+				url: "https://my-localhost-proxy.example.com",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "localhost inside a hostname label should enable SSL",
+			},
+			{
+				url: "https://api.example.com/?region=localhost",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "localhost in the query string should enable SSL",
+			},
 		];
 
 		test.each(testCases)("$description", ({ url, expectedLog }) => {
