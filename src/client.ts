@@ -2,6 +2,7 @@ import { DefaultApi } from "./apis/DefaultApi";
 import { randomBytes, toHex } from "./bytes";
 import { EncryptedIndex } from "./encryptedIndex";
 import { CyborgDBValidationError, handleApiError } from "./errors";
+import { createInsecureFetch } from "./insecureFetch";
 import type {
 	CreateIndexRequest,
 	CreateIndexRequestStoragePrecisionEnum,
@@ -9,7 +10,7 @@ import type {
 	IndexOperationRequest,
 	MetadataFieldPolicy,
 } from "./models";
-import { isNodeRuntime, optionalNodeBuiltin } from "./nodeInterop";
+import { isNodeRuntime } from "./nodeInterop";
 import { Configuration } from "./runtime";
 import type { HealthResponse } from "./types";
 
@@ -56,23 +57,15 @@ function assertValidBaseUrl(baseUrl: string): void {
 	}
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
 /**
- * Build an `https.Agent` that skips certificate verification, for local
- * development against a self-signed endpoint.
- *
- * Resolves to `undefined` anywhere `node:https` is unavailable (browsers, Edge
- * runtimes), in which case requests fall through to the host's default fetch
- * with verification left on — the only safe behavior there.
+ * Exact-match loopback check, mirroring py's `{"localhost", "127.0.0.1", "::1"}`.
+ * `URL.hostname` keeps the brackets on IPv6 literals, so they are stripped.
  */
-async function loadInsecureHttpsAgent(): Promise<unknown> {
-	const https = await optionalNodeBuiltin<{
-		Agent: new (opts: { rejectUnauthorized: boolean }) => unknown;
-	}>("https");
-	if (!https) {
-		console.warn("Could not configure SSL verification - using default fetch");
-		return undefined;
-	}
-	return new https.Agent({ rejectUnauthorized: false });
+function isLoopbackHost(baseUrl: string): boolean {
+	const hostname = new URL(baseUrl).hostname.replace(/^\[(.*)\]$/, "$1");
+	return LOOPBACK_HOSTS.has(hostname);
 }
 
 export class CyborgDB {
@@ -97,15 +90,13 @@ export class CyborgDB {
 		// as a confusing DNS or fetch error on the first call instead of here.
 		assertValidBaseUrl(baseUrl);
 
-		// If baseUrl is http, disable SSL verification
-		if (baseUrl.startsWith("http://")) {
+		const isHttps = new URL(baseUrl).protocol === "https:";
+		if (!isHttps) {
 			verifySsl = false;
 		}
 
-		// Auto-detect SSL verification if not explicitly set
 		if (verifySsl === undefined) {
-			// Auto-detect: disable SSL verification for localhost/127.0.0.1 (development)
-			if (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")) {
+			if (isLoopbackHost(baseUrl)) {
 				verifySsl = false;
 				console.info(
 					"SSL verification disabled for localhost (development mode)",
@@ -122,18 +113,22 @@ export class CyborgDB {
 		// Configure fetch API based on environment and SSL settings
 		let fetchApi: typeof fetch | undefined;
 
-		// Only configure custom fetch in Node.js when SSL verification is disabled.
 		// Browsers and Edge runtimes can't relax certificate checks at all
-		// (security restriction), so there is nothing to configure there.
-		if (!verifySsl && isNodeRuntime()) {
-			// Node 18+ has built-in fetch but needs an https.Agent to carry the
-			// SSL options. `node:https` is loaded lazily and by runtime specifier
-			// so the module graph stays free of Node builtins — see nodeInterop.
-			let agent: Promise<unknown> | undefined;
+		// (security restriction), so only Node gets a custom fetch. Plain http
+		// has no certificate to skip, so it keeps the default fetch.
+		if (!verifySsl && isHttps && isNodeRuntime()) {
+			let insecureFetch: Promise<typeof fetch | undefined> | undefined;
 			fetchApi = async (url: RequestInfo | URL, init?: RequestInit) => {
-				agent ??= loadInsecureHttpsAgent();
-				const resolved = await agent;
-				return globalThis.fetch(url, { ...init, agent: resolved } as any);
+				insecureFetch ??= createInsecureFetch().then((f) => {
+					if (!f) {
+						console.warn(
+							"Could not configure SSL verification - using default fetch",
+						);
+					}
+					return f;
+				});
+				const f = (await insecureFetch) ?? globalThis.fetch;
+				return f(url, init);
 			};
 
 			console.warn("SSL verification disabled in Node.js environment");
@@ -193,7 +188,9 @@ export class CyborgDB {
 	 */
 	private validateKeyLength(indexKey?: Uint8Array): void {
 		if (indexKey !== undefined && indexKey.length !== 32) {
-			throw new Error(`indexKey must be 32 bytes, got ${indexKey.length}`);
+			throw new CyborgDBValidationError(
+				`indexKey must be 32 bytes, got ${indexKey.length}`,
+			);
 		}
 	}
 
@@ -271,7 +268,9 @@ export class CyborgDB {
 	}) {
 		// Local guard mirrored from the py/go SDKs: at least one of the two.
 		if (indexKey === undefined && kmsName === undefined) {
-			throw new Error("createIndex requires indexKey, kmsName, or both");
+			throw new CyborgDBValidationError(
+				"createIndex requires indexKey, kmsName, or both",
+			);
 		}
 		// Validate the key only when present (still must be 32 bytes).
 		this.validateKeyLength(indexKey);
@@ -358,7 +357,7 @@ export class CyborgDB {
 			// Extract and return the structured response
 			return apiResponse;
 		} catch (error: unknown) {
-			handleApiError(error);
+			handleApiError(error, { indexName });
 		}
 	}
 
@@ -414,21 +413,9 @@ export class CyborgDB {
 	}): Promise<EncryptedIndex> {
 		// Validate the key only when present (KMS-backed indexes supply none).
 		this.validateKeyLength(indexKey);
-		try {
-			// Validate that the index exists and the key is correct
-			const response = await this.describeIndex(indexName, indexKey);
-
-			const loadedIndex: EncryptedIndex = new EncryptedIndex(
-				response.indexName,
-				indexKey,
-				this.api,
-			);
-
-			return loadedIndex;
-		} catch (error: unknown) {
-			// Enhance error context with operation details
-			handleApiError(error);
-		}
+		// Validate that the index exists and the key is correct
+		const response = await this.describeIndex(indexName, indexKey);
+		return new EncryptedIndex(response.indexName, indexKey, this.api);
 	}
 
 	/**

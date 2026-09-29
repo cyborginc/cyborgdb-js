@@ -92,6 +92,9 @@ function createEdgeContext(captured: CapturedRequest[]): vm.Context {
 
 /** Minimal canned service responses, keyed by request path. */
 function respondTo(url: string): unknown {
+	if (url.includes("create-demo-key")) {
+		return { apiKey: "demo-key" };
+	}
 	if (url.includes("/query")) {
 		return {
 			results: [[{ id: "a", distance: 0.1, metadata: { tag: "x" } }]],
@@ -129,6 +132,16 @@ describe("Edge runtime compatibility", () => {
 		);
 		expect(result.client).toBe("function");
 		expect(result.version).toBe("string");
+	});
+
+	it("gets a demo API key from the default endpoint", async () => {
+		const { result, captured } = await runInEdge(
+			"return await cyborgdb.getDemoApiKey();",
+		);
+		expect(result).toBe("demo-key");
+		expect(captured.map((r) => r.url)).toEqual([
+			"https://api.cyborgdb.co/v1/api-key/manage/create-demo-key",
+		]);
 	});
 
 	it("generates a 32-byte Uint8Array index key through Web Crypto", async () => {
