@@ -167,6 +167,19 @@ already determines the key source). Mode 1 is recorded server-side as
 `provider: none`; `none` is not a registry slot you reference by name. The
 LangChain integration accepts the same `kmsName` option in its store config.
 
+## Supported runtimes
+
+The SDK ships as a single dependency-free bundle that imports and runs on any JavaScript runtime with `fetch` and Web Crypto:
+
+| Runtime | Supported | Notes |
+| --- | --- | --- |
+| Node.js | >= 18 | Full functionality, including the on-disk sample-dataset cache. |
+| Bun / Deno | Yes | Node-compatible; same functionality as Node. |
+| Browsers | Yes (modern) | `verifySsl: false` has no effect. |
+| Vercel Edge Runtime | Yes | - |
+| Cloudflare Workers | Yes | - |
+
+
 ## Documentation
 
 For more information on CyborgDB, see the [Cyborg Docs](https://docs.cyborg.co).

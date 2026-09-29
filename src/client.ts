@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
 import { DefaultApi } from "./apis/DefaultApi";
+import { randomBytes, toHex } from "./bytes";
 import { EncryptedIndex } from "./encryptedIndex";
 import { CyborgDBValidationError, handleApiError } from "./errors";
 import type {
@@ -9,6 +9,7 @@ import type {
 	IndexOperationRequest,
 	MetadataFieldPolicy,
 } from "./models";
+import { isNodeRuntime, optionalNodeBuiltin } from "./nodeInterop";
 import { Configuration } from "./runtime";
 import type { HealthResponse } from "./types";
 
@@ -53,6 +54,25 @@ function assertValidBaseUrl(baseUrl: string): void {
 			`Invalid baseUrl: ${JSON.stringify(baseUrl)} must use the http or https scheme`,
 		);
 	}
+}
+
+/**
+ * Build an `https.Agent` that skips certificate verification, for local
+ * development against a self-signed endpoint.
+ *
+ * Resolves to `undefined` anywhere `node:https` is unavailable (browsers, Edge
+ * runtimes), in which case requests fall through to the host's default fetch
+ * with verification left on — the only safe behavior there.
+ */
+async function loadInsecureHttpsAgent(): Promise<unknown> {
+	const https = await optionalNodeBuiltin<{
+		Agent: new (opts: { rejectUnauthorized: boolean }) => unknown;
+	}>("https");
+	if (!https) {
+		console.warn("Could not configure SSL verification - using default fetch");
+		return undefined;
+	}
+	return new https.Agent({ rejectUnauthorized: false });
 }
 
 export class CyborgDB {
@@ -102,32 +122,21 @@ export class CyborgDB {
 		// Configure fetch API based on environment and SSL settings
 		let fetchApi: typeof fetch | undefined;
 
-		// Only configure custom fetch in Node.js when SSL verification is disabled
-		if (
-			!verifySsl &&
-			typeof process !== "undefined" &&
-			process.versions?.node
-		) {
-			// Browser environments can't disable SSL verification (security restriction)
-			// Node.js 18+ has built-in fetch but needs a custom agent for SSL options
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const https = require("node:https");
-				const agent = new https.Agent({
-					rejectUnauthorized: false,
-				});
+		// Only configure custom fetch in Node.js when SSL verification is disabled.
+		// Browsers and Edge runtimes can't relax certificate checks at all
+		// (security restriction), so there is nothing to configure there.
+		if (!verifySsl && isNodeRuntime()) {
+			// Node 18+ has built-in fetch but needs an https.Agent to carry the
+			// SSL options. `node:https` is loaded lazily and by runtime specifier
+			// so the module graph stays free of Node builtins — see nodeInterop.
+			let agent: Promise<unknown> | undefined;
+			fetchApi = async (url: RequestInfo | URL, init?: RequestInit) => {
+				agent ??= loadInsecureHttpsAgent();
+				const resolved = await agent;
+				return globalThis.fetch(url, { ...init, agent: resolved } as any);
+			};
 
-				fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
-					return globalThis.fetch(url, { ...init, agent } as any);
-				};
-
-				console.warn("SSL verification disabled in Node.js environment");
-			} catch {
-				// Fallback: warn that SSL verification can't be disabled
-				console.warn(
-					"Could not configure SSL verification - using default fetch",
-				);
-			}
+			console.warn("SSL verification disabled in Node.js environment");
 		}
 
 		// Pre-read the body of non-2xx responses and stash the parsed JSON on
@@ -268,9 +277,7 @@ export class CyborgDB {
 		this.validateKeyLength(indexKey);
 
 		try {
-			const keyHex = indexKey
-				? Buffer.from(indexKey).toString("hex")
-				: undefined;
+			const keyHex = indexKey ? toHex(indexKey) : undefined;
 
 			const createRequest: CreateIndexRequest = {
 				indexName: indexName,
@@ -335,9 +342,7 @@ export class CyborgDB {
 		try {
 			// Convert binary key to hex string format expected by API. Omit it
 			// entirely for fully-KMS-managed indexes (server resolves the KEK).
-			const keyHex = indexKey
-				? Buffer.from(indexKey).toString("hex")
-				: undefined;
+			const keyHex = indexKey ? toHex(indexKey) : undefined;
 
 			// Prepare request with index identifier and (optional) authentication key
 			const request: IndexOperationRequest = {
@@ -364,11 +369,12 @@ export class CyborgDB {
 	 * Each key is unique and provides strong security for your vector data.
 	 *
 	 * @returns Uint8Array containing 32 cryptographically secure random bytes
+	 * @throws If the host provides no Web Crypto implementation
 	 */
 	generateKey(): Uint8Array {
-		// Generate 32 bytes of cryptographically secure random data
-		// Uses Node.js crypto.randomBytes() which leverages OS entropy sources
-		return new Uint8Array(randomBytes(32));
+		// 32 bytes of cryptographically secure random data, from the host's
+		// Web Crypto implementation (Node, browser, or Edge runtime alike).
+		return randomBytes(32);
 	}
 
 	/**
@@ -378,11 +384,12 @@ export class CyborgDB {
 	 * Each key is unique and provides strong security for your vector data.
 	 *
 	 * @returns Uint8Array containing 32 cryptographically secure random bytes
+	 * @throws If the host provides no Web Crypto implementation
 	 */
 	static generateKey(): Uint8Array {
-		// Generate 32 bytes of cryptographically secure random data
-		// Uses Node.js crypto.randomBytes() which leverages OS entropy sources
-		return new Uint8Array(randomBytes(32));
+		// 32 bytes of cryptographically secure random data, from the host's
+		// Web Crypto implementation (Node, browser, or Edge runtime alike).
+		return randomBytes(32);
 	}
 
 	/**
