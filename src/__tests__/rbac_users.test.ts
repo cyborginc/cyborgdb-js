@@ -344,7 +344,6 @@ describeIfRbac("CyborgDB RBAC — user management", () => {
 	});
 
 	it("listIndexes under a user key is scoped or denied", async () => {
-		// cyborgdb-core#2397
 		const otherName = `rbac_hidden_${Date.now().toString(36)}`;
 		const other = (await root.createIndex({
 			indexName: otherName,
