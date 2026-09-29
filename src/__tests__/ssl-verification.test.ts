@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import dotenv from "dotenv";
 import { CyborgDB } from "../client";
-import { CyborgDBAuthenticationError } from "../errors";
+import { CyborgDBAuthenticationError, CyborgDBTransportError } from "../errors";
 import { createInsecureFetch } from "../insecureFetch";
 
 // Load environment variables
@@ -27,6 +27,16 @@ const CYBORGDB_API_KEY =
 	process.env.CYBORGDB_API_KEY || "test-key-for-ssl-tests";
 const TEST_LOCALHOST_URL = "http://localhost:8000";
 const TEST_PRODUCTION_URL = "https://api.cyborgdb.com";
+
+/** Every `code` along an error's `cause` chain, outermost first. */
+function causeCodes(error: unknown): string[] {
+	const codes: string[] = [];
+	for (let e = error as { code?: unknown; cause?: unknown } | undefined; e; ) {
+		if (typeof e.code === "string") codes.push(e.code);
+		e = e.cause as typeof e;
+	}
+	return codes;
+}
 
 describe("CyborgDB SSL Verification", () => {
 	let originalConsoleInfo: jest.SpyInstance;
@@ -653,7 +663,12 @@ describe("CyborgDB SSL Verification", () => {
 				baseUrl: `https://localhost:${port}`,
 				verifySsl: true,
 			});
-			await expect(client.getHealth()).rejects.toThrow();
+			const err = await client.getHealth().catch((e: unknown) => e);
+			expect(err).toBeInstanceOf(CyborgDBTransportError);
+			// Match the reason, not just any failure: a closed port or a server
+			// that never started also throws CyborgDBTransportError. The code is
+			// stable across Node versions; the message wording is not.
+			expect(causeCodes(err)).toContain("DEPTH_ZERO_SELF_SIGNED_CERT");
 		});
 
 		test("error responses still map to typed errors", async () => {
