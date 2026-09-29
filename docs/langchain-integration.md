@@ -10,11 +10,13 @@ First, ensure you have the required dependencies:
 npm install cyborgdb
 ```
 
-Note: The LangChain integration is built into the CyborgDB SDK. If you need the official LangChain libraries for other components, install them separately:
+The LangChain integration ships with the SDK but is published under its own entry point, `cyborgdb/integrations/langchain`, and needs `@langchain/core` as a peer dependency:
 
 ```bash
-npm install @langchain/core  # Optional, for other LangChain components
+npm install @langchain/core
 ```
+
+`@langchain/core` is an *optional* peer: the main `cyborgdb` entry point does not import it, so you only need it if you use this integration.
 
 ## Quick Start
 

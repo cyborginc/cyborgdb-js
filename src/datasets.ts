@@ -6,6 +6,11 @@
  * data into the SDK. Hosting the dataset out-of-band keeps the SDK lean and
  * lets us iterate the dataset without cutting an SDK release.
  *
+ * Runs on any runtime: download, integrity check, and decompression use only
+ * web-standard APIs. The local disk cache is Node-only and loaded lazily, so
+ * on browsers and Edge runtimes the dataset is simply re-fetched each time
+ * rather than cached.
+ *
  * @example
  * ```typescript
  * import { Client, loadSampleDataset } from 'cyborgdb';
@@ -16,12 +21,9 @@
  * ```
  */
 
-import { createHash } from "node:crypto";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { gunzipSync } from "node:zlib";
+import { decodeUtf8, sha256Hex } from "./bytes";
 import type { VectorItem } from "./models";
+import { optionalNodeBuiltin } from "./nodeInterop";
 
 /**
  * Base URL for hosted sample datasets (public-read S3 bucket).
@@ -148,11 +150,6 @@ const MAX_DECOMPRESSED_BYTES = 512 * 1024 * 1024;
 /** Bounds the dataset download so a stalled connection can't hang forever. */
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 
-/** Hex-encoded SHA-256 of `data`. */
-function sha256Hex(data: Buffer): string {
-	return createHash("sha256").update(data).digest("hex");
-}
-
 /** Default dataset returned by `loadSampleDataset()` with no arguments. */
 export const DEFAULT_SAMPLE_DATASET = "quickstart-75k";
 
@@ -169,9 +166,115 @@ export interface LoadSampleDatasetOptions {
 /** Number of leading `queries` exposed as `sampleQueries` for quick demos. */
 const NUM_SAMPLE_QUERIES = 10;
 
-function defaultCacheDir(): string {
-	const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-	return path.join(base, "cyborgdb");
+/**
+ * The Node modules the on-disk cache needs, or `undefined` where they don't
+ * exist (browser, Edge runtime). Loaded through {@link optionalNodeBuiltin} so
+ * no `node:*` specifier ever enters the static module graph.
+ */
+async function nodeCacheModules(): Promise<
+	| {
+			fs: typeof import("node:fs");
+			os: typeof import("node:os");
+			path: typeof import("node:path");
+	  }
+	| undefined
+> {
+	const [fs, os, path] = await Promise.all([
+		optionalNodeBuiltin<typeof import("node:fs")>("fs"),
+		optionalNodeBuiltin<typeof import("node:os")>("os"),
+		optionalNodeBuiltin<typeof import("node:path")>("path"),
+	]);
+	return fs && os && path ? { fs, os, path } : undefined;
+}
+
+/**
+ * Resolve where a dataset's cached copy lives, or `undefined` on a runtime
+ * with no filesystem.
+ *
+ * @param cacheDir Caller override; defaults to `$XDG_CACHE_HOME/cyborgdb` or
+ *   `~/.cache/cyborgdb`.
+ * @param key Cache file name, derived from the versioned object path.
+ */
+async function resolveCache(
+	cacheDir: string | undefined,
+	key: string,
+): Promise<
+	{ fs: typeof import("node:fs"); dir: string; file: string } | undefined
+> {
+	const mods = await nodeCacheModules();
+	if (!mods) {
+		return undefined;
+	}
+	const { fs, os, path } = mods;
+	const dir =
+		cacheDir ??
+		path.join(
+			process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
+			"cyborgdb",
+		);
+	return { fs, dir, file: path.join(dir, key) };
+}
+
+/**
+ * Gunzip `compressed` using the web-standard `DecompressionStream`, refusing
+ * to buffer more than `maxBytes`.
+ *
+ * The cap guards against a decompression bomb: a tiny gzip that expands to
+ * many GBs and OOMs the host. It replaces `zlib.gunzipSync`'s
+ * `maxOutputLength`, which has no Edge equivalent.
+ *
+ * @throws RangeError if the decompressed stream exceeds `maxBytes`.
+ */
+async function gunzip(
+	// `Uint8Array<ArrayBuffer>` rather than a bare `Uint8Array`: a stream chunk
+	// must be a `BufferSource`, which excludes views over a SharedArrayBuffer.
+	// The only caller builds this straight from `response.arrayBuffer()`.
+	compressed: Uint8Array<ArrayBuffer>,
+	maxBytes: number,
+): Promise<Uint8Array> {
+	if (typeof DecompressionStream === "undefined") {
+		throw new Error(
+			"This runtime provides no DecompressionStream, so the gzipped dataset " +
+				"cannot be decompressed.",
+		);
+	}
+
+	// Typed as BufferSource, not Uint8Array, to line up with
+	// DecompressionStream's `writable: WritableStream<BufferSource>`.
+	const source = new ReadableStream<BufferSource>({
+		start(controller) {
+			controller.enqueue(compressed);
+			controller.close();
+		},
+	});
+	const reader = source
+		.pipeThrough(new DecompressionStream("gzip"))
+		.getReader();
+
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) {
+			break;
+		}
+		total += value.byteLength;
+		if (total > maxBytes) {
+			await reader.cancel();
+			throw new RangeError(
+				`Decompressed dataset exceeds the ${maxBytes}-byte limit`,
+			);
+		}
+		chunks.push(value);
+	}
+
+	const out = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return out;
 }
 
 /**
@@ -213,21 +316,21 @@ export async function loadSampleDataset(
 		);
 	}
 
-	const cacheDir = options.cacheDir ?? defaultCacheDir();
 	// Cache key mirrors the versioned object path so a dataset bump never
-	// serves a stale cached copy.
-	const cacheFile = path.join(
-		cacheDir,
-		`${entry.objectPath.replace(/\//g, "_").replace(/\.gz$/, "")}`,
+	// serves a stale cached copy. `undefined` on runtimes with no filesystem,
+	// where every load re-downloads.
+	const cache = await resolveCache(
+		options.cacheDir,
+		entry.objectPath.replace(/\//g, "_").replace(/\.gz$/, ""),
 	);
 
-	if (!options.forceDownload && fs.existsSync(cacheFile)) {
+	if (cache && !options.forceDownload && cache.fs.existsSync(cache.file)) {
 		try {
-			const cached = fs.readFileSync(cacheFile);
+			const cached = cache.fs.readFileSync(cache.file);
 			// Verify the cached file against the pinned digest: a poisoned cache
 			// must not be trusted. A mismatch falls through to re-download.
-			if (sha256Hex(cached) === entry.sha256) {
-				return hydrate(JSON.parse(cached.toString("utf8")) as RawSampleDataset);
+			if ((await sha256Hex(cached)) === entry.sha256) {
+				return hydrate(JSON.parse(decodeUtf8(cached)) as RawSampleDataset);
 			}
 		} catch {
 			// Corrupt cache — fall through and re-download.
@@ -252,19 +355,15 @@ export async function loadSampleDataset(
 		);
 	}
 
-	const compressed = Buffer.from(await response.arrayBuffer());
-	let decompressed: Buffer;
+	const compressed = new Uint8Array(await response.arrayBuffer());
+	let decompressed: Uint8Array;
 	try {
-		// maxOutputLength caps the decompressed size, guarding against a
-		// decompression bomb (throws RangeError if the limit is exceeded).
-		decompressed = gunzipSync(compressed, {
-			maxOutputLength: MAX_DECOMPRESSED_BYTES,
-		});
+		decompressed = await gunzip(compressed, MAX_DECOMPRESSED_BYTES);
 	} catch (err) {
 		throw new Error(`Failed to decompress sample dataset "${name}": ${err}`);
 	}
 
-	const digest = sha256Hex(decompressed);
+	const digest = await sha256Hex(decompressed);
 	if (digest !== entry.sha256) {
 		throw new Error(
 			`Integrity check failed for sample dataset "${name}": ` +
@@ -272,15 +371,17 @@ export async function loadSampleDataset(
 		);
 	}
 
-	const raw = JSON.parse(decompressed.toString("utf8")) as RawSampleDataset;
+	const raw = JSON.parse(decodeUtf8(decompressed)) as RawSampleDataset;
 
 	// Best-effort local cache of the raw payload; a failed write must not break
 	// the load. `items`/`sampleQueries` are rebuilt by hydrate() on read.
-	try {
-		fs.mkdirSync(cacheDir, { recursive: true });
-		fs.writeFileSync(cacheFile, decompressed);
-	} catch {
-		// Read-only FS or similar — skip caching.
+	if (cache) {
+		try {
+			cache.fs.mkdirSync(cache.dir, { recursive: true });
+			cache.fs.writeFileSync(cache.file, decompressed);
+		} catch {
+			// Read-only FS or similar — skip caching.
+		}
 	}
 
 	return hydrate(raw);

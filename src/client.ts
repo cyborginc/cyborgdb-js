@@ -1,7 +1,8 @@
-import { randomBytes } from "node:crypto";
 import { DefaultApi } from "./apis/DefaultApi";
+import { randomBytes, toHex } from "./bytes";
 import { EncryptedIndex } from "./encryptedIndex";
 import { CyborgDBValidationError, handleApiError } from "./errors";
+import { createInsecureFetch } from "./insecureFetch";
 import type {
 	CreateIndexRequest,
 	CreateIndexRequestStoragePrecisionEnum,
@@ -9,6 +10,7 @@ import type {
 	IndexOperationRequest,
 	MetadataFieldPolicy,
 } from "./models";
+import { isNodeRuntime } from "./nodeInterop";
 import { Configuration } from "./runtime";
 import type { HealthResponse } from "./types";
 
@@ -55,6 +57,17 @@ function assertValidBaseUrl(baseUrl: string): void {
 	}
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/**
+ * Exact-match loopback check, mirroring py's `{"localhost", "127.0.0.1", "::1"}`.
+ * `URL.hostname` keeps the brackets on IPv6 literals, so they are stripped.
+ */
+function isLoopbackHost(baseUrl: string): boolean {
+	const hostname = new URL(baseUrl).hostname.replace(/^\[(.*)\]$/, "$1");
+	return LOOPBACK_HOSTS.has(hostname);
+}
+
 export class CyborgDB {
 	private api: DefaultApi;
 
@@ -77,15 +90,13 @@ export class CyborgDB {
 		// as a confusing DNS or fetch error on the first call instead of here.
 		assertValidBaseUrl(baseUrl);
 
-		// If baseUrl is http, disable SSL verification
-		if (baseUrl.startsWith("http://")) {
+		const isHttps = new URL(baseUrl).protocol === "https:";
+		if (!isHttps) {
 			verifySsl = false;
 		}
 
-		// Auto-detect SSL verification if not explicitly set
 		if (verifySsl === undefined) {
-			// Auto-detect: disable SSL verification for localhost/127.0.0.1 (development)
-			if (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")) {
+			if (isLoopbackHost(baseUrl)) {
 				verifySsl = false;
 				console.info(
 					"SSL verification disabled for localhost (development mode)",
@@ -102,32 +113,25 @@ export class CyborgDB {
 		// Configure fetch API based on environment and SSL settings
 		let fetchApi: typeof fetch | undefined;
 
-		// Only configure custom fetch in Node.js when SSL verification is disabled
-		if (
-			!verifySsl &&
-			typeof process !== "undefined" &&
-			process.versions?.node
-		) {
-			// Browser environments can't disable SSL verification (security restriction)
-			// Node.js 18+ has built-in fetch but needs a custom agent for SSL options
-			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const https = require("node:https");
-				const agent = new https.Agent({
-					rejectUnauthorized: false,
+		// Browsers and Edge runtimes can't relax certificate checks at all
+		// (security restriction), so only Node gets a custom fetch. Plain http
+		// has no certificate to skip, so it keeps the default fetch.
+		if (!verifySsl && isHttps && isNodeRuntime()) {
+			let insecureFetch: Promise<typeof fetch | undefined> | undefined;
+			fetchApi = async (url: RequestInfo | URL, init?: RequestInit) => {
+				insecureFetch ??= createInsecureFetch().then((f) => {
+					if (!f) {
+						console.warn(
+							"Could not configure SSL verification - using default fetch",
+						);
+					}
+					return f;
 				});
+				const f = (await insecureFetch) ?? globalThis.fetch;
+				return f(url, init);
+			};
 
-				fetchApi = (url: RequestInfo | URL, init?: RequestInit) => {
-					return globalThis.fetch(url, { ...init, agent } as any);
-				};
-
-				console.warn("SSL verification disabled in Node.js environment");
-			} catch {
-				// Fallback: warn that SSL verification can't be disabled
-				console.warn(
-					"Could not configure SSL verification - using default fetch",
-				);
-			}
+			console.warn("SSL verification disabled in Node.js environment");
 		}
 
 		// Pre-read the body of non-2xx responses and stash the parsed JSON on
@@ -184,7 +188,9 @@ export class CyborgDB {
 	 */
 	private validateKeyLength(indexKey?: Uint8Array): void {
 		if (indexKey !== undefined && indexKey.length !== 32) {
-			throw new Error(`indexKey must be 32 bytes, got ${indexKey.length}`);
+			throw new CyborgDBValidationError(
+				`indexKey must be 32 bytes, got ${indexKey.length}`,
+			);
 		}
 	}
 
@@ -262,15 +268,15 @@ export class CyborgDB {
 	}) {
 		// Local guard mirrored from the py/go SDKs: at least one of the two.
 		if (indexKey === undefined && kmsName === undefined) {
-			throw new Error("createIndex requires indexKey, kmsName, or both");
+			throw new CyborgDBValidationError(
+				"createIndex requires indexKey, kmsName, or both",
+			);
 		}
 		// Validate the key only when present (still must be 32 bytes).
 		this.validateKeyLength(indexKey);
 
 		try {
-			const keyHex = indexKey
-				? Buffer.from(indexKey).toString("hex")
-				: undefined;
+			const keyHex = indexKey ? toHex(indexKey) : undefined;
 
 			const createRequest: CreateIndexRequest = {
 				indexName: indexName,
@@ -335,9 +341,7 @@ export class CyborgDB {
 		try {
 			// Convert binary key to hex string format expected by API. Omit it
 			// entirely for fully-KMS-managed indexes (server resolves the KEK).
-			const keyHex = indexKey
-				? Buffer.from(indexKey).toString("hex")
-				: undefined;
+			const keyHex = indexKey ? toHex(indexKey) : undefined;
 
 			// Prepare request with index identifier and (optional) authentication key
 			const request: IndexOperationRequest = {
@@ -353,7 +357,7 @@ export class CyborgDB {
 			// Extract and return the structured response
 			return apiResponse;
 		} catch (error: unknown) {
-			handleApiError(error);
+			handleApiError(error, { indexName });
 		}
 	}
 
@@ -364,11 +368,12 @@ export class CyborgDB {
 	 * Each key is unique and provides strong security for your vector data.
 	 *
 	 * @returns Uint8Array containing 32 cryptographically secure random bytes
+	 * @throws If the host provides no Web Crypto implementation
 	 */
 	generateKey(): Uint8Array {
-		// Generate 32 bytes of cryptographically secure random data
-		// Uses Node.js crypto.randomBytes() which leverages OS entropy sources
-		return new Uint8Array(randomBytes(32));
+		// 32 bytes of cryptographically secure random data, from the host's
+		// Web Crypto implementation (Node, browser, or Edge runtime alike).
+		return randomBytes(32);
 	}
 
 	/**
@@ -378,11 +383,12 @@ export class CyborgDB {
 	 * Each key is unique and provides strong security for your vector data.
 	 *
 	 * @returns Uint8Array containing 32 cryptographically secure random bytes
+	 * @throws If the host provides no Web Crypto implementation
 	 */
 	static generateKey(): Uint8Array {
-		// Generate 32 bytes of cryptographically secure random data
-		// Uses Node.js crypto.randomBytes() which leverages OS entropy sources
-		return new Uint8Array(randomBytes(32));
+		// 32 bytes of cryptographically secure random data, from the host's
+		// Web Crypto implementation (Node, browser, or Edge runtime alike).
+		return randomBytes(32);
 	}
 
 	/**
@@ -407,21 +413,9 @@ export class CyborgDB {
 	}): Promise<EncryptedIndex> {
 		// Validate the key only when present (KMS-backed indexes supply none).
 		this.validateKeyLength(indexKey);
-		try {
-			// Validate that the index exists and the key is correct
-			const response = await this.describeIndex(indexName, indexKey);
-
-			const loadedIndex: EncryptedIndex = new EncryptedIndex(
-				response.indexName,
-				indexKey,
-				this.api,
-			);
-
-			return loadedIndex;
-		} catch (error: unknown) {
-			// Enhance error context with operation details
-			handleApiError(error);
-		}
+		// Validate that the index exists and the key is correct
+		const response = await this.describeIndex(indexName, indexKey);
+		return new EncryptedIndex(response.indexName, indexKey, this.api);
 	}
 
 	/**
