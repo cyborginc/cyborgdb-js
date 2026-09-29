@@ -977,7 +977,8 @@ describe("hybrid fusion (deterministic)", () => {
 			indexKey: new Uint8Array(randomBytes(32)),
 			dimension: HYBRID_DIM,
 			metric: "euclidean",
-			// filterable spelled out because of cyborgdb-core#2393.
+			// filterable spelled out: the fullText-only shorthand is not
+			// accepted by every SDK yet (cyborgdb-core#2393).
 			metadataSchema: {
 				title: { fullText: true, filterable: false },
 				body: { fullText: true, filterable: false },
@@ -1143,9 +1144,6 @@ describe("metadata field policy defaults", () => {
 	});
 
 	it("accepts fullText alone", async () => {
-		// KNOWN BUG — fails today. cyborgdb-core#2393: the field policy defaults
-		// filterable=true and always serialises it, so the request carries
-		// filterable=true + fullText=true and the service 422s.
 		const index = await makeIndex({
 			metadataSchema: { title: { fullText: true } },
 		});
@@ -1153,8 +1151,6 @@ describe("metadata field policy defaults", () => {
 	});
 
 	it("accepts fullText when filterable is spelled out", async () => {
-		// The workaround callers need today — and the anchor that makes the
-		// failure above meaningful rather than a blanket "schemas are broken".
 		const index = await makeIndex({
 			metadataSchema: { title: { fullText: true, filterable: false } },
 		});

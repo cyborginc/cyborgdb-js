@@ -236,10 +236,7 @@ describe("trained index (approximate search)", () => {
 			index.query({ queryVectors: queries[0], topK: 5000, rerankMult: 4 }),
 		).rejects.toThrow(/10000/);
 
-		// KNOWN BUG — this assertion fails today. cyborgdb-core#2401: the
-		// message says "top_k exceeds kMaxTopK" even though topK=5000 is itself
-		// under the limit; it is the product with rerankMult that breaches it. A
-		// caller reducing topK to 2500 still fails.
+		// cyborgdb-core#2401
 		await expect(
 			index.query({ queryVectors: queries[0], topK: 5000, rerankMult: 4 }),
 		).rejects.toThrow(/rerank_mult|rerankMult/);

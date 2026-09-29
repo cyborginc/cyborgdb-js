@@ -227,8 +227,8 @@ describe("binary/JSON path parity", () => {
 describe("include projection", () => {
 	// What `include` accepts and what it silently discards. Only the
 	// unknown-value case is asserted as a bug: whether query() should return
-	// vector/contents the way get() does is an open question — cyborgdb-core#2404
-	// asks for a decision rather than asserting one.
+	// vector/contents the way get() does is an open question rather than a
+	// settled contract — see cyborgdb-core#2404.
 	let client: Client;
 	let index: EncryptedIndex;
 	const vector = randomVectors(1)[0];
@@ -290,10 +290,7 @@ describe("include projection", () => {
 	});
 
 	it("rejects unknown include values", async () => {
-		// KNOWN BUG — fails today. cyborgdb-core#2404: an unrecognised value is
-		// silently discarded on both methods, so a typo such as "metdata" costs
-		// the caller the field with no error. Unlike the vector/contents
-		// question, this needs no documentation to be wrong.
+		// cyborgdb-core#2404
 		await expect(
 			index.query({ queryVectors: vector, topK: 1, include: ["bogus"] }),
 		).rejects.toThrow();

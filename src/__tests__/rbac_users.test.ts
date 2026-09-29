@@ -344,10 +344,7 @@ describeIfRbac("CyborgDB RBAC — user management", () => {
 	});
 
 	it("listIndexes under a user key is scoped or denied", async () => {
-		// SECURITY BUG — fails today. cyborgdb-core#2397: a tenant-scoped key
-		// enumerates every index in the deployment. Data access is correctly
-		// denied (see the test above), so this discloses index names rather
-		// than contents.
+		// cyborgdb-core#2397
 		const otherName = `rbac_hidden_${Date.now().toString(36)}`;
 		const other = (await root.createIndex({
 			indexName: otherName,

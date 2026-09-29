@@ -112,7 +112,7 @@ const OPERATOR_CASES: Array<[string, FilterExpression, string[]]> = [
 	["$or", { $or: [{ color: "blue" }, { rank: { $lt: 10 } }] }, ["o0", "o2"]],
 	["$nor", { $nor: [{ color: "red" }, { color: "green" }] }, ["o2"]],
 	// `$not` is deliberately absent — openapi.json documents it, but the engine
-	// rejects it on both read paths. See cyborgdb-core#2395.
+	// rejects it on both read paths.
 	["$regex", { color: { $regex: "^r" } }, ["o0", "o3"]],
 	["$contains", { color: { $contains: "ree" } }, ["o1", "o4"]],
 ];
@@ -264,8 +264,7 @@ describe("filter operators on both read paths", () => {
 	});
 
 	it("rejects $not, which openapi.json documents", async () => {
-		// KNOWN BUG — fails today. cyborgdb-core#2395: the engine rejects `$not`
-		// on both read paths although openapi.json documents it.
+		// cyborgdb-core#2395
 		const filters = { color: { $not: { $eq: "red" } } } as FilterExpression;
 		expect(await metaIds(filters)).toEqual(sorted(["o1", "o2", "o4"]));
 		expect(await vectorIds(filters)).toEqual(sorted(["o1", "o2", "o4"]));
@@ -513,8 +512,7 @@ describe("datetime handling", () => {
 	// Unlike Python, TypeScript's FilterExpression does not admit a Date at
 	// all — these casts are what a caller would have to write to get a Date
 	// past the compiler. The cast is deliberate: it pins what the service does
-	// when the types are bypassed, which is the behaviour cyborgdb-core#2396
-	// describes.
+	// when the types are bypassed, which is what cyborgdb-core#2396 describes.
 	const dateFilter = (v: unknown) => v as FilterExpression;
 
 	it("matches equality on a datetime", async () => {
@@ -526,8 +524,7 @@ describe("datetime handling", () => {
 	});
 
 	it("supports a range on a datetime", async () => {
-		// KNOWN BUG — fails today. cyborgdb-core#2396: the ISO string reaches
-		// the service, which rejects it with "$gte requires a numeric value".
+		// cyborgdb-core#2396
 		const got = await index.queryMetadata({
 			filters: dateFilter({ created: { $gte: plusDays(5) } }),
 		});

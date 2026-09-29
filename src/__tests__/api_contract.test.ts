@@ -21,7 +21,12 @@ import {
 	TrainRequestToJSON,
 	UpsertRequestToJSON,
 } from "../models";
-import { flattenResults, waitFor, waitUntilGone } from "./test-helpers";
+import {
+	flattenResults,
+	waitFor,
+	waitForIds,
+	waitUntilGone,
+} from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
 jest.setTimeout(120000);
@@ -410,6 +415,7 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.upsert({ items });
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
+			await waitForIds(testIndex, ["0", "1"]);
 		});
 
 		it("should upsert with items array format (contents as string, auto-embed)", async () => {
@@ -426,6 +432,10 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await embeddingIndex.upsert({ items });
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
+			await waitForIds(
+				embeddingIndex,
+				items.map((item) => item.id),
+			);
 		});
 
 		it("should upsert remaining test items", async () => {
@@ -441,6 +451,10 @@ describe("CyborgDB API Contract Tests", () => {
 
 			const result = await testIndex.upsert({ items });
 			expect(result.status).toBe("success");
+			await waitForIds(
+				testIndex,
+				items.map((item) => item.id),
+			);
 		});
 
 		it("should upsert with parallel arrays format (ids + vectors)", async () => {
@@ -449,6 +463,7 @@ describe("CyborgDB API Contract Tests", () => {
 
 			const result = await testIndex.upsert({ ids, vectors });
 			expect(result.status).toBe("success");
+			await waitForIds(testIndex, ids);
 		});
 
 		it("should reject vectors with wrong dimensions", async () => {
@@ -871,6 +886,7 @@ describe("CyborgDB API Contract Tests", () => {
 			const result = await testIndex.upsert({ items });
 			expect(result).toBeDefined();
 			expect(result.status).toBe("success");
+			await waitForIds(testIndex, binaryTestIds);
 		});
 
 		it("should retrieve binary contents via get()", async () => {
