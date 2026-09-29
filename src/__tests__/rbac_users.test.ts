@@ -29,6 +29,8 @@
  * and these run live; otherwise they skip.
  */
 
+import { createServer, type IncomingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
 import { Client, CyborgDBError, type EncryptedIndex } from "../index";
@@ -374,5 +376,70 @@ describeIfRbac("CyborgDB RBAC — user management", () => {
 				/* ignore */
 			}
 		}
+	});
+});
+
+// The live suite above uses KMS-backed indexes only, so it never exercises the
+// SDK-supplied-key path. This checks that path against a local stand-in.
+describe("user management on an SDK-supplied-key index", () => {
+	const indexKey = new Uint8Array(32).fill(0xab);
+	const indexKeyHex = "ab".repeat(32);
+	const seen: {
+		method?: string;
+		url?: string;
+		headers: IncomingHttpHeaders;
+	}[] = [];
+	let baseUrl: string;
+	let close: () => Promise<void>;
+
+	beforeAll(async () => {
+		const server = createServer((req, res) => {
+			seen.push({ method: req.method, url: req.url, headers: req.headers });
+			res.writeHead(200, { "Content-Type": "application/json" });
+			if (req.url === "/v1/indexes/describe") {
+				res.end(JSON.stringify({ index_name: "idx", dimension: DIMENSION }));
+			} else if (req.method === "GET") {
+				res.end(JSON.stringify({ users: [] }));
+			} else {
+				res.end("{}");
+			}
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		close = () => new Promise((resolve) => server.close(() => resolve()));
+	});
+
+	afterAll(async () => {
+		await close();
+	});
+
+	const load = (key?: Uint8Array) =>
+		new Client({ baseUrl, apiKey: "root" }).loadIndex({
+			indexName: "idx",
+			indexKey: key,
+		});
+
+	const lastRequest = () => seen[seen.length - 1];
+
+	it("listUsers sends the index key as X-Index-Key", async () => {
+		await (await load(indexKey)).listUsers();
+		expect(lastRequest().url).toBe("/v1/indexes/idx/users");
+		expect(lastRequest().headers["x-index-key"]).toBe(indexKeyHex);
+	});
+
+	it("deleteUser sends the index key as X-Index-Key", async () => {
+		await (await load(indexKey)).deleteUser({ userId: "u1" });
+		expect(lastRequest().method).toBe("DELETE");
+		expect(lastRequest().headers["x-index-key"]).toBe(indexKeyHex);
+	});
+
+	it("omits X-Index-Key on a KMS-backed index", async () => {
+		const index = await load();
+		await index.listUsers();
+		expect(lastRequest().headers["x-index-key"]).toBeUndefined();
+		await index.deleteUser({ userId: "u1" });
+		expect(lastRequest().headers["x-index-key"]).toBeUndefined();
 	});
 });

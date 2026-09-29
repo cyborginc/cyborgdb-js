@@ -167,7 +167,7 @@ export class CyborgDBTransportError extends CyborgDBError {
 
 /**
  * Build the typed error for an HTTP status. Returns undefined for statuses the
- * taxonomy does not name, so those keep their existing untyped behavior.
+ * taxonomy does not name; callers fall back to the base `CyborgDBError`.
  */
 function errorForStatus(
 	status: number,
@@ -201,6 +201,38 @@ function headerValue(headers: unknown, name: string): string | null {
 	return null;
 }
 
+/**
+ * The generated runtime wraps every rejected fetch in a `FetchError` whose
+ * `cause` is the actual socket failure; classify that instead of the wrapper.
+ */
+function unwrapFetchError(error: unknown): unknown {
+	return error instanceof Error &&
+		error.name === "FetchError" &&
+		hasCause(error)
+		? error.cause
+		: error;
+}
+
+/**
+ * Human-readable reason for a transport failure. A host that resolves to
+ * several addresses (`localhost` -> `::1` and `127.0.0.1`) fails with an
+ * `AggregateError` whose own message is empty; its per-address errors carry
+ * the detail.
+ */
+function describeTransportFailure(error: unknown): string {
+	if (hasMessage(error) && error.message !== "") return error.message;
+	const inner = (error as { errors?: unknown }).errors;
+	if (Array.isArray(inner)) {
+		const messages = inner
+			.filter(hasMessage)
+			.map((e) => e.message)
+			.filter((m) => m !== "");
+		if (messages.length > 0) return messages.join("; ");
+	}
+	if (hasCode(error)) return String(error.code);
+	return "unknown transport failure";
+}
+
 /** True when nothing answered: no HTTP status exists to key off. */
 function isNetworkFailure(error: unknown): boolean {
 	if (hasResponse(error)) return false;
@@ -225,13 +257,18 @@ function isNetworkFailure(error: unknown): boolean {
  * Normalize an error from the generated API client and throw the typed error
  * the taxonomy names for its status. Never returns.
  *
- * Statuses the taxonomy does not name keep their previous untyped `Error`, so
- * this is additive for those paths.
+ * Statuses the taxonomy does not name (405, 413, ...) throw the base
+ * `CyborgDBError`. Only a failure with no status that is not a network
+ * failure stays a plain `Error`.
  */
 export function handleApiError(
 	error: unknown,
 	context: { indexName?: string } = {},
 ): never {
+	// Already classified by an inner call; a second pass would find no
+	// response on it and downgrade it to a plain Error.
+	if (error instanceof CyborgDBError) throw error;
+
 	debugLog("Full error object:", JSON.stringify(error, null, 2));
 
 	if (hasResponse(error)) {
@@ -314,15 +351,15 @@ export function handleApiError(
 	};
 
 	// Nothing answered: no status exists to key off.
-	if (status === null && isNetworkFailure(error)) {
-		const causeMsg =
-			hasMessage(error) && error.message === "fetch failed" && hasCause(error)
-				? hasMessage(error.cause)
-					? error.cause.message
-					: String(error.cause)
-				: hasMessage(error)
-					? error.message
-					: "unknown transport failure";
+	const transportError = unwrapFetchError(error);
+	if (status === null && isNetworkFailure(transportError)) {
+		const causeMsg = describeTransportFailure(
+			hasMessage(transportError) &&
+				transportError.message === "fetch failed" &&
+				hasCause(transportError)
+				? transportError.cause
+				: transportError,
+		);
 		throw new CyborgDBTransportError(`Network request failed: ${causeMsg}`, {
 			...base,
 			detail: causeMsg,
@@ -348,9 +385,9 @@ export function handleApiError(
 
 	if (detail !== null && status !== null) {
 		const message = `${status} - ${detail}`;
-		const typed = errorForStatus(status, message, base);
-		if (typed) throw typed;
-		throw new Error(message);
+		throw (
+			errorForStatus(status, message, base) ?? new CyborgDBError(message, base)
+		);
 	}
 
 	let errorMessage = hasMessage(error) ? error.message : "Unknown error";
@@ -359,8 +396,9 @@ export function handleApiError(
 	}
 	const message = `HTTP error ${status ?? "Unknown"}: ${errorMessage}`;
 	if (status !== null) {
-		const typed = errorForStatus(status, message, base);
-		if (typed) throw typed;
+		throw (
+			errorForStatus(status, message, base) ?? new CyborgDBError(message, base)
+		);
 	}
 	throw new Error(message);
 }

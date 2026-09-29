@@ -1,6 +1,10 @@
 import type { DefaultApi } from "./apis/DefaultApi";
 import { toBase64, toBytes, toHex, viewBytes } from "./bytes";
-import { extractErrorDetail, handleApiError } from "./errors";
+import {
+	CyborgDBValidationError,
+	extractErrorDetail,
+	handleApiError,
+} from "./errors";
 import type {
 	BinaryQueryBatch,
 	BinaryQueryRequest,
@@ -18,7 +22,6 @@ import type {
 	MetadataResult,
 	QueryMetadataRequest,
 	QueryMetadataResponse,
-	QueryResponse,
 	Request,
 	TrainRequest,
 	UpsertRequest,
@@ -28,6 +31,7 @@ import type {
 	DeleteResponse,
 	FilterExpression,
 	GetResultItem,
+	QueryResponse,
 	TrainResponse,
 	UpsertResponse,
 } from "./types";
@@ -42,8 +46,8 @@ export class EncryptedIndex {
 	private api: DefaultApi;
 
 	// Lazy-cached describe-derived metadata. `dimension` and `metric`
-	// are immutable post-creation, so the first describe populates
-	// both and we reuse the values. `n_lists` is NOT cached because
+	// are immutable once set, so the first describe that returns them
+	// populates the cache. `n_lists` is NOT cached because
 	// training mutates it (default 1 → trained cluster count).
 	// `isTrained` is also not cached — same reason.
 	private dimensionCached?: number;
@@ -104,21 +108,29 @@ export class EncryptedIndex {
 			handleApiError(error);
 		}
 	}
+	private async refreshDimensionAndMetric(): Promise<{
+		dimension: number;
+		metric: string;
+	}> {
+		const response = await this.describeIndex(this.indexName);
+		// 0 means the dimension is not set yet (index created without one,
+		// no upsert so far); caching it would hide the value the first
+		// upsert fixes.
+		if (response.dimension !== 0) this.dimensionCached = response.dimension;
+		this.metricCached = response.metric;
+		return { dimension: response.dimension, metric: response.metric };
+	}
+	/**
+	 * Vector dimension. `0` until the first upsert when the index was created
+	 * without an explicit `dimension`; cached once it is known.
+	 */
 	public async getDimension(): Promise<number> {
-		if (this.dimensionCached === undefined) {
-			const response = await this.describeIndex(this.indexName);
-			this.dimensionCached = response.dimension;
-			this.metricCached = response.metric;
-		}
-		return this.dimensionCached;
+		return (
+			this.dimensionCached ?? (await this.refreshDimensionAndMetric()).dimension
+		);
 	}
 	public async getMetric(): Promise<string> {
-		if (this.metricCached === undefined) {
-			const response = await this.describeIndex(this.indexName);
-			this.dimensionCached = response.dimension;
-			this.metricCached = response.metric;
-		}
-		return this.metricCached;
+		return this.metricCached ?? (await this.refreshDimensionAndMetric()).metric;
 	}
 	public async getNLists(): Promise<number> {
 		// Fetched fresh on every read — training mutates this server-side.
@@ -281,17 +293,17 @@ export class EncryptedIndex {
 		// Route to binary endpoint if vectors is Float32Array
 		if (vectors instanceof Float32Array) {
 			if (!ids) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					"Invalid upsert call: 'ids' is required when using Float32Array vectors",
 				);
 			}
 			if (metadata !== undefined && metadata.length !== ids.length) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`,
 				);
 			}
 			if (contents !== undefined && contents.length !== ids.length) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`,
 				);
 			}
@@ -304,7 +316,9 @@ export class EncryptedIndex {
 			// Case 1: items provided
 			if (items !== undefined) {
 				if (!Array.isArray(items)) {
-					throw new Error("Invalid upsert call: items must be an array");
+					throw new CyborgDBValidationError(
+						"Invalid upsert call: items must be an array",
+					);
 				}
 
 				if (items.length === 0) {
@@ -317,26 +331,26 @@ export class EncryptedIndex {
 					const item = items[i];
 
 					if (!item || typeof item !== "object") {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid VectorItem at index ${i}: Item must be an object, got ${typeof item}`,
 						);
 					}
 
 					if (!item.id) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid VectorItem at index ${i}: Missing required 'id' field. Each VectorItem must have an 'id' property.`,
 						);
 					}
 
 					if (typeof item.id !== "string") {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid VectorItem at index ${i}: Field 'id' must be a string, got ${typeof item.id}`,
 						);
 					}
 
 					// Vector is required unless contents is provided (for auto-embedding)
 					if (!item.vector && !item.contents) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid VectorItem at index ${i} (id: "${item.id}"): Must provide either 'vector' or 'contents' field`,
 						);
 					}
@@ -344,13 +358,13 @@ export class EncryptedIndex {
 					// Validate vector if provided
 					if (item.vector) {
 						if (!Array.isArray(item.vector)) {
-							throw new Error(
+							throw new CyborgDBValidationError(
 								`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'vector' must be an array, got ${typeof item.vector}`,
 							);
 						}
 
 						if (item.vector.length === 0) {
-							throw new Error(
+							throw new CyborgDBValidationError(
 								`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector array cannot be empty`,
 							);
 						}
@@ -361,7 +375,7 @@ export class EncryptedIndex {
 								typeof item.vector[j] !== "number" ||
 								!Number.isFinite(item.vector[j])
 							) {
-								throw new Error(
+								throw new CyborgDBValidationError(
 									`Invalid VectorItem at index ${i} (id: "${item.id}"): Vector element at position ${j} must be a finite number, got ${typeof item.vector[j]}`,
 								);
 							}
@@ -374,7 +388,7 @@ export class EncryptedIndex {
 						item.metadata !== null &&
 						typeof item.metadata !== "object"
 					) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid VectorItem at index ${i} (id: "${item.id}"): Field 'metadata' must be an object or null, got ${typeof item.metadata}`,
 						);
 					}
@@ -386,31 +400,31 @@ export class EncryptedIndex {
 			// Case 2: ids and vectors provided
 			else if (ids !== undefined && vectors !== undefined) {
 				if (!Array.isArray(ids)) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						"Invalid upsert call: ids must be an array of strings",
 					);
 				}
 
 				if (!Array.isArray(vectors)) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						"Invalid upsert call: vectors must be an array of number arrays",
 					);
 				}
 
 				if (ids.length !== vectors.length) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						`Array length mismatch: ${ids.length} IDs provided but ${vectors.length} vectors provided. The number of IDs must match the number of vectors.`,
 					);
 				}
 
 				if (metadata !== undefined && metadata.length !== ids.length) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`,
 					);
 				}
 
 				if (contents !== undefined && contents.length !== ids.length) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`,
 					);
 				}
@@ -423,12 +437,12 @@ export class EncryptedIndex {
 				// Validate IDs
 				for (let i = 0; i < ids.length; i++) {
 					if (typeof ids[i] !== "string") {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid ID at index ${i}: IDs must be strings, got ${typeof ids[i]}`,
 						);
 					}
 					if (ids[i].trim() === "") {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid ID at index ${i}: IDs cannot be empty strings`,
 						);
 					}
@@ -438,12 +452,12 @@ export class EncryptedIndex {
 				for (let i = 0; i < vectors.length; i++) {
 					const vector = vectors[i];
 					if (!Array.isArray(vector)) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid vector at index ${i} (id: "${ids[i]}"): Vector must be an array, got ${typeof vector}`,
 						);
 					}
 					if (vector.length === 0) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Invalid vector at index ${i} (id: "${ids[i]}"): Vector array cannot be empty`,
 						);
 					}
@@ -451,7 +465,7 @@ export class EncryptedIndex {
 					// Validate vector contains only numbers
 					for (let j = 0; j < vector.length; j++) {
 						if (typeof vector[j] !== "number" || !Number.isFinite(vector[j])) {
-							throw new Error(
+							throw new CyborgDBValidationError(
 								`Invalid vector at index ${i} (id: "${ids[i]}"): Vector element at position ${j} must be a finite number, got ${typeof vector[j]}`,
 							);
 						}
@@ -466,7 +480,7 @@ export class EncryptedIndex {
 					metadata: metadata?.[index] ?? undefined,
 				}));
 			} else {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					"Invalid upsert call: Must provide either 'items' or both 'ids' and 'vectors'",
 				);
 			}
@@ -483,7 +497,7 @@ export class EncryptedIndex {
 							contentValue = toBase64(toBytes(item.contents));
 						}
 					} catch (error) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : "Unknown error"}`,
 							{ cause: error },
 						);
@@ -603,7 +617,7 @@ export class EncryptedIndex {
 		// Route to binary endpoint if queryVectors is Float32Array
 		if (queryVectors instanceof Float32Array) {
 			if (!dimension) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					"Invalid query call: 'dimension' is required when using Float32Array queryVectors",
 				);
 			}
@@ -644,7 +658,9 @@ export class EncryptedIndex {
 		}
 
 		if (!vectors2D && !queryContents) {
-			throw new Error("You must provide queryVectors or queryContents.");
+			throw new CyborgDBValidationError(
+				"You must provide queryVectors or queryContents.",
+			);
 		}
 
 		try {
@@ -679,7 +695,7 @@ export class EncryptedIndex {
 				throw new Error("No response received from query API");
 			}
 
-			const finalResponse = response;
+			const finalResponse = response as QueryResponse;
 
 			if (
 				isSingleQuery &&
@@ -783,14 +799,14 @@ export class EncryptedIndex {
 		if (typeof orderBy === "object" && orderBy !== null) {
 			const entries = Object.entries(orderBy);
 			if (Array.isArray(orderBy) || entries.length !== 1) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					"Invalid queryMetadata call: orderBy must be a field name or a " +
 						"single-field object like { field: 1 } / { field: -1 }",
 				);
 			}
 			const [field, direction] = entries[0];
 			if (typeof direction !== "number" || Number.isNaN(direction)) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					`Invalid queryMetadata call: orderBy direction for "${field}" must ` +
 						`be a number, e.g. { ${field}: -1 }`,
 				);
@@ -798,7 +814,7 @@ export class EncryptedIndex {
 			orderByField = field;
 			sortAscending = direction >= 0;
 		} else if (orderBy !== undefined && orderByField === undefined) {
-			throw new Error(
+			throw new CyborgDBValidationError(
 				"Invalid queryMetadata call: orderBy must be a field name or a " +
 					"single-field object like { field: 1 } / { field: -1 }",
 			);
@@ -941,12 +957,12 @@ export class EncryptedIndex {
 		try {
 			// Validate metadata and contents length if provided
 			if (metadata !== undefined && metadata.length !== ids.length) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					`Array length mismatch: ${ids.length} IDs provided but ${metadata.length} metadata entries provided`,
 				);
 			}
 			if (contents !== undefined && contents.length !== ids.length) {
-				throw new Error(
+				throw new CyborgDBValidationError(
 					`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`,
 				);
 			}
@@ -961,7 +977,7 @@ export class EncryptedIndex {
 					return { status: "success", message: "No items to upsert" };
 				}
 				if (vectors.length % ids.length !== 0) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						`Float32Array length (${vectors.length}) must be evenly divisible by number of ids (${ids.length})`,
 					);
 				}
@@ -974,7 +990,7 @@ export class EncryptedIndex {
 				}
 
 				if (ids.length !== vectors.length) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						`Number of ids (${ids.length}) must match number of vectors (${vectors.length})`,
 					);
 				}
@@ -985,7 +1001,7 @@ export class EncryptedIndex {
 				float32Vectors = new Float32Array(vectors.length * dimension);
 				for (let i = 0; i < vectors.length; i++) {
 					if (vectors[i].length !== dimension) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`All vectors must have the same dimension. Vector at index ${i} has dimension ${vectors[i].length}, expected ${dimension}`,
 						);
 					}
@@ -1067,7 +1083,7 @@ export class EncryptedIndex {
 
 			if (queryVectors instanceof Float32Array) {
 				if (!providedDimension) {
-					throw new Error(
+					throw new CyborgDBValidationError(
 						"dimension is required when using Float32Array for queryVectors",
 					);
 				}
@@ -1076,7 +1092,7 @@ export class EncryptedIndex {
 			} else {
 				// queryVectors is number[][]
 				if (queryVectors.length === 0) {
-					throw new Error("queryVectors cannot be empty");
+					throw new CyborgDBValidationError("queryVectors cannot be empty");
 				}
 
 				const numQueries = queryVectors.length;
@@ -1086,7 +1102,7 @@ export class EncryptedIndex {
 				float32Vectors = new Float32Array(numQueries * dimension);
 				for (let i = 0; i < numQueries; i++) {
 					if (queryVectors[i].length !== dimension) {
-						throw new Error(
+						throw new CyborgDBValidationError(
 							`All query vectors must have the same dimension. Vector at index ${i} has dimension ${queryVectors[i].length}, expected ${dimension}`,
 						);
 					}
@@ -1128,7 +1144,7 @@ export class EncryptedIndex {
 				await this.api.queryVectorsBinaryV1VectorsQueryBinaryPost({
 					binaryQueryRequest,
 				});
-			return response;
+			return response as QueryResponse;
 		} catch (error: unknown) {
 			handleApiError(error);
 		}
@@ -1198,7 +1214,7 @@ export class EncryptedIndex {
 		try {
 			const response = await this.api.listUsersV1IndexesIndexNameUsersGet({
 				indexName: this.indexName,
-				...(this.indexKeyHex !== undefined && { indexKey: this.indexKeyHex }),
+				...(this.indexKeyHex !== undefined && { xIndexKey: this.indexKeyHex }),
 			});
 			return response.users.map((u) => ({
 				userId: u.userId,
@@ -1224,7 +1240,7 @@ export class EncryptedIndex {
 			await this.api.deleteUserV1IndexesIndexNameUsersUserIdDelete({
 				indexName: this.indexName,
 				userId,
-				...(this.indexKeyHex !== undefined && { indexKey: this.indexKeyHex }),
+				...(this.indexKeyHex !== undefined && { xIndexKey: this.indexKeyHex }),
 			});
 		} catch (error: unknown) {
 			handleApiError(error);

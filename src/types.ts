@@ -5,7 +5,11 @@
  * throughout the SDK, improving type safety and developer experience.
  */
 
-import type { GetResultItemModel } from "./models";
+import type {
+	QueryResponse as GeneratedQueryResponse,
+	GetResultItemModel,
+	QueryResultItem,
+} from "./models";
 
 /**
  * Represents any valid JSON primitive value
@@ -94,10 +98,6 @@ export interface UpsertResponse {
 	 */
 	status: string;
 	/**
-	 * Number of vectors upserted
-	 */
-	upsertedCount?: number;
-	/**
 	 * Additional message or details
 	 */
 	message?: string;
@@ -111,10 +111,6 @@ export interface DeleteResponse {
 	 * Status of the operation
 	 */
 	status: string;
-	/**
-	 * Number of vectors deleted
-	 */
-	deletedCount?: number;
 	/**
 	 * Additional message or details
 	 */
@@ -166,6 +162,17 @@ export interface GetResultItem
 	 * Metadata associated with the vector (if included)
 	 */
 	metadata?: VectorMetadata;
+}
+
+/**
+ * Result of `query()` and `rerank()`: one list of matches for a single query,
+ * or one list per query vector for a batch.
+ *
+ * Replaces the generated `QueryResponse`, whose `results` the generator emits
+ * as `{}` because the schema is an `anyOf` of the two array shapes.
+ */
+export interface QueryResponse extends Omit<GeneratedQueryResponse, "results"> {
+	results: QueryResultItem[] | QueryResultItem[][];
 }
 
 /**
