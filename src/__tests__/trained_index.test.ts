@@ -235,7 +235,9 @@ describe("trained index (approximate search)", () => {
 		await expect(
 			index.query({ queryVectors: queries[0], topK: 5000, rerankMult: 4 }),
 		).rejects.toThrow(/10000/);
+	});
 
+	it.failing("names rerankMult in the ceiling error", async () => {
 		// cyborgdb-core#2401
 		await expect(
 			index.query({ queryVectors: queries[0], topK: 5000, rerankMult: 4 }),

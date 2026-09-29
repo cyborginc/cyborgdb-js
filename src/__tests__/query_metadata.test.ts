@@ -263,7 +263,7 @@ describe("filter operators on both read paths", () => {
 		);
 	});
 
-	it("rejects $not, which openapi.json documents", async () => {
+	it.failing("rejects $not, which openapi.json documents", async () => {
 		// cyborgdb-core#2395
 		const filters = { color: { $not: { $eq: "red" } } } as FilterExpression;
 		expect(await metaIds(filters)).toEqual(sorted(["o1", "o2", "o4"]));
@@ -523,7 +523,7 @@ describe("datetime handling", () => {
 		expect(new Set(idsOf(got))).toEqual(new Set(["t0"]));
 	});
 
-	it("supports a range on a datetime", async () => {
+	it.failing("supports a range on a datetime", async () => {
 		// cyborgdb-core#2396
 		const got = await index.queryMetadata({
 			filters: dateFilter({ created: { $gte: plusDays(5) } }),
