@@ -107,21 +107,6 @@ describe("CyborgDB SSL Verification", () => {
 			expect(originalConsoleInfo).not.toHaveBeenCalled();
 			expect(originalConsoleWarn).not.toHaveBeenCalled();
 		});
-
-		test.each([
-			"https://localhost.evil.com",
-			"https://127.0.0.1.evil.com",
-			"https://notlocalhost.example.com",
-			"https://my-localhost-proxy.example.com",
-			"https://api.example.com/?region=localhost",
-		])("should keep SSL verification on for %s, which is not a local host", (baseUrl) => {
-			// cyborgdb-core#2399
-			new CyborgDB({ baseUrl, apiKey: CYBORGDB_API_KEY });
-
-			expect(originalConsoleInfo).not.toHaveBeenCalledWith(
-				"SSL verification disabled for localhost (development mode)",
-			);
-		});
 	});
 
 	describe("Explicit SSL Configuration", () => {
@@ -317,6 +302,24 @@ describe("CyborgDB SSL Verification", () => {
 				shouldDisableSSL: false,
 				expectedLog: null,
 				description: "localhost in the path should enable SSL",
+			},
+			{
+				url: "https://notlocalhost.example.com",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "hostname containing localhost should enable SSL",
+			},
+			{
+				url: "https://my-localhost-proxy.example.com",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "localhost inside a hostname label should enable SSL",
+			},
+			{
+				url: "https://api.example.com/?region=localhost",
+				shouldDisableSSL: false,
+				expectedLog: null,
+				description: "localhost in the query string should enable SSL",
 			},
 		];
 
