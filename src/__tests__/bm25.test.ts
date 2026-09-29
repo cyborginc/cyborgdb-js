@@ -1108,7 +1108,6 @@ describe("hybrid fusion (deterministic)", () => {
 });
 
 describe("metadata field policy defaults", () => {
-	// The `fullText` shorthand the SDK documents but cannot currently send.
 	// Mirrors py TestMetadataFieldPolicyDefaults.
 	let client: Client;
 	const created: EncryptedIndex[] = [];
