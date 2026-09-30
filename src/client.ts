@@ -162,6 +162,7 @@ export class CyborgDB {
 			headers: {
 				"Content-Type": "application/json",
 				Accept: "application/json",
+				...(apiKey ? { "X-API-Key": apiKey } : {}),
 			},
 		});
 
