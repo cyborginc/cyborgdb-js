@@ -9,7 +9,7 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import * as dotenv from "dotenv";
-import { Client, type EncryptedIndex } from "../index";
+import { Client, CyborgDBValidationError, type EncryptedIndex } from "../index";
 import { flattenResults, waitForIds } from "./test-helpers";
 
 dotenv.config({ path: ".env.local" });
@@ -279,9 +279,7 @@ describe("include projection", () => {
 	});
 
 	it("honours vector and contents on get", async () => {
-		// The asymmetry in cyborgdb-core#2404: these work on get() and are
-		// discarded on query(). Asserted here only for get(), where the contract
-		// is documented.
+		// Valid on get() but rejected by query() (cyborgdb-core#2404).
 		const row = (
 			await index.get({ ids: ["only"], include: ["vector", "contents"] })
 		)[0];
@@ -289,18 +287,22 @@ describe("include projection", () => {
 		expect(row.contents).toBe("hello");
 	});
 
-	it.failing("rejects unknown include values on query", async () => {
-		// cyborgdb-core#2404
-		await expect(
-			index.query({ queryVectors: vector, topK: 1, include: ["bogus"] }),
-		).rejects.toThrow();
+	// A typo such as "metdata" must fail loudly rather than silently cost the
+	// caller the field (cyborgdb-core#2404).
+	it("rejects unknown include values on query", async () => {
+		const err = await index
+			.query({ queryVectors: vector, topK: 1, include: ["bogus"] })
+			.catch((e) => e);
+		expect(err).toBeInstanceOf(CyborgDBValidationError);
+		expect(err.detail).toContain("bogus");
 	});
 
-	it.failing("rejects unknown include values on get", async () => {
-		// cyborgdb-core#2404
-		await expect(
-			index.get({ ids: ["only"], include: ["bogus"] }),
-		).rejects.toThrow();
+	it("rejects unknown include values on get", async () => {
+		const err = await index
+			.get({ ids: ["only"], include: ["bogus"] })
+			.catch((e) => e);
+		expect(err).toBeInstanceOf(CyborgDBValidationError);
+		expect(err.detail).toContain("bogus");
 	});
 });
 

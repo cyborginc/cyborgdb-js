@@ -189,15 +189,10 @@ export class EncryptedIndex {
 		include?: string[];
 	}): Promise<GetResultItem[]> {
 		try {
-			const includeFields: string[] = [];
-			if (include.includes("vector")) includeFields.push("vector");
-			if (include.includes("contents")) includeFields.push("contents");
-			if (include.includes("metadata")) includeFields.push("metadata");
-
 			const getRequest: GetRequest = this.withKey({
 				indexName: this.indexName,
 				ids: ids,
-				include: includeFields,
+				include,
 			});
 
 			const response = await this.api.getVectorsV1VectorsGetPost({
