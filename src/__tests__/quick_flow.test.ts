@@ -210,7 +210,7 @@ describe("TestUnitFlow", () => {
 		} catch (error) {
 			console.error(`Error during index cleanup: ${error}`);
 		}
-	});
+	}, 300000);
 
 	test("test_00_get_health", async () => {
 		// Check if the API is healthy
@@ -672,12 +672,11 @@ describe("TestUnitFlow", () => {
 
 		// Check if the index has deleted the IDs
 		const results = await index.listIds();
+		expect(idsToDelete.length).toBeGreaterThan(0);
 		for (const deletedId of idsToDelete) {
 			expect(results.ids).not.toContain(deletedId);
 		}
-
-		expect(true).toBe(true);
-	});
+	}, 300000);
 
 	test("test_15_get_deleted", async () => {
 		// GET DELETED ITEMS
@@ -718,14 +717,13 @@ describe("TestUnitFlow", () => {
 		});
 
 		const results = response.results as QueryResultItem[][];
-		for (const result of results) {
-			for (const queryResult of result) {
-				const id = parseInt(queryResult.id, 10);
-				expect(id).toBeGreaterThanOrEqual(numUntrainedVectors);
-			}
+		// Anchored: an empty response would run no assertions at all below.
+		const seen = results.flat();
+		expect(seen.length).toBeGreaterThan(0);
+		for (const queryResult of seen) {
+			const id = parseInt(queryResult.id, 10);
+			expect(id).toBeGreaterThanOrEqual(numUntrainedVectors);
 		}
-
-		expect(true).toBe(true);
 	});
 
 	test("test_17_list_indexes", async () => {

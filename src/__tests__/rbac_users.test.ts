@@ -29,9 +29,11 @@
  * and these run live; otherwise they skip.
  */
 
+import { createServer, type IncomingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as dotenv from "dotenv";
-import { Client, type EncryptedIndex } from "../index";
+import { Client, CyborgDBError, type EncryptedIndex } from "../index";
 
 dotenv.config({ path: ".env.local" });
 jest.setTimeout(120000);
@@ -251,5 +253,193 @@ describeIfRbac("CyborgDB RBAC — user management", () => {
 				}
 			}
 		}
+	});
+	it("denials are catchable with one clause", async () => {
+		// Regression guard for cyborgdb-core#2398: the paths still raise
+		// different types (query denies, loadIndex 404s), but both derive from
+		// CyborgDBError so a caller needs only one catch.
+		const out = await index.createUser({ permissions: ["read"] });
+		const revoked = await userIndex(out.apiKey);
+		await index.deleteUser({ userId: out.userId });
+
+		await expect(
+			revoked.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 }),
+		).rejects.toBeInstanceOf(CyborgDBError);
+		await expect(
+			(async () => {
+				const reloaded = await userIndex(out.apiKey);
+				return reloaded.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 });
+			})(),
+		).rejects.toBeInstanceOf(CyborgDBError);
+	});
+
+	it("revoking after use denies a previously working key", async () => {
+		// The other revocation tests revoke a key that was never used, which
+		// passes trivially. This one uses the key first.
+		const out = await index.createUser({ permissions: ["read"] });
+		const userIdx = await userIndex(out.apiKey);
+
+		const before = await userIdx.query({
+			queryVectors: [0.1, 0.2, 0.3, 0.4],
+			topK: 1,
+		});
+		expect((before.results as unknown[]).length).toBeGreaterThanOrEqual(1);
+
+		await index.deleteUser({ userId: out.userId });
+
+		// A server-side cache outliving the revocation would surface here.
+		await expect(
+			userIdx.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 }),
+		).rejects.toThrow();
+		await expect(
+			(async () => {
+				const reloaded = await userIndex(out.apiKey);
+				return reloaded.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 });
+			})(),
+		).rejects.toThrow();
+	});
+
+	it("a user key cannot reach another index", async () => {
+		const otherName = `rbac_other_${Date.now().toString(36)}`;
+		const other = (await root.createIndex({
+			indexName: otherName,
+			kmsName: KMS_NAME,
+			dimension: DIMENSION,
+		})) as EncryptedIndex;
+		await other.upsert({ items: seed() });
+		const out = await index.createUser({ permissions: ["read", "write"] });
+		try {
+			const intruder = new Client({
+				baseUrl: BASE_URL,
+				apiKey: out.apiKey,
+				verifySsl: false,
+			});
+			// Cross-tenant data access must be denied on every path.
+			await expect(
+				(async () => {
+					const foreign = await intruder.loadIndex({ indexName: otherName });
+					return foreign.query({ queryVectors: [0.1, 0.2, 0.3, 0.4], topK: 1 });
+				})(),
+			).rejects.toThrow();
+			await expect(
+				(async () => {
+					const foreign = await intruder.loadIndex({ indexName: otherName });
+					return foreign.upsert({
+						items: [{ id: "x", vector: [0.0, 0.0, 0.0, 1.0] }],
+					});
+				})(),
+			).rejects.toThrow();
+			await expect(
+				(async () => {
+					const foreign = await intruder.loadIndex({ indexName: otherName });
+					return foreign.get({ ids: ["a"] });
+				})(),
+			).rejects.toThrow();
+		} finally {
+			await index.deleteUser({ userId: out.userId });
+			try {
+				await other.deleteIndex();
+			} catch {
+				/* ignore */
+			}
+		}
+	});
+
+	it("listIndexes under a user key is scoped or denied", async () => {
+		const otherName = `rbac_hidden_${Date.now().toString(36)}`;
+		const other = (await root.createIndex({
+			indexName: otherName,
+			kmsName: KMS_NAME,
+			dimension: DIMENSION,
+		})) as EncryptedIndex;
+		const out = await index.createUser({ permissions: ["read"] });
+		try {
+			const userClient = new Client({
+				baseUrl: BASE_URL,
+				apiKey: out.apiKey,
+				verifySsl: false,
+			});
+			let listed: string[];
+			try {
+				listed = await userClient.listIndexes();
+			} catch {
+				return; // refusing outright is an acceptable contract
+			}
+			expect(listed).not.toContain(otherName);
+			// Nothing beyond this tenant's own index may appear.
+			expect(listed.filter((n) => n !== indexName)).toEqual([]);
+		} finally {
+			await index.deleteUser({ userId: out.userId });
+			try {
+				await other.deleteIndex();
+			} catch {
+				/* ignore */
+			}
+		}
+	});
+});
+
+// The live suite above uses KMS-backed indexes only, so it never exercises the
+// SDK-supplied-key path. This checks that path against a local stand-in.
+describe("user management on an SDK-supplied-key index", () => {
+	const indexKey = new Uint8Array(32).fill(0xab);
+	const indexKeyHex = "ab".repeat(32);
+	const seen: {
+		method?: string;
+		url?: string;
+		headers: IncomingHttpHeaders;
+	}[] = [];
+	let baseUrl: string;
+	let close: () => Promise<void>;
+
+	beforeAll(async () => {
+		const server = createServer((req, res) => {
+			seen.push({ method: req.method, url: req.url, headers: req.headers });
+			res.writeHead(200, { "Content-Type": "application/json" });
+			if (req.url === "/v1/indexes/describe") {
+				res.end(JSON.stringify({ index_name: "idx", dimension: DIMENSION }));
+			} else if (req.method === "GET") {
+				res.end(JSON.stringify({ users: [] }));
+			} else {
+				res.end("{}");
+			}
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		close = () => new Promise((resolve) => server.close(() => resolve()));
+	});
+
+	afterAll(async () => {
+		await close();
+	});
+
+	const load = (key?: Uint8Array) =>
+		new Client({ baseUrl, apiKey: "root" }).loadIndex({
+			indexName: "idx",
+			indexKey: key,
+		});
+
+	const lastRequest = () => seen[seen.length - 1];
+
+	it("listUsers sends the index key as X-Index-Key", async () => {
+		await (await load(indexKey)).listUsers();
+		expect(lastRequest().url).toBe("/v1/indexes/idx/users");
+		expect(lastRequest().headers["x-index-key"]).toBe(indexKeyHex);
+	});
+
+	it("deleteUser sends the index key as X-Index-Key", async () => {
+		await (await load(indexKey)).deleteUser({ userId: "u1" });
+		expect(lastRequest().method).toBe("DELETE");
+		expect(lastRequest().headers["x-index-key"]).toBe(indexKeyHex);
+	});
+
+	it("omits X-Index-Key on a KMS-backed index", async () => {
+		const index = await load();
+		await index.listUsers();
+		expect(lastRequest().headers["x-index-key"]).toBeUndefined();
+		await index.deleteUser({ userId: "u1" });
+		expect(lastRequest().headers["x-index-key"]).toBeUndefined();
 	});
 });

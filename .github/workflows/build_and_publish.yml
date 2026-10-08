@@ -29,6 +29,9 @@ jobs:
       - name: Run linting
         run: npm run lint
 
+      - name: Check entry point is free of Node builtins
+        run: npm run check:edge
+
   compute_version:
     runs-on: ubuntu-latest
     permissions:

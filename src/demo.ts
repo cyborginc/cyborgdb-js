@@ -24,9 +24,12 @@
  * ```
  */
 export async function getDemoApiKey(description?: string): Promise<string> {
-	// Use environment variable if set, otherwise use default endpoint
+	// Use environment variable if set, otherwise use default endpoint.
+	// Browsers and Edge runtimes have no `process`.
 	const endpoint =
-		process.env.CYBORGDB_DEMO_ENDPOINT ||
+		(typeof process !== "undefined"
+			? process.env?.CYBORGDB_DEMO_ENDPOINT
+			: undefined) ||
 		"https://api.cyborgdb.co/v1/api-key/manage/create-demo-key";
 
 	// Set default description if not provided
