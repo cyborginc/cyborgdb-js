@@ -171,29 +171,32 @@ describe("filter operators on both read paths", () => {
 			).map((r) => r.id),
 		);
 
-	it.each(
-		OPERATOR_CASES,
-	)("resolves %s on the metadata path", async (_n, filters, expected) => {
-		expect(await metaIds(filters)).toEqual(sorted(expected));
-	});
+	it.each(OPERATOR_CASES)(
+		"resolves %s on the metadata path",
+		async (_n, filters, expected) => {
+			expect(await metaIds(filters)).toEqual(sorted(expected));
+		},
+	);
 
-	it.each(
-		OPERATOR_CASES,
-	)("resolves %s on the vector path", async (_n, filters, expected) => {
-		// query() post-filters over decrypted metadata rather than resolving
-		// from the index; the answers must still match.
-		expect(await vectorIds(filters)).toEqual(sorted(expected));
-	});
+	it.each(OPERATOR_CASES)(
+		"resolves %s on the vector path",
+		async (_n, filters, expected) => {
+			// query() post-filters over decrypted metadata rather than resolving
+			// from the index; the answers must still match.
+			expect(await vectorIds(filters)).toEqual(sorted(expected));
+		},
+	);
 
-	it.each(
-		OPERATOR_CASES,
-	)("agrees across both paths for %s", async (_name, filters, expected) => {
-		// Anchored as well as compared: a bug in the shared filter parser would
-		// break both paths identically and slip past an agreement-only check.
-		const meta = await metaIds(filters);
-		expect(meta).toEqual(await vectorIds(filters));
-		expect(meta).toEqual(sorted(expected));
-	});
+	it.each(OPERATOR_CASES)(
+		"agrees across both paths for %s",
+		async (_name, filters, expected) => {
+			// Anchored as well as compared: a bug in the shared filter parser would
+			// break both paths identically and slip past an agreement-only check.
+			const meta = await metaIds(filters);
+			expect(meta).toEqual(await vectorIds(filters));
+			expect(meta).toEqual(sorted(expected));
+		},
+	);
 
 	it("excludes a missing field from $ne but includes it in $nin", async () => {
 		// `$ne` drops documents lacking the field, `$nin` keeps them. Both are

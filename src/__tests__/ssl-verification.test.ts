@@ -407,31 +407,27 @@ describe("CyborgDB SSL Verification", () => {
 			},
 		];
 
-		test.each(
-			combinations,
-		)("URL: $url, verifySsl: $verifySsl should log $expectedLogType", ({
-			url,
-			verifySsl,
-			expectedLogType,
-			expectedMessage,
-		}) => {
-			const client = new CyborgDB({
-				baseUrl: url,
-				apiKey: CYBORGDB_API_KEY,
-				verifySsl,
-			});
+		test.each(combinations)(
+			"URL: $url, verifySsl: $verifySsl should log $expectedLogType",
+			({ url, verifySsl, expectedLogType, expectedMessage }) => {
+				const client = new CyborgDB({
+					baseUrl: url,
+					apiKey: CYBORGDB_API_KEY,
+					verifySsl,
+				});
 
-			expect(client).toBeDefined();
+				expect(client).toBeDefined();
 
-			if (expectedLogType === "info" && expectedMessage) {
-				expect(originalConsoleInfo).toHaveBeenCalledWith(expectedMessage);
-			} else if (expectedLogType === "warn" && expectedMessage) {
-				expect(originalConsoleWarn).toHaveBeenCalledWith(expectedMessage);
-			} else {
-				expect(originalConsoleInfo).not.toHaveBeenCalled();
-				expect(originalConsoleWarn).not.toHaveBeenCalled();
-			}
-		});
+				if (expectedLogType === "info" && expectedMessage) {
+					expect(originalConsoleInfo).toHaveBeenCalledWith(expectedMessage);
+				} else if (expectedLogType === "warn" && expectedMessage) {
+					expect(originalConsoleWarn).toHaveBeenCalledWith(expectedMessage);
+				} else {
+					expect(originalConsoleInfo).not.toHaveBeenCalled();
+					expect(originalConsoleWarn).not.toHaveBeenCalled();
+				}
+			},
+		);
 	});
 
 	describe("Functionality Preservation", () => {
@@ -718,19 +714,22 @@ describe("CyborgDB SSL Verification", () => {
 			[308, "POST", '{"a":1}'],
 			[303, "GET", ""],
 			[302, "GET", ""],
-		])("insecure fetch follows a %i redirect as %s", async (code, method, body) => {
-			const insecureFetch = (await createInsecureFetch()) as typeof fetch;
-			const res = await insecureFetch(
-				`https://127.0.0.1:${port}/redirect/${code}/echo`,
-				{
-					method: "POST",
-					headers: { "X-Test": "yes", "Content-Type": "application/json" },
-					body: JSON.stringify({ a: 1 }),
-				},
-			);
-			expect(res.status).toBe(200);
-			expect(await res.json()).toEqual({ method, header: "yes", body });
-		});
+		])(
+			"insecure fetch follows a %i redirect as %s",
+			async (code, method, body) => {
+				const insecureFetch = (await createInsecureFetch()) as typeof fetch;
+				const res = await insecureFetch(
+					`https://127.0.0.1:${port}/redirect/${code}/echo`,
+					{
+						method: "POST",
+						headers: { "X-Test": "yes", "Content-Type": "application/json" },
+						body: JSON.stringify({ a: 1 }),
+					},
+				);
+				expect(res.status).toBe(200);
+				expect(await res.json()).toEqual({ method, header: "yes", body });
+			},
+		);
 
 		test("insecure fetch gives up on a redirect loop", async () => {
 			const insecureFetch = (await createInsecureFetch()) as typeof fetch;

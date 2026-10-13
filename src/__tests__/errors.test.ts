@@ -73,14 +73,15 @@ async function errorFromStatus(status: number): Promise<unknown> {
 }
 
 describe("status mapping", () => {
-	it.each(
-		TAXONOMY,
-	)("maps HTTP %i to the class the taxonomy names", async (status, expected, retryable) => {
-		const err = await errorFromStatus(status);
-		expect(err).toBeInstanceOf(expected);
-		expect((err as CyborgDBError).retryable).toBe(retryable);
-		expect((err as CyborgDBError).statusCode).toBe(status);
-	});
+	it.each(TAXONOMY)(
+		"maps HTTP %i to the class the taxonomy names",
+		async (status, expected, retryable) => {
+			const err = await errorFromStatus(status);
+			expect(err).toBeInstanceOf(expected);
+			expect((err as CyborgDBError).retryable).toBe(retryable);
+			expect((err as CyborgDBError).statusCode).toBe(status);
+		},
+	);
 });
 
 describe("typed errors", () => {
@@ -106,18 +107,19 @@ describe("typed errors", () => {
 		expect((err as CyborgDBError).cause).toBeDefined();
 	});
 
-	it.each([
-		405, 413, 418,
-	])("throws the base CyborgDBError for unmapped HTTP %i", async (status) => {
-		const err = await errorFromStatus(status);
-		expect(err).toBeInstanceOf(CyborgDBError);
-		expect(err?.constructor).toBe(CyborgDBError);
-		const typed = err as CyborgDBError;
-		expect(typed.statusCode).toBe(status);
-		expect(typed.detail).toBe("synthetic failure");
-		expect(typed.requestId).toBe("req-abc123");
-		expect(typed.retryable).toBe(false);
-	});
+	it.each([405, 413, 418])(
+		"throws the base CyborgDBError for unmapped HTTP %i",
+		async (status) => {
+			const err = await errorFromStatus(status);
+			expect(err).toBeInstanceOf(CyborgDBError);
+			expect(err?.constructor).toBe(CyborgDBError);
+			const typed = err as CyborgDBError;
+			expect(typed.statusCode).toBe(status);
+			expect(typed.detail).toBe("synthetic failure");
+			expect(typed.requestId).toBe("req-abc123");
+			expect(typed.retryable).toBe(false);
+		},
+	);
 
 	it("throws CyborgDBTransportError when nothing answers", async () => {
 		const { url, close } = await serverReturning(200);
