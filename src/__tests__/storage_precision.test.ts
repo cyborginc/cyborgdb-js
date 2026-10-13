@@ -266,13 +266,15 @@ describe("storagePrecision (integration)", () => {
 
 	// Every precision completes the lifecycle and clears its recall floor. One
 	// case per tier so a failure names the precision that broke.
-	it.each(
-		VALID_PRECISIONS,
-	)("%s survives the full lifecycle with high self-recall", async (precision) => {
-		if (!serviceUp) return;
-		const index = await buildTrainedIndex(precision);
-		await assertSelfRecall(index, precision, PRECISION_RECALL[precision]);
-	}, 300000);
+	it.each(VALID_PRECISIONS)(
+		"%s survives the full lifecycle with high self-recall",
+		async (precision) => {
+			if (!serviceUp) return;
+			const index = await buildTrainedIndex(precision);
+			await assertSelfRecall(index, precision, PRECISION_RECALL[precision]);
+		},
+		300000,
+	);
 
 	it("tq4 is valid with a non-cosine metric", async () => {
 		if (!serviceUp) return;

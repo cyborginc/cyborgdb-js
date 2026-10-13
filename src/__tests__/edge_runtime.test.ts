@@ -225,8 +225,8 @@ describe("Edge runtime compatibility", () => {
 		const upsert = captured.find((r) => r.url.includes("/upsert_binary"));
 		const query = captured.find((r) => r.url.includes("/query_binary"));
 
-		const upsertB64 = (upsert?.body as any).batch.vectors_b64;
-		const queryB64 = (query?.body as any).batch.vectors_b64;
+		const upsertB64 = (upsert as any).body.batch.vectors_b64;
+		const queryB64 = (query as any).body.batch.vectors_b64;
 
 		// Decoding here (in Node) must reproduce the exact float bytes the
 		// sandbox encoded, proving the Buffer-free path is byte-identical.
@@ -258,7 +258,7 @@ describe("Edge runtime compatibility", () => {
 		`);
 
 		const upsert = captured.find((r) => r.url.includes("/upsert"));
-		const items = (upsert?.body as any).items;
+		const items = (upsert as any).body.items;
 		expect(items[0].contents).toBe(
 			Buffer.from([0, 1, 254, 255]).toString("base64"),
 		);

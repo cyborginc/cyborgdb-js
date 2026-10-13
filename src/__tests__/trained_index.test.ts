@@ -202,32 +202,34 @@ describe("trained index (approximate search)", () => {
 		expect(narrow).toBeGreaterThan(0.7);
 	});
 
-	it.each([
-		1, 4, 16,
-	])("does not change the result count at rerankMult=%i", async (rerankMult) => {
-		const rows = flattenResults(
-			(await index.query({ queryVectors: queries[0], topK: 10, rerankMult }))
-				.results,
-		);
-		expect(rows).toHaveLength(10);
-	});
+	it.each([1, 4, 16])(
+		"does not change the result count at rerankMult=%i",
+		async (rerankMult) => {
+			const rows = flattenResults(
+				(await index.query({ queryVectors: queries[0], topK: 10, rerankMult }))
+					.results,
+			);
+			expect(rows).toHaveLength(10);
+		},
+	);
 
-	it.each([
-		1, 8,
-	])("stays ordered by distance at rerankMult=%i", async (rerankMult) => {
-		const rows = flattenResults(
-			(
-				await index.query({
-					queryVectors: queries[0],
-					topK: 20,
-					rerankMult,
-					include: ["distance"],
-				})
-			).results,
-		);
-		const distances = rows.map((r) => r.distance as number);
-		expect(distances).toEqual([...distances].sort((a, b) => a - b));
-	});
+	it.each([1, 8])(
+		"stays ordered by distance at rerankMult=%i",
+		async (rerankMult) => {
+			const rows = flattenResults(
+				(
+					await index.query({
+						queryVectors: queries[0],
+						topK: 20,
+						rerankMult,
+						include: ["distance"],
+					})
+				).results,
+			);
+			const distances = rows.map((r) => r.distance as number);
+			expect(distances).toEqual([...distances].sort((a, b) => a - b));
+		},
+	);
 
 	it("enforces the topK * rerankMult ceiling", async () => {
 		// Nothing anywhere asserted the 10000 ceiling, or that the error names
@@ -248,15 +250,18 @@ describe("trained index (approximate search)", () => {
 		[2000, 5],
 		[1000, 10],
 		[100, 100],
-	])("accepts topK=%i with rerankMult=%i at exactly the ceiling", async (topK, rerankMult) => {
-		// Exactly 10000 is accepted; only above it is rejected. Without this
-		// the test above would still pass if the limit were off by one.
-		const rows = flattenResults(
-			(await index.query({ queryVectors: queries[0], topK, rerankMult }))
-				.results,
-		);
-		expect(rows.length).toBeGreaterThan(0);
-	});
+	])(
+		"accepts topK=%i with rerankMult=%i at exactly the ceiling",
+		async (topK, rerankMult) => {
+			// Exactly 10000 is accepted; only above it is rejected. Without this
+			// the test above would still pass if the limit were off by one.
+			const rows = flattenResults(
+				(await index.query({ queryVectors: queries[0], topK, rerankMult }))
+					.results,
+			);
+			expect(rows.length).toBeGreaterThan(0);
+		},
+	);
 
 	// -- metadata filtering against the approximate path ------------------- //
 
