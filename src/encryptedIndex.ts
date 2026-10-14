@@ -62,7 +62,7 @@ function checkInclude<F extends string>(
 	for (const field of include) {
 		if (!allowed.includes(field)) {
 			const valid = allowed.map((f) => `'${f}'`).join(", ");
-			const message = `'${field}' is not a valid include field for ${method}(). Valid values: ${valid}.${hint}`;
+			const message = `'${String(field)}' is not a valid include field for ${method}(). Valid values: ${valid}.${hint}`;
 			throw new CyborgDBValidationError(message, { detail: message });
 		}
 	}
