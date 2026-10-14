@@ -15,6 +15,8 @@ export * from './CreateUserResponse';
 export * from './CyborgdbServiceApiSchemasIndexSuccessResponseModel';
 export * from './CyborgdbServiceApiSchemasVectorsSuccessResponseModel';
 export * from './DeleteRequest';
+export * from './EmbeddingModelInfo';
+export * from './EmbeddingModelListResponseModel';
 export * from './ErrorResponseModel';
 export * from './GetRequest';
 export * from './GetResponseModel';
