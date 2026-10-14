@@ -40,7 +40,7 @@ import {
  *         defaults to the model's dimension and must match it if given.
  *     embedding_model (Optional[str]): Text embedding model that turns
  *         `contents` and `query_contents` into vectors. Must be one of the
- *         models listed by `GET /embedding-models`; the bare name (e.g.
+ *         models listed by `GET /v1/embedding-models`; the bare name (e.g.
  *         `all-MiniLM-L6-v2`) is accepted, in any case. An unsupported name,
  *         or a `dimension` that disagrees with the model, returns 400.
  *     metric (Optional[str]): Optional distance metric.
@@ -98,7 +98,7 @@ export interface CreateIndexRequest {
      */
     dimension?: number | null;
     /**
-     * Text embedding model that turns `contents` and `query_contents` into vectors. Must be one of the models listed by `GET /embedding-models`; the bare name (e.g. `all-MiniLM-L6-v2`) is accepted, in any case. Sets the index dimension; a `dimension` that disagrees with the model returns 400.
+     * Text embedding model that turns `contents` and `query_contents` into vectors. Must be one of the models listed by `GET /v1/embedding-models`; the bare name (e.g. `all-MiniLM-L6-v2`) is accepted, in any case. Sets the index dimension; a `dimension` that disagrees with the model returns 400.
      * @type {string}
      * @memberof CreateIndexRequest
      */
