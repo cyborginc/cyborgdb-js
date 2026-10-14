@@ -12,7 +12,6 @@
  * Do not edit the class manually.
  */
 
-import { mapValues } from '../runtime';
 /**
  * BM25 scoring config an index reports back via `index_config()`.
  * 
