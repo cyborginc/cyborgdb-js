@@ -125,7 +125,7 @@ const results = await index.query({
   nProbes: 1,
   greedy: false,
   filters: { category: 'greeting', language: 'en' },
-  include: ['distance', 'metadata', 'contents']
+  include: ['distance', 'metadata']
 });
 ```
 
