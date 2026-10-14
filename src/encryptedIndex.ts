@@ -36,6 +36,52 @@ import type {
 	UpsertResponse,
 } from "./types";
 
+const QUERY_INCLUDE = ["distance", "metadata"] as const;
+const GET_INCLUDE = ["vector", "contents", "metadata"] as const;
+type QueryIncludeField = (typeof QUERY_INCLUDE)[number];
+
+/**
+ * Checks `include` against the fields the service accepts, with the same
+ * wording as the service's 422, so a bad value fails before the request is
+ * sent. Returning the narrowed type also lets it satisfy the generated
+ * request models, which type `include` as an enum array.
+ */
+function checkInclude<F extends string>(
+	include: unknown,
+	allowed: readonly F[],
+	method: string,
+	hint = "",
+): F[] {
+	if (!Array.isArray(include)) {
+		throw new CyborgDBValidationError(
+			typeof include === "string"
+				? `include must be an array of field names, not a single string (got '${include}'; use ['${include}'])`
+				: "include must be an array of field names",
+		);
+	}
+	for (const field of include) {
+		if (!allowed.includes(field)) {
+			const valid = allowed.map((f) => `'${f}'`).join(", ");
+			throw new CyborgDBValidationError(
+				`'${field}' is not a valid include field for ${method}(). Valid values: ${valid}.${hint}`,
+			);
+		}
+	}
+	return include as F[];
+}
+
+const checkQueryInclude = (
+	include: unknown,
+): QueryIncludeField[] | undefined =>
+	include === undefined
+		? undefined
+		: checkInclude(
+				include,
+				QUERY_INCLUDE,
+				"query",
+				' To retrieve contents, call index.get({ ids, include: ["contents"] }) after querying.',
+			);
+
 export class EncryptedIndex {
 	private indexName: string = "";
 	// Hex-encoded key, computed once in the constructor since the key never
@@ -180,7 +226,7 @@ export class EncryptedIndex {
 	 * @param ids IDs of vectors to retrieve
 	 * @param include Fields to return: any of `"vector"`, `"contents"`,
 	 *   `"metadata"` (`id` is always returned). Defaults to all three. Any other
-	 *   value is rejected by the service.
+	 *   value throws a `CyborgDBValidationError` before the request is sent.
 	 * @returns Promise with the retrieved vectors
 	 */
 	async get({
@@ -190,11 +236,12 @@ export class EncryptedIndex {
 		ids: string[];
 		include?: string[];
 	}): Promise<GetResultItem[]> {
+		const includeFields = checkInclude(include, GET_INCLUDE, "get");
 		try {
 			const getRequest: GetRequest = this.withKey({
 				indexName: this.indexName,
 				ids: ids,
-				include,
+				include: includeFields,
 			});
 
 			const response = await this.api.getVectorsV1VectorsGetPost({
@@ -558,7 +605,8 @@ export class EncryptedIndex {
 	 * @param include Fields to return: any of `"distance"`, `"metadata"` (`id`
 	 *   is always returned, and hybrid queries always return `score`). Omitted
 	 *   means IDs only. Any other value, including `"vector"` and `"contents"`,
-	 *   is rejected by the service; use `get()` with the result IDs instead.
+	 *   throws a `CyborgDBValidationError` before the request is sent; use
+	 *   `get()` with the result IDs instead.
 	 * @param greedy Use faster approximate search
 	 * @param text Query text for a BM25 leg — turns this into a hybrid (BM25 +
 	 *   vector) query against an index with at least one `full_text` field; a
@@ -614,6 +662,8 @@ export class EncryptedIndex {
 		rrfK?: number;
 		windowMult?: number;
 	}): Promise<QueryResponse> {
+		const includeFields = checkQueryInclude(include);
+
 		// Route to binary endpoint if queryVectors is Float32Array
 		if (queryVectors instanceof Float32Array) {
 			if (!dimension) {
@@ -626,7 +676,7 @@ export class EncryptedIndex {
 				topK,
 				nProbes,
 				filters,
-				include,
+				include: includeFields,
 				greedy,
 				rerankMult,
 				dimension,
@@ -671,7 +721,7 @@ export class EncryptedIndex {
 				greedy: greedy ?? undefined,
 				rerankMult: rerankMult ?? undefined,
 				filters: filters ?? undefined,
-				include: include ?? undefined,
+				include: includeFields,
 				queryVectors: vectors2D
 					? vectors2D.map((vector) => vector.map((v) => Number(v)))
 					: [],
@@ -1064,7 +1114,7 @@ export class EncryptedIndex {
 		topK?: number;
 		nProbes?: number;
 		filters?: FilterExpression;
-		include?: string[];
+		include?: QueryIncludeField[];
 		greedy?: boolean;
 		rerankMult?: number;
 		dimension?: number;
