@@ -98,7 +98,7 @@ export interface CreateIndexRequest {
      */
     dimension?: number | null;
     /**
-     * Index KEK (hex) for SDK-supplied indexes; omit for KMS-backed.
+     * Text embedding model that turns `contents` and `query_contents` into vectors. Must be one of the models listed by `GET /embedding-models`; the bare name (e.g. `all-MiniLM-L6-v2`) is accepted, in any case. Sets the index dimension; a `dimension` that disagrees with the model returns 400.
      * @type {string}
      * @memberof CreateIndexRequest
      */
