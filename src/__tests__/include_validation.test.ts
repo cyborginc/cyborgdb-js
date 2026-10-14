@@ -61,32 +61,28 @@ const queryShapes = {
 };
 
 describe.each(Object.entries(queryShapes))("query (%s)", (_, shape) => {
-	test.each([
-		["contents"],
-		["vector"],
-		["score"],
-		["distance", "contents"],
-	])("rejects %p before sending", async (...include) => {
-		const index = await load();
-		const call = index.query({ ...shape, topK: 1, include });
-		await expect(call).rejects.toThrow(CyborgDBValidationError);
-		await expect(index.query({ ...shape, topK: 1, include })).rejects.toThrow(
-			/Valid values: 'distance', 'metadata'.*index\.get\(/,
-		);
-		expect(sent).toEqual([]);
-	});
+	test.each([["contents"], ["vector"], ["score"], ["distance", "contents"]])(
+		"rejects %p before sending",
+		async (...include) => {
+			const index = await load();
+			const call = index.query({ ...shape, topK: 1, include });
+			await expect(call).rejects.toThrow(CyborgDBValidationError);
+			await expect(index.query({ ...shape, topK: 1, include })).rejects.toThrow(
+				/Valid values: 'distance', 'metadata'.*index\.get\(/,
+			);
+			expect(sent).toEqual([]);
+		},
+	);
 
-	test.each([
-		[[]],
-		[["distance"]],
-		[["metadata"]],
-		[["distance", "metadata"]],
-	])("forwards %p", async (include) => {
-		const index = await load();
-		await index.query({ ...shape, topK: 1, include });
-		expect(sent).toHaveLength(1);
-		expect(sent[0].body.include).toEqual(include);
-	});
+	test.each([[[]], [["distance"]], [["metadata"]], [["distance", "metadata"]]])(
+		"forwards %p",
+		async (include) => {
+			const index = await load();
+			await index.query({ ...shape, topK: 1, include });
+			expect(sent).toHaveLength(1);
+			expect(sent[0].body.include).toEqual(include);
+		},
+	);
 
 	test("omits include when not given", async () => {
 		const index = await load();
@@ -96,17 +92,16 @@ describe.each(Object.entries(queryShapes))("query (%s)", (_, shape) => {
 });
 
 describe("get", () => {
-	test.each([
-		["distance"],
-		["score"],
-		["Contents"],
-	])("rejects %p before sending", async (...include) => {
-		const index = await load();
-		await expect(index.get({ ids: ["a"], include })).rejects.toThrow(
-			/Valid values: 'vector', 'contents', 'metadata'/,
-		);
-		expect(sent).toEqual([]);
-	});
+	test.each([["distance"], ["score"], ["Contents"]])(
+		"rejects %p before sending",
+		async (...include) => {
+			const index = await load();
+			await expect(index.get({ ids: ["a"], include })).rejects.toThrow(
+				/Valid values: 'vector', 'contents', 'metadata'/,
+			);
+			expect(sent).toEqual([]);
+		},
+	);
 
 	test("rejects a bare string", async () => {
 		const index = await load();
@@ -116,13 +111,12 @@ describe("get", () => {
 		expect(sent).toEqual([]);
 	});
 
-	test.each([
-		[["vector"]],
-		[["contents", "metadata"]],
-		[[]],
-	])("forwards %p", async (include) => {
-		const index = await load();
-		await index.get({ ids: ["a"], include });
-		expect(sent[0].body.include).toEqual(include);
-	});
+	test.each([[["vector"]], [["contents", "metadata"]], [[]]])(
+		"forwards %p",
+		async (include) => {
+			const index = await load();
+			await index.get({ ids: ["a"], include });
+			expect(sent[0].body.include).toEqual(include);
+		},
+	);
 });
