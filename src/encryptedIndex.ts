@@ -178,7 +178,9 @@ export class EncryptedIndex {
 	/**
 	 * Retrieve vectors by their IDs
 	 * @param ids IDs of vectors to retrieve
-	 * @param include Fields to include in results
+	 * @param include Fields to return: any of `"vector"`, `"contents"`,
+	 *   `"metadata"` (`id` is always returned). Defaults to all three. Any other
+	 *   value is rejected by the service.
 	 * @returns Promise with the retrieved vectors
 	 */
 	async get({
@@ -553,7 +555,10 @@ export class EncryptedIndex {
 	 * @param topK Maximum number of results to return per query
 	 * @param nProbes Number of cluster centers to search
 	 * @param filters Metadata filters (MongoDB-style queries supported)
-	 * @param include Fields to include in results
+	 * @param include Fields to return: any of `"distance"`, `"metadata"` (`id`
+	 *   is always returned, and hybrid queries always return `score`). Omitted
+	 *   means IDs only. Any other value, including `"vector"` and `"contents"`,
+	 *   is rejected by the service; use `get()` with the result IDs instead.
 	 * @param greedy Use faster approximate search
 	 * @param text Query text for a BM25 leg — turns this into a hybrid (BM25 +
 	 *   vector) query against an index with at least one `full_text` field; a
