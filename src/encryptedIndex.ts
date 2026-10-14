@@ -53,18 +53,17 @@ function checkInclude<F extends string>(
 	hint = "",
 ): F[] {
 	if (!Array.isArray(include)) {
-		throw new CyborgDBValidationError(
+		const message =
 			typeof include === "string"
 				? `include must be an array of field names, not a single string (got '${include}'; use ['${include}'])`
-				: "include must be an array of field names",
-		);
+				: "include must be an array of field names";
+		throw new CyborgDBValidationError(message, { detail: message });
 	}
 	for (const field of include) {
 		if (!allowed.includes(field)) {
 			const valid = allowed.map((f) => `'${f}'`).join(", ");
-			throw new CyborgDBValidationError(
-				`'${field}' is not a valid include field for ${method}(). Valid values: ${valid}.${hint}`,
-			);
+			const message = `'${field}' is not a valid include field for ${method}(). Valid values: ${valid}.${hint}`;
+			throw new CyborgDBValidationError(message, { detail: message });
 		}
 	}
 	return include as F[];
