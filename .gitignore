@@ -212,3 +212,6 @@ typings
 pr.md
 pr-review.md
 
+
+# OpenAPI spec lives in cyborgdb-tests
+openapi.json
