@@ -420,7 +420,8 @@ export class CyborgDB {
 	}
 
 	/**
-	 * Which indexes are training now, and the service's retrain threshold.
+	 * Which indexes are training or queued to train, and the vector count an
+	 * index must reach before its first training.
 	 * @returns Promise with the training status
 	 */
 	async getTrainingStatus(): Promise<TrainingStatus> {

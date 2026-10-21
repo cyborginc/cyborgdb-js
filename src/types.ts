@@ -223,9 +223,9 @@ export interface IndexDescription {
  * Result of `Client.getTrainingStatus()`.
  */
 export interface TrainingStatus {
-	/** Names of the indexes training right now. */
+	/** Names of the indexes training now or queued to train. */
 	trainingIndexes: string[];
-	/** Vector count past which the service retrains an index. */
+	/** Vector count an index must reach before its first training. */
 	retrainThreshold: number;
 }
 
