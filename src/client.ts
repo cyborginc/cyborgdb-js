@@ -12,7 +12,7 @@ import type {
 } from "./models";
 import { isNodeRuntime } from "./nodeInterop";
 import { Configuration } from "./runtime";
-import type { HealthResponse } from "./types";
+import type { EmbeddingModel, HealthResponse, TrainingStatus } from "./types";
 
 /**
  * CyborgDB TypeScript SDK
@@ -417,6 +417,44 @@ export class CyborgDB {
 		// Validate that the index exists and the key is correct
 		const response = await this.describeIndex(indexName, indexKey);
 		return new EncryptedIndex(response.indexName, indexKey, this.api);
+	}
+
+	/**
+	 * Which indexes are training now, and the service's retrain threshold.
+	 * @returns Promise with the training status
+	 */
+	async getTrainingStatus(): Promise<TrainingStatus> {
+		try {
+			const response =
+				await this.api.getTrainingStatusV1IndexesTrainingStatusGet();
+			// The service also reports its worker and queue internals; those
+			// stay out of the public API.
+			return {
+				trainingIndexes: [...(response.trainingIndexes ?? [])],
+				retrainThreshold: response.retrainThreshold,
+			};
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
+	}
+
+	/**
+	 * The embedding models the service can embed with, in service order.
+	 * @returns Promise with one entry per model
+	 */
+	async listEmbeddingModels(): Promise<EmbeddingModel[]> {
+		try {
+			const response = await this.api.listEmbeddingModelsV1EmbeddingModelsGet();
+			return (response.models ?? []).map(
+				({ name, dimension, maxSeqLength }) => ({
+					name,
+					dimension,
+					maxSeqLength,
+				}),
+			);
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
 	}
 
 	/**

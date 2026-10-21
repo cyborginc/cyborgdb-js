@@ -8,6 +8,7 @@
 import type {
 	QueryResponse as GeneratedQueryResponse,
 	GetResultItemModel,
+	MetadataFieldPolicy,
 	QueryResultItem,
 } from "./models";
 
@@ -173,6 +174,68 @@ export interface GetResultItem
  */
 export interface QueryResponse extends Omit<GeneratedQueryResponse, "results"> {
 	results: QueryResultItem[] | QueryResultItem[][];
+}
+
+/**
+ * BM25 scorer config an index reports, from `bm25()` and `describe()`.
+ */
+export interface BM25Description {
+	k1: number;
+	b: number;
+	analyzerVersion?: string | null;
+}
+
+/**
+ * Result of `EncryptedIndex.describe()`: the index's configuration and state
+ * from one describe call.
+ */
+export interface IndexDescription {
+	indexName: string;
+	/** Index type, for example `disk_ivf`. */
+	indexType: string;
+	/**
+	 * `0` until the first upsert when the index was created without an
+	 * explicit `dimension`.
+	 */
+	dimension: number;
+	metric: string;
+	storagePrecision: "float32" | "float16" | "tq12" | "tq8" | "tq6" | "tq4";
+	/** `1` until the index is trained. */
+	nLists: number;
+	/**
+	 * `training` only while a train is running; an index waiting in the
+	 * service's training queue still reports `untrained` or `trained`.
+	 */
+	trainingState: "untrained" | "training" | "trained";
+	/**
+	 * Overridden fields as `{ filterable, pattern, fullText }`, plus
+	 * `$default: { filterable: false }` under the allowlist posture. `{}` when
+	 * the index uses the default index-everything posture.
+	 */
+	metadataSchema: { [field: string]: MetadataFieldPolicy };
+	/** `null` when the index has no `fullText` field. */
+	bm25: BM25Description | null;
+	/** Present only when the index was created with an embedding model. */
+	embeddingModel?: string;
+}
+
+/**
+ * Result of `Client.getTrainingStatus()`.
+ */
+export interface TrainingStatus {
+	/** Names of the indexes training right now. */
+	trainingIndexes: string[];
+	/** Vector count past which the service retrains an index. */
+	retrainThreshold: number;
+}
+
+/**
+ * One entry of `Client.listEmbeddingModels()`.
+ */
+export interface EmbeddingModel {
+	name: string;
+	dimension: number;
+	maxSeqLength: number;
 }
 
 /**

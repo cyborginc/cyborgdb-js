@@ -227,6 +227,43 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
+	describe("05a - Client.getTrainingStatus()", () => {
+		it("should return exactly trainingIndexes and retrainThreshold", async () => {
+			const status = await client.getTrainingStatus();
+
+			validateExactKeys(
+				status,
+				new Set(["trainingIndexes", "retrainThreshold"]),
+				"getTrainingStatus() result",
+			);
+			expect(Array.isArray(status.trainingIndexes)).toBe(true);
+			status.trainingIndexes.forEach((name: string) => {
+				expect(typeof name).toBe("string");
+			});
+			expect(Number.isInteger(status.retrainThreshold)).toBe(true);
+		});
+	});
+
+	describe("05b - Client.listEmbeddingModels()", () => {
+		it("should return models with name, dimension and maxSeqLength", async () => {
+			const models = await client.listEmbeddingModels();
+
+			expect(Array.isArray(models)).toBe(true);
+			expect(models.length).toBeGreaterThan(0);
+			models.forEach((model) => {
+				validateExactKeys(
+					model,
+					new Set(["name", "dimension", "maxSeqLength"]),
+					"listEmbeddingModels() entry",
+				);
+				expect(typeof model.name).toBe("string");
+				expect(Number.isInteger(model.dimension)).toBe(true);
+				expect(Number.isInteger(model.maxSeqLength)).toBe(true);
+			});
+			expect(models.map((m) => m.name).join(" ")).toMatch(/all-MiniLM-L6-v2/);
+		});
+	});
+
 	describe("07 - Client.createIndex()", () => {
 		it("should create DiskIVF index with explicit dimension and custom metric", async () => {
 			const tempIndexName = `temp_diskivf_${Date.now().toString(36)}`;
@@ -386,6 +423,54 @@ describe("CyborgDB API Contract Tests", () => {
 		});
 	});
 
+	describe("08a - EncryptedIndex.describe()", () => {
+		const describedKeys = [
+			"indexName",
+			"indexType",
+			"dimension",
+			"metric",
+			"storagePrecision",
+			"nLists",
+			"trainingState",
+			"metadataSchema",
+			"bm25",
+		];
+
+		it("should return exactly the documented keys", async () => {
+			const described = await testIndex.describe();
+
+			// No embeddingModel: the main index was created without one.
+			validateExactKeys(
+				described,
+				new Set(describedKeys),
+				"EncryptedIndex.describe()",
+			);
+			expect(described.indexName).toBe(testIndexName);
+			expect(typeof described.indexType).toBe("string");
+			expect(described.dimension).toBe(dimension);
+			expect(described.metric).toBe("cosine");
+			expect(described.storagePrecision).toBe("float32");
+			expect(Number.isInteger(described.nLists)).toBe(true);
+			expect(["untrained", "training", "trained"]).toContain(
+				described.trainingState,
+			);
+			expect(described.metadataSchema).toEqual({});
+			expect(described.bm25).toBeNull();
+		});
+
+		it("should include embeddingModel for an index with one", async () => {
+			const described = await embeddingIndex.describe();
+
+			validateExactKeys(
+				described,
+				new Set([...describedKeys, "embeddingModel"]),
+				"EncryptedIndex.describe() with embedding model",
+			);
+			expect(described.embeddingModel).toMatch(/all-MiniLM-L6-v2/);
+			expect(described.dimension).toBe(384);
+		});
+	});
+
 	describe("09 - EncryptedIndex.isTrained()", () => {
 		it("should return boolean", async () => {
 			const trained = await testIndex.isTrained();
@@ -513,6 +598,15 @@ describe("CyborgDB API Contract Tests", () => {
 				console.log("Actual IDs:", result.ids);
 			}
 			expect(missingIds.length).toBe(0);
+		});
+	});
+
+	describe("12a - EncryptedIndex.getNumVectors()", () => {
+		it("should count the upserted vectors", async () => {
+			const count = await testIndex.getNumVectors();
+
+			expect(Number.isInteger(count)).toBe(true);
+			expect(count).toBe(15);
 		});
 	});
 

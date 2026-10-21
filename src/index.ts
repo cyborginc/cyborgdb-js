@@ -58,13 +58,16 @@ export {
 } from "./models";
 // Export custom strongly-typed interfaces
 export {
+	BM25Description,
 	DeleteResponse,
+	EmbeddingModel,
 	FilterExpression,
 	FilterOperator,
 	FilterValue,
 	GetResultItem,
 	getErrorMessage,
 	HealthResponse,
+	IndexDescription,
 	isError,
 	isJsonValue,
 	JsonArray,
@@ -72,6 +75,7 @@ export {
 	JsonPrimitive,
 	JsonValue,
 	QueryResponse,
+	TrainingStatus,
 	TrainResponse,
 	UpsertResponse,
 	VectorMetadata,
