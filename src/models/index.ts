@@ -32,6 +32,7 @@ export * from './ListUsersResponse';
 export * from './LocationInner';
 export * from './MetadataFieldPolicy';
 export * from './MetadataResult';
+export * from './NumVectorsResponseModel';
 export * from './OrderBy';
 export * from './QueryMetadataRequest';
 export * from './QueryMetadataResponse';

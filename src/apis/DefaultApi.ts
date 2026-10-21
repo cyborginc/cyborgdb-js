@@ -85,6 +85,10 @@ import {
     ListUsersResponseFromJSON,
 } from '../models/ListUsersResponse';
 import {
+    type NumVectorsResponseModel,
+    NumVectorsResponseModelFromJSON,
+} from '../models/NumVectorsResponseModel';
+import {
     type QueryMetadataRequest,
     QueryMetadataRequestToJSON,
 } from '../models/QueryMetadataRequest';
@@ -553,18 +557,18 @@ export class DefaultApi extends runtime.BaseAPI {
      * Get the number of vectors stored in an index
      * Get the number of vectors in an index
      */
-    async getIndexSizeV1VectorsNumVectorsPostRaw(requestParameters: GetIndexSizeV1VectorsNumVectorsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CyborgdbServiceApiSchemasVectorsSuccessResponseModel>> {
+    async getIndexSizeV1VectorsNumVectorsPostRaw(requestParameters: GetIndexSizeV1VectorsNumVectorsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<NumVectorsResponseModel>> {
         const requestOptions = await this.getIndexSizeV1VectorsNumVectorsPostRequestOpts(requestParameters);
         const response = await this.request(requestOptions, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => CyborgdbServiceApiSchemasVectorsSuccessResponseModelFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => NumVectorsResponseModelFromJSON(jsonValue));
     }
 
     /**
      * Get the number of vectors stored in an index
      * Get the number of vectors in an index
      */
-    async getIndexSizeV1VectorsNumVectorsPost(requestParameters: GetIndexSizeV1VectorsNumVectorsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CyborgdbServiceApiSchemasVectorsSuccessResponseModel> {
+    async getIndexSizeV1VectorsNumVectorsPost(requestParameters: GetIndexSizeV1VectorsNumVectorsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<NumVectorsResponseModel> {
         const response = await this.getIndexSizeV1VectorsNumVectorsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }

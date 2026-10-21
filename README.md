@@ -129,6 +129,27 @@ const results = await index.query({
 });
 ```
 
+#### Inspecting Indexes and the Service
+
+```typescript
+// Configuration and state of an index, from one call
+const info = await index.describe();
+// { indexName, indexType, dimension, metric, storagePrecision, nLists,
+//   trainingState: 'untrained' | 'training' | 'trained',
+//   metadataSchema, bm25, embeddingModel? }
+
+// Number of vectors stored in the index
+const count = await index.getNumVectors();
+
+// Which indexes are training now, and the service's retrain threshold
+const { trainingIndexes, retrainThreshold } = await client.getTrainingStatus();
+
+// Embedding models the service can embed with: [{ name, dimension, maxSeqLength }, ...]
+const models = await client.listEmbeddingModels();
+```
+
+`embeddingModel` is present only when the index was created with one.
+
 #### Bring Your Own Key (BYOK) via KMS
 
 Indexes can be encrypted under a key managed by a KMS instead of one held by

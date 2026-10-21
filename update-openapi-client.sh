@@ -2,11 +2,13 @@
 
 set -e
 
-echo "Generating TypeScript client from openapi.json..."
+# The spec's source of truth is cyborgdb-service; pass a path to override.
+SPEC="${1:-../cyborgdb-service/openapi.json}"
 
-# Check if OpenAPI spec exists
-if [ ! -f "openapi.json" ]; then
-    echo "Error: openapi.json not found!"
+echo "Generating TypeScript client from $SPEC..."
+
+if [ ! -f "$SPEC" ]; then
+    echo "Error: $SPEC not found! Usage: $0 [path/to/openapi.json]"
     exit 1
 fi
 
@@ -29,7 +31,7 @@ export OPENAPI_GENERATOR_VERSION=7.22.0
 
 # Generate the client
 openapi-generator-cli generate \
-    -i openapi.json \
+    -i "$SPEC" \
     -g typescript-fetch \
     -o src \
     --skip-validate-spec

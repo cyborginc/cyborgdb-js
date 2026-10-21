@@ -42,6 +42,16 @@ import {
  *         index uses the default index-everything posture.
  *     bm25 (Optional[BM25Config]): BM25 scoring config when the index has
  *         at least one full_text field; `None` otherwise.
+ *     index_type (str): Index type, for example `disk_ivf`.
+ *     training_state (Literal["untrained", "training", "trained"]): Index
+ *         lifecycle state as reported by the core. `training` means a train
+ *         is running now; an index waiting in the service's training queue
+ *         still reports its current state (`untrained` or `trained`).
+ *     embedding_model (Optional[str]): Name of the embedding model the
+ *         index was created with; `None` when it has none.
+ *     storage_precision (StoragePrecision): On-disk rerank-vector format
+ *         the index was created with (`float32` when create_index didn't
+ *         set one).
  * @export
  * @interface IndexInfoResponseModel
  */
@@ -58,6 +68,30 @@ export interface IndexInfoResponseModel {
      * @memberof IndexInfoResponseModel
      */
     isTrained: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof IndexInfoResponseModel
+     */
+    indexType: string;
+    /**
+     * 
+     * @type {IndexInfoResponseModelTrainingStateEnum}
+     * @memberof IndexInfoResponseModel
+     */
+    trainingState: IndexInfoResponseModelTrainingStateEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof IndexInfoResponseModel
+     */
+    embeddingModel?: string | null;
+    /**
+     * 
+     * @type {IndexInfoResponseModelStoragePrecisionEnum}
+     * @memberof IndexInfoResponseModel
+     */
+    storagePrecision: IndexInfoResponseModelStoragePrecisionEnum;
     /**
      * 
      * @type {number}
@@ -90,12 +124,40 @@ export interface IndexInfoResponseModel {
     bm25?: BM25Config | null;
 }
 
+
+/**
+ * @export
+ */
+export const IndexInfoResponseModelTrainingStateEnum = {
+    Untrained: 'untrained',
+    Training: 'training',
+    Trained: 'trained'
+} as const;
+export type IndexInfoResponseModelTrainingStateEnum = typeof IndexInfoResponseModelTrainingStateEnum[keyof typeof IndexInfoResponseModelTrainingStateEnum];
+
+/**
+ * @export
+ */
+export const IndexInfoResponseModelStoragePrecisionEnum = {
+    Float32: 'float32',
+    Float16: 'float16',
+    Tq12: 'tq12',
+    Tq8: 'tq8',
+    Tq6: 'tq6',
+    Tq4: 'tq4'
+} as const;
+export type IndexInfoResponseModelStoragePrecisionEnum = typeof IndexInfoResponseModelStoragePrecisionEnum[keyof typeof IndexInfoResponseModelStoragePrecisionEnum];
+
+
 /**
  * Check if a given object implements the IndexInfoResponseModel interface.
  */
 export function instanceOfIndexInfoResponseModel(value: object): value is IndexInfoResponseModel {
     if (!('indexName' in value) || value['indexName'] === undefined) return false;
     if (!('isTrained' in value) || value['isTrained'] === undefined) return false;
+    if (!('indexType' in value) || value['indexType'] === undefined) return false;
+    if (!('trainingState' in value) || value['trainingState'] === undefined) return false;
+    if (!('storagePrecision' in value) || value['storagePrecision'] === undefined) return false;
     if (!('dimension' in value) || value['dimension'] === undefined) return false;
     if (!('metric' in value) || value['metric'] === undefined) return false;
     if (!('nLists' in value) || value['nLists'] === undefined) return false;
@@ -114,6 +176,10 @@ export function IndexInfoResponseModelFromJSONTyped(json: any, ignoreDiscriminat
         
         'indexName': json['index_name'],
         'isTrained': json['is_trained'],
+        'indexType': json['index_type'],
+        'trainingState': json['training_state'],
+        'embeddingModel': json['embedding_model'] == null ? undefined : json['embedding_model'],
+        'storagePrecision': json['storage_precision'],
         'dimension': json['dimension'],
         'metric': json['metric'],
         'nLists': json['n_lists'],
@@ -135,6 +201,10 @@ export function IndexInfoResponseModelToJSONTyped(value?: IndexInfoResponseModel
         
         'index_name': value['indexName'],
         'is_trained': value['isTrained'],
+        'index_type': value['indexType'],
+        'training_state': value['trainingState'],
+        'embedding_model': value['embeddingModel'],
+        'storage_precision': value['storagePrecision'],
         'dimension': value['dimension'],
         'metric': value['metric'],
         'n_lists': value['nLists'],
