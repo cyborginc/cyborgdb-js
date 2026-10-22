@@ -31,7 +31,14 @@ const ADAPTER_PATH = join(__dirname, "adapter.ts");
 const KEY_BYTES = Uint8Array.from({ length: 32 }, (_, i) => i);
 const KEY = { $bytes: Buffer.from(KEY_BYTES).toString("base64") };
 
-const CLIENT_METHODS = ["listIndexes", "getHealth", "createIndex", "loadIndex"];
+const CLIENT_METHODS = [
+	"listIndexes",
+	"getHealth",
+	"getTrainingStatus",
+	"listEmbeddingModels",
+	"createIndex",
+	"loadIndex",
+];
 const INDEX_METHODS = [
 	"deleteIndex",
 	"upsert",
@@ -44,6 +51,8 @@ const INDEX_METHODS = [
 	"createUser",
 	"listUsers",
 	"deleteUser",
+	"describe",
+	"getNumVectors",
 ];
 
 // What each index method returns unless a test says otherwise: the SDK's
@@ -646,6 +655,7 @@ describe("unsupported params", () => {
 		["index.delete_index", { index: "i", key: KEY }],
 		["index.upsert", { index: "i", items: [], user_id: KEY }],
 		["index.get", { index: "i", ids: [], key: KEY }],
+		["index.num_vectors", { index: "i", user_id: KEY }],
 		["index.query", { index: "i", vectors: [[1]], key: KEY }],
 		["index.create_user", { index: "i", permissions: ["read"], user_kek: KEY }],
 		[
@@ -662,12 +672,11 @@ describe("unsupported params", () => {
 	});
 
 	test.each([
-		"index.describe",
-		"index.num_vectors",
-		"client.training_status",
-		"client.embedding_models",
 		"client.kms_create",
-	])("%s has no SDK method", async (method) => {
+		"client.kms_push",
+		"client.kms_get",
+		"client.kms_delete",
+	])("%s is core only", async (method) => {
 		const h = await harness();
 		expect(await errorCode(h, method, { index: "i", client: "c" })).toBe(
 			CODE_UNSUPPORTED,
@@ -759,6 +768,90 @@ describe("results", () => {
 		expect(await ok(h, "index.list_users", { index: "i" })).toStrictEqual([
 			{ user_id: "00ff", permissions: ["read"] },
 		]);
+	});
+
+	test("describe renames to the contract's fields, not the schema's field names", async () => {
+		const h = await harness({
+			returns: {
+				"index.describe": {
+					indexName: "n",
+					indexType: "disk_ivf",
+					dimension: 0,
+					metric: "euclidean",
+					storagePrecision: "float32",
+					nLists: 1,
+					trainingState: "untrained",
+					metadataSchema: {
+						$default: { filterable: false },
+						fieldName: { filterable: true, pattern: false, fullText: true },
+					},
+					bm25: { k1: 1.2, b: 0.75, analyzerVersion: null },
+					embeddingModel: "m",
+				},
+			},
+		});
+		expect(await ok(h, "index.describe", { index: "i" })).toStrictEqual({
+			name: "n",
+			index_type: "disk_ivf",
+			dimension: 0,
+			metric: "euclidean",
+			storage_precision: "float32",
+			n_lists: 1,
+			training_state: "untrained",
+			embedding_model: "m",
+			metadata_schema: {
+				$default: { filterable: false },
+				fieldName: { filterable: true, pattern: false, full_text: true },
+			},
+			bm25: { k1: 1.2, b: 0.75, analyzer_version: null },
+		});
+		expect(h.only()).toStrictEqual(["index.describe"]);
+	});
+
+	test("describe keeps a null bm25 and no embedding_model", async () => {
+		const h = await harness({
+			returns: {
+				"index.describe": { indexName: "n", metadataSchema: {}, bm25: null },
+			},
+		});
+		expect(await ok(h, "index.describe", { index: "i" })).toStrictEqual({
+			name: "n",
+			metadata_schema: {},
+			bm25: null,
+		});
+	});
+
+	test("num_vectors returns the count", async () => {
+		const h = await harness({ returns: { "index.getNumVectors": 3 } });
+		expect(await ok(h, "index.num_vectors", { index: "i" })).toBe(3);
+		expect(h.only()).toStrictEqual(["index.getNumVectors"]);
+	});
+
+	test("training_status renames to the contract's fields", async () => {
+		const h = await harness({
+			returns: {
+				"client.getTrainingStatus": {
+					trainingIndexes: ["n"],
+					retrainThreshold: 65536,
+				},
+			},
+		});
+		expect(
+			await ok(h, "client.training_status", { client: "c" }),
+		).toStrictEqual({ training_indexes: ["n"], retrain_threshold: 65536 });
+	});
+
+	test("embedding_models renames each model's fields", async () => {
+		const h = await harness({
+			returns: {
+				"client.listEmbeddingModels": [
+					{ name: "m", dimension: 384, maxSeqLength: 256 },
+				],
+			},
+		});
+		expect(
+			await ok(h, "client.embedding_models", { client: "c" }),
+		).toStrictEqual([{ name: "m", dimension: 384, max_seq_length: 256 }]);
 	});
 
 	test("write ops return null", async () => {
@@ -955,7 +1048,7 @@ describe("typed values and the handshake", () => {
 				'{"jsonrpc":"2.0","id":1,"method":"hello","params":{"protocol":1}}',
 				"",
 				"not json",
-				'{"jsonrpc":"2.0","id":2,"method":"index.describe","params":{}}',
+				'{"jsonrpc":"2.0","id":2,"method":"client.kms_get","params":{}}',
 				"",
 			].join("\n"),
 		);
@@ -964,16 +1057,13 @@ describe("typed values and the handshake", () => {
 			code: 0,
 			stderr: "",
 		});
-		const [hello, parse, describe] = out
+		const [hello, parse, kmsGet] = out
 			.trim()
 			.split("\n")
 			.map((line) => JSON.parse(line));
 		expect(hello.id).toBe(1);
 		expect(hello.result.version).toBe(cyborgdb.VERSION);
 		expect(parse.error.code).toBe(-32700);
-		expect([describe.id, describe.error.code]).toStrictEqual([
-			2,
-			CODE_UNSUPPORTED,
-		]);
+		expect([kmsGet.id, kmsGet.error.code]).toStrictEqual([2, CODE_UNSUPPORTED]);
 	});
 });

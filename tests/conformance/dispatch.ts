@@ -433,6 +433,16 @@ function oneListPerRow(results: unknown[], rowCount: number): unknown[] {
 
 // ---------- result encoding ----------
 
+/** Renames an SDK result's camelCase keys to the contract's snake_case. */
+function snakeKeys(fields: object): Params {
+	const renamed: Params = {};
+	for (const [key, value] of Object.entries(fields)) {
+		renamed[key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)] =
+			value;
+	}
+	return renamed;
+}
+
 /** Encodes one `get` row: vector as `$f32`, contents as `$bytes`. */
 function encodeItem(item: object): unknown {
 	const row: Params = {};
@@ -822,15 +832,51 @@ export function createAdapter(
 		return null;
 	}
 
-	// index.describe, index.num_vectors, client.embedding_models and
-	// client.training_status have no SDK method, and the client.kms_* blob ops
-	// are core only; they stay out of OPS so they reply -32601.
+	async function describe(params: Params): Promise<unknown> {
+		const index = indexForOp(params);
+		const description = await sdk(() => index.describe());
+		const { indexName, metadataSchema, bm25, ...rest } = description;
+		// Field names in the schema are user data: only the policy keys rename.
+		const schema: Params = {};
+		for (const [field, policy] of Object.entries(metadataSchema ?? {})) {
+			schema[field] = snakeKeys(policy);
+		}
+		return encode({
+			name: indexName, // the contract calls it `name`
+			...snakeKeys(rest),
+			metadata_schema: metadataSchema === undefined ? undefined : schema,
+			bm25: bm25 == null ? bm25 : snakeKeys(bm25),
+		});
+	}
+
+	async function numVectors(params: Params): Promise<unknown> {
+		const index = indexForOp(params, "key", "user_id");
+		return encode(await sdk(() => index.getNumVectors()));
+	}
+
+	async function trainingStatus(params: Params): Promise<unknown> {
+		const client = lookup(clients, params, "client");
+		return encode(snakeKeys(await sdk(() => client.getTrainingStatus())));
+	}
+
+	async function embeddingModels(params: Params): Promise<unknown> {
+		const client = lookup(clients, params, "client");
+		const models = await sdk(() => client.listEmbeddingModels());
+		return encode(models.map((model) => snakeKeys(model)));
+	}
+
+	// The client.kms_* blob ops are core only; they stay out of OPS so they
+	// reply -32601.
 	const OPS: Record<string, (params: Params) => Promise<unknown>> = {
 		"client.new": clientNew,
 		"client.list_indexes": listIndexes,
 		"client.health": health,
+		"client.embedding_models": embeddingModels,
+		"client.training_status": trainingStatus,
 		"client.create_index": createIndex,
 		"client.load_index": loadIndex,
+		"index.describe": describe,
+		"index.num_vectors": numVectors,
 		"index.delete_index": deleteIndex,
 		"index.upsert": upsert,
 		"index.get": get,
@@ -857,7 +903,10 @@ export function createAdapter(
 			"rbac",
 			"embedding",
 			"health",
+			"training_status",
 			"service_auth",
+			// The data lives in the service, so it outlives an adapter restart.
+			"durable_storage",
 			// Both forms pass the metadata list straight to the SDK.
 			"parallel_metadata",
 		];
