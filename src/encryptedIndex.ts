@@ -10,6 +10,7 @@ import type {
 	BinaryQueryRequest,
 	BinaryUpsertRequest,
 	BinaryVectorBatch,
+	BM25Config,
 	CreateUserRequest,
 	DeleteRequest,
 	GetRequest,
@@ -28,9 +29,11 @@ import type {
 	VectorItem,
 } from "./models";
 import type {
+	BM25Description,
 	DeleteResponse,
 	FilterExpression,
 	GetResultItem,
+	IndexDescription,
 	QueryResponse,
 	TrainResponse,
 	UpsertResponse,
@@ -80,6 +83,27 @@ const checkQueryInclude = (
 				"query",
 				' To retrieve contents, call index.get({ ids, include: ["contents"] }) after querying.',
 			);
+
+// Defaults follow the index-everything posture: `filterable` is opt-out,
+// `pattern` and `fullText` are opt-in.
+const fullPolicy = (
+	policy: MetadataFieldPolicy,
+): Required<MetadataFieldPolicy> => ({
+	filterable: policy.filterable ?? true,
+	pattern: policy.pattern ?? false,
+	fullText: policy.fullText ?? false,
+});
+
+const toBM25 = (
+	config: BM25Config | null | undefined,
+): BM25Description | null =>
+	config == null
+		? null
+		: {
+				k1: config.k1,
+				b: config.b,
+				analyzerVersion: config.analyzerVersion ?? null,
+			};
 
 export class EncryptedIndex {
 	private indexName: string = "";
@@ -181,6 +205,53 @@ export class EncryptedIndex {
 		// Fetched fresh on every read — training mutates this server-side.
 		const response = await this.describeIndex(this.indexName);
 		return response.nLists;
+	}
+	/**
+	 * The index's configuration and state, from one describe call.
+	 *
+	 * `embeddingModel` is present only when the index has one. There is no
+	 * `isTrained`; use `trainingState`, or {@link isTrained}.
+	 *
+	 * @returns Promise with the index description
+	 */
+	public async describe(): Promise<IndexDescription> {
+		const response = await this.describeIndex(this.indexName);
+		return {
+			indexName: response.indexName,
+			indexType: response.indexType,
+			dimension: response.dimension,
+			metric: response.metric,
+			storagePrecision: response.storagePrecision,
+			nLists: response.nLists,
+			trainingState: response.trainingState,
+			metadataSchema: Object.fromEntries(
+				Object.entries(response.metadataSchema ?? {}).map(([field, policy]) => [
+					field,
+					// `$default` only ever carries `filterable`.
+					field === "$default"
+						? { filterable: policy.filterable ?? true }
+						: fullPolicy(policy),
+				]),
+			),
+			bm25: toBM25(response.bm25),
+			...(response.embeddingModel
+				? { embeddingModel: response.embeddingModel }
+				: {}),
+		};
+	}
+	/**
+	 * Number of vectors stored in the index.
+	 * @returns Promise with the vector count
+	 */
+	public async getNumVectors(): Promise<number> {
+		try {
+			const response = await this.api.getIndexSizeV1VectorsNumVectorsPost({
+				indexOperationRequest: this.withKey({ indexName: this.indexName }),
+			});
+			return response.result;
+		} catch (error: unknown) {
+			handleApiError(error);
+		}
 	}
 	/**
 	 * Delete an index
@@ -921,17 +992,11 @@ export class EncryptedIndex {
 		const response = await this.describeIndex(this.indexName);
 		// Normalize each policy to the full { filterable, pattern, fullText }
 		// shape (matching py's property), so callers never branch on a missing
-		// key. Defaults follow the index-everything posture: `filterable` is
-		// opt-out (true unless the service says otherwise), `pattern` and
-		// `fullText` are opt-in (false unless set).
+		// key.
 		return Object.fromEntries(
 			Object.entries(response.metadataSchema ?? {}).map(([field, policy]) => [
 				field,
-				{
-					filterable: policy.filterable ?? true,
-					pattern: policy.pattern ?? false,
-					fullText: policy.fullText ?? false,
-				},
+				fullPolicy(policy),
 			]),
 		);
 	}
@@ -947,21 +1012,9 @@ export class EncryptedIndex {
 	 *
 	 * @returns Promise with the BM25 config, or `null` when not configured
 	 */
-	async bm25(): Promise<{
-		k1: number;
-		b: number;
-		analyzerVersion?: string | null;
-	} | null> {
+	async bm25(): Promise<BM25Description | null> {
 		const response = await this.describeIndex(this.indexName);
-		const config = response.bm25;
-		if (config == null) {
-			return null;
-		}
-		return {
-			k1: config.k1,
-			b: config.b,
-			analyzerVersion: config.analyzerVersion ?? null,
-		};
+		return toBM25(response.bm25);
 	}
 
 	/**

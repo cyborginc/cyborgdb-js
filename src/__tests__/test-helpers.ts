@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { EncryptedIndex, QueryResultItem } from "../index";
 import type { Results } from "../models/Results";
 
@@ -87,4 +89,47 @@ export async function waitUntilGone(
 	throw new Error(
 		`deleted ids still visible after ${timeoutMs}ms: ${remaining.sort().join(", ")}`,
 	);
+}
+
+export type StandInRequest = {
+	method?: string;
+	url?: string;
+	body: Record<string, unknown>;
+};
+
+/**
+ * A local stand-in for the service: `respond` maps each request to a status
+ * and a JSON body, and every request is recorded in `requests`. Lets the
+ * wrapper's parsing and error mapping run with no service.
+ */
+export async function startStandIn(
+	respond: (req: StandInRequest) => { status?: number; body: unknown },
+): Promise<{
+	url: string;
+	requests: StandInRequest[];
+	close: () => Promise<void>;
+}> {
+	const requests: StandInRequest[] = [];
+	const server = createServer((req, res) => {
+		const chunks: Buffer[] = [];
+		req.on("data", (c) => chunks.push(c));
+		req.on("end", () => {
+			const recorded: StandInRequest = {
+				method: req.method,
+				url: req.url,
+				body: JSON.parse(Buffer.concat(chunks).toString() || "{}"),
+			};
+			requests.push(recorded);
+			const { status = 200, body } = respond(recorded);
+			res.writeHead(status, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(body));
+		});
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const { port } = server.address() as AddressInfo;
+	return {
+		url: `http://127.0.0.1:${port}`,
+		requests,
+		close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+	};
 }

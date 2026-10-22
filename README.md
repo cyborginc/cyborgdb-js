@@ -13,14 +13,14 @@
 ![NPM License](https://img.shields.io/npm/l/cyborgdb)
 ![Node Current](https://img.shields.io/node/v/cyborgdb)
 
-The **CyborgDB JavaScript/TypeScript SDK** is the JavaScript/TypeScript client for [CyborgDB](https://www.cyborg.co) — the vector database that stays encrypted even while it's searching. Run similarity search directly on encrypted data with client-side keys; only the result of a query is ever decrypted, never the index. Built with TypeScript, it ships full type definitions for JavaScript and TypeScript apps.
+The **CyborgDB JavaScript/TypeScript SDK** is the JavaScript/TypeScript client for [CyborgDB](https://www.cyborg.co), an encrypted vector database from Cyborg Inc. CyborgDB performs vector search on encrypted data (encryption-in-use) and is self-hosted in your environment: Cyborg Inc. never receives your keys, vectors, or queries. The backing store holds only ciphertext, and only the final top-k candidates are decrypted, transiently, to rerank. Built with TypeScript, it ships full type definitions for JavaScript and TypeScript apps.
 
 This SDK talks to `cyborgdb-service`, which you self-host alongside your app. The [Quickstart](https://docs.cyborg.co/quickstart) starts the service and reaches a first query in a few minutes.
 
 ## Key Features
 
-- **Encryption-in-use**: Search runs directly on ciphertext — only the query result is decrypted, never the index or stored vectors
-- **Encrypted ANN**: Disk-backed encrypted DiskIVF index with recall within 2% of a plaintext baseline ([read the benchmarks](https://www.cyborg.co/performance))
+- **Encryption-in-use**: Search runs over ciphertext; only the final top-k candidates are decrypted, transiently, in the service to rerank
+- **Encrypted ANN**: Disk-backed encrypted DiskIVF index ([benchmarks](https://www.cyborg.co/performance))
 - **Filters on encrypted metadata**: Combine vector similarity with equality and range predicates in a single request
 - **BYOK / HYOK**: Wrap per-index keys with AWS KMS or AWS Secrets Manager, or hold the key client-side — you control the key material
 - **Per-tenant key isolation**: Per-index, per-user keys with cryptographic RBAC; revoke a user and their keys are erased
@@ -128,6 +128,27 @@ const results = await index.query({
   include: ['distance', 'metadata']
 });
 ```
+
+#### Inspecting Indexes and the Service
+
+```typescript
+// Configuration and state of an index, from one call
+const info = await index.describe();
+// { indexName, indexType, dimension, metric, storagePrecision, nLists,
+//   trainingState: 'untrained' | 'training' | 'trained',
+//   metadataSchema, bm25, embeddingModel? }
+
+// Number of vectors stored in the index
+const count = await index.getNumVectors();
+
+// Which indexes are training now, and the service's retrain threshold
+const { trainingIndexes, retrainThreshold } = await client.getTrainingStatus();
+
+// Embedding models the service can embed with: [{ name, dimension, maxSeqLength }, ...]
+const models = await client.listEmbeddingModels();
+```
+
+`embeddingModel` is present only when the index was created with one.
 
 #### Bring Your Own Key (BYOK) via KMS
 
