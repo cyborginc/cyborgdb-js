@@ -1,32 +1,18 @@
 /**
- * cyborgdb-tests adapter for the cyborgdb JS SDK.
+ * Op dispatch for the cyborgdb-tests adapter (see adapter.ts and cyborgdb-tests
+ * ADAPTERS.md). Maps each protocol op to one call on the SDK passed to
+ * createAdapter: the built package in adapter.ts, a recording fake in
+ * adapter_forwarding.test.ts. No defaults are filled in and no results are
+ * reshaped beyond what ADAPTERS.md allows.
  *
- * Reads JSON-RPC requests on fd 3 and writes responses on fd 4 (see
- * cyborgdb-tests ADAPTERS.md). Maps each op to one call on the built `cyborgdb`
- * package, imported by name so it resolves through package.json `exports` to
- * `dist/`, the code users install. Run `npm run build` first. No defaults are
- * filled in and no results are reshaped beyond what ADAPTERS.md allows.
- *
- * CYBORGDB_TESTS_VARIANT picks the SDK path: json (default) or binary. The JS
- * client is already Promise-based, so there is no async variant.
- *
- * Run under the driver, from a cyborgdb-tests checkout:
- *   CYBORG_TEST_SDK_BASE_URL=http://localhost:8000 bin/cyborgdb-tests run \
- *     --adapter "node ../cyborgdb-js/tests/conformance/adapter.mjs" \
- *     --env sdk --variant json
+ * Params are forwarded as the spec sent them, not checked against the SDK's
+ * types: invalid inputs must reach the API so the product can reject them. The
+ * rename tables are typed against the SDK's option names, so an SDK rename
+ * fails to compile here instead of silently dropping a param.
  */
 
-import {
-	closeSync,
-	createReadStream,
-	fstatSync,
-	openSync,
-	readSync,
-	realpathSync,
-	writeSync,
-} from "node:fs";
-import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { closeSync, openSync, readSync } from "node:fs";
+import type * as Cyborgdb from "../../src/index";
 
 export const PROTOCOL = 1;
 export const IMPL = "cyborgdb-js";
@@ -37,6 +23,26 @@ export const CODE_ADAPTER = -32603;
 export const CODE_PARSE = -32700;
 
 export const VARIANTS = ["json", "binary"];
+
+/** What the adapter needs from the `cyborgdb` module. */
+export type Sdk = Pick<
+	typeof Cyborgdb,
+	"Client" | "VERSION" | "CyborgDBTransportError" | "CyborgDBValidationError"
+>;
+type Client = InstanceType<typeof Cyborgdb.Client>;
+type Index = Cyborgdb.EncryptedIndex;
+type Params = Record<string, unknown>;
+/** The options object an SDK method takes. */
+type Options<F extends (...args: any[]) => unknown> = NonNullable<
+	Parameters<F>[0]
+>;
+
+export interface RpcError {
+	code: number;
+	message: string;
+	data?: { kind: string; native: string };
+}
+export type ResponseBody = { result: unknown } | { error: RpcError };
 
 const TYPED_TAGS = new Set([
 	"$f32",
@@ -57,8 +63,12 @@ export class BadParams extends Error {}
 
 /** An error thrown by a cyborgdb call. The only failure that gets a kind. */
 class SdkError extends Error {
-	constructor(nativeError) {
-		super(String(nativeError?.message ?? nativeError));
+	nativeError: unknown;
+
+	constructor(nativeError: unknown) {
+		super(
+			nativeError instanceof Error ? nativeError.message : String(nativeError),
+		);
 		this.nativeError = nativeError;
 	}
 }
@@ -67,7 +77,7 @@ class SdkError extends Error {
  * Calls into cyborgdb and awaits the result. Anything thrown here is the
  * product's answer; everything else is the adapter's.
  */
-async function sdk(call) {
+async function sdk<T>(call: () => T | Promise<T>): Promise<T> {
 	try {
 		return await call();
 	} catch (nativeError) {
@@ -82,16 +92,19 @@ async function sdk(call) {
  * knows the row length even when there are no rows.
  */
 export class Tensor {
-	constructor(values, shape) {
+	values: Float32Array;
+	shape: number[];
+
+	constructor(values: Float32Array, shape: number[]) {
 		this.values = values;
 		this.shape = shape;
 	}
 
 	/** The values as plain nested arrays, as the JSON path takes them. */
-	rows() {
+	rows(): number[] | number[][] {
 		if (this.shape.length !== 2) return Array.from(this.values);
 		const [rowCount, rowLength] = this.shape;
-		const rows = [];
+		const rows: number[][] = [];
 		for (let i = 0; i < rowCount; i++) {
 			rows.push(
 				Array.from(this.values.subarray(i * rowLength, (i + 1) * rowLength)),
@@ -105,14 +118,14 @@ export class Tensor {
  * Converts a wire value to native JS. Only a single-key object whose key is a
  * known tag is typed; any other `$` key is data.
  */
-export function decode(wireValue) {
+export function decode(wireValue: unknown): unknown {
 	if (Array.isArray(wireValue)) return wireValue.map(decode);
 	if (isPlainObject(wireValue)) {
 		const keys = Object.keys(wireValue);
 		if (keys.length === 1 && TYPED_TAGS.has(keys[0])) {
 			return decodeTyped(keys[0], wireValue[keys[0]]);
 		}
-		const native = {};
+		const native: Params = {};
 		for (const [key, value] of Object.entries(wireValue)) {
 			native[key] = decode(value);
 		}
@@ -121,7 +134,9 @@ export function decode(wireValue) {
 	return wireValue;
 }
 
-function decodeTyped(tag, payload) {
+// Payload shapes come from the protocol schema; a malformed one throws while
+// decoding and is reported as -32602.
+function decodeTyped(tag: string, payload: any): unknown {
 	switch (tag) {
 		case "$literal":
 			return payload;
@@ -131,7 +146,7 @@ function decodeTyped(tag, payload) {
 			// Plain arrays, never Float32Array: a Float32Array sends the SDK down
 			// the binary path, so the ops pick the array type per variant.
 			if (payload.length > 0 && Array.isArray(payload[0])) {
-				return payload.map((row) => row.map(decodeNumber));
+				return payload.map((row: unknown[]) => row.map(decodeNumber));
 			}
 			return payload.map(decodeNumber);
 		case "$float":
@@ -152,7 +167,7 @@ function decodeTyped(tag, payload) {
 		}
 		case "$range": {
 			const [start, stop] = payload.map(Number);
-			const ids = [];
+			const ids: string[] = [];
 			for (let i = start; i < stop; i++) ids.push(String(i));
 			return ids;
 		}
@@ -162,23 +177,30 @@ function decodeTyped(tag, payload) {
 	throw new BadParams(`unknown typed value ${tag}`);
 }
 
-function decodeNumber(number) {
+function decodeNumber(number: unknown): unknown {
 	if (isPlainObject(number) && "$float" in number) {
 		return decodeFloat(number.$float);
 	}
 	return number;
 }
 
-function decodeFloat(name) {
-	const floats = { nan: Number.NaN, inf: Infinity, "-inf": -Infinity };
-	if (!(name in floats)) throw new BadParams(`bad $float ${name}`);
-	return floats[name];
+const FLOATS: Record<string, number> = {
+	nan: Number.NaN,
+	inf: Number.POSITIVE_INFINITY,
+	"-inf": Number.NEGATIVE_INFINITY,
+};
+
+function decodeFloat(name: unknown): number {
+	if (typeof name !== "string" || !(name in FLOATS)) {
+		throw new BadParams(`bad $float ${name}`);
+	}
+	return FLOATS[name];
 }
 
 const BASE64 =
 	/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
-function decodeBase64(text) {
+function decodeBase64(text: unknown): Uint8Array {
 	// Buffer.from skips characters it doesn't know, so check strictly first.
 	if (typeof text !== "string" || !BASE64.test(text)) {
 		throw new BadParams("bad $bytes base64");
@@ -186,7 +208,10 @@ function decodeBase64(text) {
 	return new Uint8Array(Buffer.from(text, "base64"));
 }
 
-const TENSOR_DTYPES = {
+const TENSOR_DTYPES: Record<
+	string,
+	{ size: number; read: (buf: Buffer, at: number) => number }
+> = {
 	f32: { size: 4, read: (buf, at) => buf.readFloatLE(at) },
 	f16: { size: 2, read: (buf, at) => halfToFloat(buf.readUInt16LE(at)) },
 	i32: { size: 4, read: (buf, at) => buf.readInt32LE(at) },
@@ -204,7 +229,17 @@ const TENSOR_DTYPES = {
 };
 
 /** Reads a wire-form `$tensor` (an absolute path from the driver). */
-function readTensor({ path, dtype, offset, shape }) {
+function readTensor({
+	path,
+	dtype,
+	offset,
+	shape,
+}: {
+	path: string;
+	dtype: string;
+	offset: number | string;
+	shape: (number | string)[];
+}): Tensor {
 	const type = TENSOR_DTYPES[dtype];
 	if (!type) throw new BadParams(`unknown $tensor dtype ${dtype}`);
 	const dims = shape.map(Number);
@@ -226,17 +261,19 @@ function readTensor({ path, dtype, offset, shape }) {
 	return new Tensor(values, dims);
 }
 
-function halfToFloat(bits) {
+function halfToFloat(bits: number): number {
 	const sign = bits & 0x8000 ? -1 : 1;
 	const exponent = (bits >> 10) & 0x1f;
 	const fraction = bits & 0x3ff;
 	if (exponent === 0) return sign * 2 ** -14 * (fraction / 1024);
-	if (exponent === 0x1f) return fraction ? Number.NaN : sign * Infinity;
+	if (exponent === 0x1f) {
+		return fraction ? Number.NaN : sign * Number.POSITIVE_INFINITY;
+	}
 	return sign * 2 ** (exponent - 15) * (1 + fraction / 1024);
 }
 
 /** Converts a native result to a wire value. */
-export function encode(nativeValue) {
+export function encode(nativeValue: unknown): unknown {
 	if (nativeValue instanceof Uint8Array) {
 		return { $bytes: Buffer.from(nativeValue).toString("base64") };
 	}
@@ -245,7 +282,7 @@ export function encode(nativeValue) {
 	if (typeof nativeValue === "number") return encodeFloat(nativeValue);
 	if (typeof nativeValue === "bigint") return { $i64: String(nativeValue) };
 	if (isPlainObject(nativeValue)) {
-		const wire = {};
+		const wire: Params = {};
 		for (const [key, value] of Object.entries(nativeValue)) {
 			if (value !== undefined) wire[key] = encode(value);
 		}
@@ -254,18 +291,18 @@ export function encode(nativeValue) {
 	return nativeValue === undefined ? null : nativeValue;
 }
 
-function encodeFloat(number) {
+function encodeFloat(number: number): unknown {
 	if (Number.isNaN(number)) return { $float: "nan" };
-	if (number === Infinity) return { $float: "inf" };
-	if (number === -Infinity) return { $float: "-inf" };
+	if (number === Number.POSITIVE_INFINITY) return { $float: "inf" };
+	if (number === Number.NEGATIVE_INFINITY) return { $float: "-inf" };
 	return number;
 }
 
-function encodeF32(vector) {
+function encodeF32(vector: ArrayLike<number>): unknown {
 	return { $f32: Array.from(vector, encodeFloat) };
 }
 
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is Params {
 	if (value === null || typeof value !== "object") return false;
 	const proto = Object.getPrototypeOf(value);
 	return proto === Object.prototype || proto === null;
@@ -273,7 +310,7 @@ function isPlainObject(value) {
 
 // ---------- params ----------
 
-function requireParam(params, name) {
+function requireParam(params: Params, name: string): unknown {
 	if (!(name in params)) throw new BadParams(`missing ${name}`);
 	return params[name];
 }
@@ -282,16 +319,20 @@ function requireParam(params, name) {
  * Selects the params a spec set, leaving omitted ones out and renaming them
  * to the SDK's camelCase. A param sent as null is forwarded as null.
  */
-function pickParams(params, renames) {
-	const picked = {};
+function pickParams<T>(
+	params: Params,
+	renames: Record<string, keyof T & string>,
+): Partial<T> {
+	const picked: Partial<T> = {};
 	for (const [specName, sdkName] of Object.entries(renames)) {
-		if (specName in params) picked[sdkName] = params[specName];
+		if (specName in params)
+			picked[sdkName] = params[specName] as T[keyof T & string];
 	}
 	return picked;
 }
 
 /** Rejects params the SDK has no way to express. */
-function rejectParams(params, ...names) {
+function rejectParams(params: Params, ...names: string[]): void {
 	const present = names.filter((name) => name in params);
 	if (present.length > 0) {
 		throw new Unsupported(`the SDK can't express ${present.join(", ")}`);
@@ -302,9 +343,9 @@ function rejectParams(params, ...names) {
  * Renames `full_text` to the SDK's `fullText` inside each field policy. Field
  * names (including `$default`) and any other policy keys are left as sent.
  */
-function sdkMetadataSchema(schema) {
+function sdkMetadataSchema(schema: unknown): unknown {
 	if (!isPlainObject(schema)) return schema;
-	const renamed = {};
+	const renamed: Params = {};
 	for (const [field, policy] of Object.entries(schema)) {
 		if (isPlainObject(policy) && "full_text" in policy) {
 			const { full_text, ...rest } = policy;
@@ -319,7 +360,7 @@ function sdkMetadataSchema(schema) {
 // ---------- vectors per variant ----------
 
 /** Vectors for the JSON path: plain arrays, never a Float32Array. */
-function jsonVectors(vectors) {
+function jsonVectors(vectors: unknown): unknown {
 	return vectors instanceof Tensor ? vectors.rows() : vectors;
 }
 
@@ -333,7 +374,10 @@ function jsonVectors(vectors) {
  * array's shape carries for the Python SDK. Zero inline rows give no length,
  * so `dimension` is left undefined for the SDK to reject.
  */
-function binaryVectors(vectors) {
+function binaryVectors(vectors: unknown): {
+	flat: Float32Array;
+	dimension?: number;
+} {
 	if (vectors instanceof Tensor) {
 		const shape = vectors.shape;
 		return { flat: vectors.values, dimension: shape[shape.length - 1] };
@@ -350,23 +394,29 @@ function binaryVectors(vectors) {
 			"the binary path can't carry vectors of different lengths",
 		);
 	}
-	const numbers = rows ? vectors.flat() : vectors;
+	const numbers: unknown[] = rows ? vectors.flat() : vectors;
 	if (!numbers.every((number) => typeof number === "number")) {
 		throw new Unsupported("the binary path can only carry numbers");
 	}
-	let dimension;
+	let dimension: number | undefined;
 	if (rows) dimension = vectors[0].length;
 	else if (vectors.length > 0) dimension = vectors.length;
-	return { flat: Float32Array.from(numbers), dimension };
+	return { flat: Float32Array.from(numbers as number[]), dimension };
 }
 
 /** Counts the query rows a request asked for. */
-function queryRowCount(vectors, contents) {
+function queryRowCount(vectors: unknown, contents: unknown): number {
 	if (vectors !== undefined) {
 		if (vectors instanceof Tensor) {
 			return vectors.shape.length === 2 ? vectors.shape[0] : 1;
 		}
-		if (vectors.length > 0 && Array.isArray(vectors[0])) return vectors.length;
+		if (
+			Array.isArray(vectors) &&
+			vectors.length > 0 &&
+			Array.isArray(vectors[0])
+		) {
+			return vectors.length;
+		}
 		return 1;
 	}
 	if (Array.isArray(contents)) return contents.length;
@@ -374,7 +424,7 @@ function queryRowCount(vectors, contents) {
 }
 
 /** Restores the per-row nesting the SDK drops for a single query. */
-function oneListPerRow(results, rowCount) {
+function oneListPerRow(results: unknown[], rowCount: number): unknown[] {
 	if (rowCount === 1 && (results.length === 0 || !Array.isArray(results[0]))) {
 		return [results];
 	}
@@ -384,8 +434,8 @@ function oneListPerRow(results, rowCount) {
 // ---------- result encoding ----------
 
 /** Encodes one `get` row: vector as `$f32`, contents as `$bytes`. */
-function encodeItem(item) {
-	const row = {};
+function encodeItem(item: object): unknown {
+	const row: Params = {};
 	for (const [field, value] of Object.entries(item)) {
 		if (value === undefined) continue;
 		if (field === "vector" && value !== null) {
@@ -406,7 +456,7 @@ function encodeItem(item) {
 // HTTP status -> kind, from errors.yaml. 401 and 403 each name two kinds; the
 // SDK can't tell them apart, so each gets one fixed kind and the wrong guesses
 // are declared in expected-failures/cyborgdb-js.yaml.
-const STATUS_KINDS = {
+const STATUS_KINDS: Record<number, string> = {
 	400: "invalid_argument",
 	401: "unauthenticated",
 	403: "permission_denied",
@@ -431,72 +481,89 @@ const KMS_SLOT_VARIABLES = [
 // ---------- the adapter ----------
 
 /**
- * Builds the adapter around an SDK module: the real `cyborgdb` in main(), a
- * recording fake in the forwarding test.
+ * Builds the adapter around an SDK module.
  *
- * @param cyborgdb `Client`, `VERSION` and the `CyborgDB*Error` classes.
+ * @param cyborgdb `Client`, `VERSION` and the error classes it maps.
  * @param variant "json" or "binary".
  * @param env Environment variables, for the KMS slots.
  * @returns `{handle}`: runs one decoded JSON-RPC request, resolving to the
  *   response body (`{result}` or `{error}`).
  */
-export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
+export function createAdapter(
+	cyborgdb: Sdk,
+	{
+		variant = "json",
+		env = {},
+	}: { variant?: string; env?: Record<string, string | undefined> } = {},
+): {
+	handle: (request: {
+		method?: unknown;
+		params?: unknown;
+	}) => Promise<ResponseBody>;
+} {
 	if (!VARIANTS.includes(variant)) {
 		throw new Error(
 			`CYBORGDB_TESTS_VARIANT=${variant}, want one of ${VARIANTS.join(", ")}`,
 		);
 	}
-	const clients = new Map(); // handle name -> Client
-	const indexes = new Map(); // handle name -> EncryptedIndex
+	const clients = new Map<unknown, Client>();
+	const indexes = new Map<unknown, Index>();
 
-	function lookup(handles, params, name) {
+	function lookup<T>(
+		handles: Map<unknown, T>,
+		params: Params,
+		name: string,
+	): T {
 		const handleName = requireParam(params, name);
-		if (!handles.has(handleName)) {
+		const handle = handles.get(handleName);
+		if (handle === undefined) {
 			throw new BadParams(
 				`unknown ${name} handle ${JSON.stringify(handleName)}`,
 			);
 		}
-		return handles.get(handleName);
+		return handle;
 	}
 
 	/**
 	 * The op's index. The SDK binds the key at create/load, so a per-call `key`
 	 * or `user_id` override can't be passed.
 	 */
-	function indexForOp(params, ...overrides) {
+	function indexForOp(params: Params, ...overrides: string[]): Index {
 		rejectParams(params, ...overrides);
 		return lookup(indexes, params, "index");
 	}
 
 	// ---------- ops: client ----------
 
-	async function clientNew(params) {
+	async function clientNew(params: Params): Promise<null> {
 		const handleName = requireParam(params, "as");
 		rejectParams(params, "storage", "cpu_threads", "gpu");
+		type ClientOptions = ConstructorParameters<typeof cyborgdb.Client>[0];
 		const options = {
 			baseUrl: requireParam(params, "base_url"),
-			...pickParams(params, { api_key: "apiKey" }),
-		};
+			...pickParams<ClientOptions>(params, { api_key: "apiKey" }),
+		} as ClientOptions;
 		clients.set(handleName, await sdk(() => new cyborgdb.Client(options)));
 		return null;
 	}
 
-	async function listIndexes(params) {
+	async function listIndexes(params: Params): Promise<unknown> {
 		const client = lookup(clients, params, "client");
 		return encode(await sdk(() => client.listIndexes()));
 	}
 
-	async function health(params) {
+	async function health(params: Params): Promise<unknown> {
 		const client = lookup(clients, params, "client");
 		return encode(await sdk(() => client.getHealth()));
 	}
 
-	async function createIndex(params) {
+	async function createIndex(params: Params): Promise<null> {
 		const client = lookup(clients, params, "client");
 		const handleName = requireParam(params, "as");
+		type CreateOptions = Options<Client["createIndex"]>;
 		const options = {
 			indexName: requireParam(params, "name"),
-			...pickParams(params, {
+			...pickParams<CreateOptions>(params, {
 				key: "indexKey",
 				kms_name: "kmsName",
 				dimension: "dimension",
@@ -508,35 +575,40 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 				bm25_b: "bm25B",
 				embedding_model: "embeddingModel",
 			}),
-		};
+		} as CreateOptions;
 		if ("metadataSchema" in options) {
-			options.metadataSchema = sdkMetadataSchema(options.metadataSchema);
+			options.metadataSchema = sdkMetadataSchema(
+				options.metadataSchema,
+			) as CreateOptions["metadataSchema"];
 		}
 		indexes.set(handleName, await sdk(() => client.createIndex(options)));
 		return null;
 	}
 
-	async function loadIndex(params) {
+	async function loadIndex(params: Params): Promise<null> {
 		const client = lookup(clients, params, "client");
 		const handleName = requireParam(params, "as");
 		rejectParams(params, "user_id");
+		type LoadOptions = Options<Client["loadIndex"]>;
 		const options = {
 			indexName: requireParam(params, "name"),
-			...pickParams(params, { key: "indexKey" }),
-		};
+			...pickParams<LoadOptions>(params, { key: "indexKey" }),
+		} as LoadOptions;
 		indexes.set(handleName, await sdk(() => client.loadIndex(options)));
 		return null;
 	}
 
 	// ---------- ops: index ----------
 
-	async function deleteIndex(params) {
+	async function deleteIndex(params: Params): Promise<null> {
 		const index = indexForOp(params, "key");
 		await sdk(() => index.deleteIndex());
 		return null;
 	}
 
-	async function upsert(params) {
+	type UpsertOptions = Options<Index["upsert"]>;
+
+	async function upsert(params: Params): Promise<null> {
 		const index = indexForOp(params, "key", "user_id");
 		if (!("items" in params) && !("ids" in params)) {
 			throw new BadParams("upsert needs items or ids");
@@ -550,14 +622,20 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 	}
 
 	/** `upsert` options for the JSON path: items, or ids + vectors + metadata. */
-	function jsonUpsertOptions(params) {
-		if ("items" in params) return { items: params.items };
-		const options = pickParams(params, {
+	function jsonUpsertOptions(params: Params): UpsertOptions {
+		if ("items" in params) {
+			return pickParams<UpsertOptions>(params, { items: "items" });
+		}
+		const options = pickParams<UpsertOptions>(params, {
 			ids: "ids",
 			vectors: "vectors",
 			metadata: "metadata",
 		});
-		if ("vectors" in options) options.vectors = jsonVectors(options.vectors);
+		if ("vectors" in options) {
+			options.vectors = jsonVectors(
+				options.vectors,
+			) as UpsertOptions["vectors"];
+		}
 		return options;
 	}
 
@@ -565,15 +643,17 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 	 * `upsert` options for the binary path: ids and a flat Float32Array, which
 	 * is what routes the SDK to /upsert-binary. Items become columns.
 	 */
-	function binaryUpsertOptions(params) {
+	function binaryUpsertOptions(params: Params): UpsertOptions {
 		if ("ids" in params) {
 			if (!("vectors" in params)) {
 				throw new Unsupported("the binary upsert needs vectors");
 			}
 			return {
-				ids: params.ids,
+				...pickParams<UpsertOptions>(params, {
+					ids: "ids",
+					metadata: "metadata",
+				}),
 				vectors: binaryVectors(params.vectors).flat,
-				...pickParams(params, { metadata: "metadata" }),
 			};
 		}
 		const items = params.items;
@@ -595,53 +675,55 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 				);
 			}
 		}
-		const options = {
+		const columns: Params = {
 			ids: items.map((item) => item.id),
 			vectors: binaryVectors(items.map((item) => item.vector)).flat,
 		};
 		for (const field of ["metadata", "contents"]) {
 			if (items.some((item) => field in item)) {
-				options[field] = items.map((item) =>
+				columns[field] = items.map((item) =>
 					field in item ? item[field] : null,
 				);
 			}
 		}
 		// The binary upsert takes contents as (string | null)[]; bytes are only
 		// expressible on the JSON path.
-		if (options.contents?.some((contents) => contents instanceof Uint8Array)) {
+		const contents = columns.contents as unknown[] | undefined;
+		if (contents?.some((value) => value instanceof Uint8Array)) {
 			throw new Unsupported(
 				"the binary upsert takes contents as strings, not bytes",
 			);
 		}
-		return options;
+		return columns as UpsertOptions;
 	}
 
-	async function get(params) {
+	async function get(params: Params): Promise<unknown> {
 		const index = indexForOp(params, "key", "user_id");
+		type GetOptions = Options<Index["get"]>;
 		const options = {
 			ids: requireParam(params, "ids"),
-			...pickParams(params, { include: "include" }),
-		};
+			...pickParams<GetOptions>(params, { include: "include" }),
+		} as GetOptions;
 		const rows = await sdk(() => index.get(options));
 		return rows.map(encodeItem);
 	}
 
-	async function deleteIds(params) {
+	async function deleteIds(params: Params): Promise<null> {
 		const index = indexForOp(params, "key", "user_id");
-		const ids = requireParam(params, "ids");
+		const ids = requireParam(params, "ids") as string[];
 		await sdk(() => index.delete({ ids }));
 		return null;
 	}
 
-	async function listIds(params) {
+	async function listIds(params: Params): Promise<unknown> {
 		const index = indexForOp(params, "key", "user_id");
 		const response = await sdk(() => index.listIds());
 		return encode(response.ids); // unwrap the documented {ids, count} envelope
 	}
 
-	async function train(params) {
+	async function train(params: Params): Promise<null> {
 		const index = indexForOp(params, "key", "user_id");
-		const options = pickParams(params, {
+		const options = pickParams<Options<Index["train"]>>(params, {
 			n_lists: "nLists",
 			batch_size: "batchSize",
 			max_iters: "maxIters",
@@ -652,25 +734,25 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 		return null;
 	}
 
-	const QUERY_OPTIONS = {
-		top_k: "topK",
-		n_probes: "nProbes",
-		filters: "filters",
-		include: "include",
-		greedy: "greedy",
-		rerank_mult: "rerankMult",
-		text: "text",
-		text_fields: "textFields",
-		text_field_weights: "textFieldWeights",
-		require_all_terms: "requireAllTerms",
-		alpha: "alpha",
-		rrf_k: "rrfK",
-		window_mult: "windowMult",
-	};
+	type QueryOptions = Options<Index["query"]>;
 
-	async function query(params) {
+	async function query(params: Params): Promise<unknown> {
 		const index = indexForOp(params, "key", "user_id");
-		const options = pickParams(params, QUERY_OPTIONS);
+		const options = pickParams<QueryOptions>(params, {
+			top_k: "topK",
+			n_probes: "nProbes",
+			filters: "filters",
+			include: "include",
+			greedy: "greedy",
+			rerank_mult: "rerankMult",
+			text: "text",
+			text_fields: "textFields",
+			text_field_weights: "textFieldWeights",
+			require_all_terms: "requireAllTerms",
+			alpha: "alpha",
+			rrf_k: "rrfK",
+			window_mult: "windowMult",
+		});
 		if (variant === "binary") {
 			rejectParams(params, "contents");
 			if (!("vectors" in params)) {
@@ -681,13 +763,15 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 			if (dimension !== undefined) options.dimension = dimension;
 		} else {
 			if ("vectors" in params) {
-				options.queryVectors = jsonVectors(params.vectors);
+				options.queryVectors = jsonVectors(
+					params.vectors,
+				) as QueryOptions["queryVectors"];
 			}
 			if ("contents" in params) {
 				if (Array.isArray(params.contents)) {
 					throw new Unsupported("queryContents takes one string, not a list");
 				}
-				options.queryContents = params.contents;
+				options.queryContents = params.contents as string;
 			}
 		}
 		const response = await sdk(() => index.query(options));
@@ -695,9 +779,9 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 		return encode(oneListPerRow(response.results, rowCount));
 	}
 
-	async function queryMetadata(params) {
+	async function queryMetadata(params: Params): Promise<unknown> {
 		const index = indexForOp(params, "key", "user_id");
-		const options = pickParams(params, {
+		const options = pickParams<Options<Index["queryMetadata"]>>(params, {
 			filters: "filters",
 			top_k: "topK",
 			order_by: "orderBy",
@@ -710,14 +794,14 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 		return encode(await sdk(() => index.queryMetadata(options)));
 	}
 
-	async function createUser(params) {
+	async function createUser(params: Params): Promise<unknown> {
 		const index = indexForOp(params, "key", "user_id", "user_kek");
-		const permissions = requireParam(params, "permissions");
+		const permissions = requireParam(params, "permissions") as string[];
 		const user = await sdk(() => index.createUser({ permissions }));
 		return encode({ user_id: user.userId, api_key: user.apiKey });
 	}
 
-	async function listUsers(params) {
+	async function listUsers(params: Params): Promise<unknown> {
 		const index = indexForOp(params, "key");
 		const users = await sdk(() => index.listUsers());
 		return encode(
@@ -728,20 +812,20 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 		);
 	}
 
-	async function deleteUser(params) {
+	async function deleteUser(params: Params): Promise<null> {
 		const index = indexForOp(params, "key");
 		let userId = requireParam(params, "user_id");
 		if (userId instanceof Uint8Array) {
 			userId = Buffer.from(userId).toString("hex"); // the SDK's hex form
 		}
-		await sdk(() => index.deleteUser({ userId }));
+		await sdk(() => index.deleteUser({ userId: userId as string }));
 		return null;
 	}
 
 	// index.describe, index.num_vectors, client.embedding_models and
 	// client.training_status have no SDK method, and the client.kms_* blob ops
 	// are core only; they stay out of OPS so they reply -32601.
-	const OPS = {
+	const OPS: Record<string, (params: Params) => Promise<unknown>> = {
 		"client.new": clientNew,
 		"client.list_indexes": listIndexes,
 		"client.health": health,
@@ -760,7 +844,7 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 		"index.delete_user": deleteUser,
 	};
 
-	function capabilities() {
+	function capabilities(): string[] {
 		const names = [
 			"vector",
 			"auto_dimension",
@@ -786,34 +870,44 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 		return names;
 	}
 
-	function kindOf(nativeError) {
+	function kindOf(nativeError: unknown): string {
+		const fields = (nativeError ?? {}) as {
+			kind?: unknown;
+			statusCode?: unknown;
+		};
 		// Prefer the SDK's own kind once it exposes one (SDK.md area 14); until
 		// then, the error class and status code. Never the message.
-		if (typeof nativeError?.kind === "string" && nativeError.kind) {
-			return nativeError.kind;
-		}
+		if (typeof fields.kind === "string" && fields.kind) return fields.kind;
 		if (nativeError instanceof cyborgdb.CyborgDBTransportError) {
 			return "transport";
 		}
-		const statusCode = nativeError?.statusCode ?? null;
+		const statusCode = fields.statusCode ?? null;
 		if (
 			statusCode === null &&
 			nativeError instanceof cyborgdb.CyborgDBValidationError
 		) {
 			return "invalid_argument";
 		}
-		return STATUS_KINDS[statusCode] ?? "internal";
+		return STATUS_KINDS[statusCode as number] ?? "internal";
 	}
 
-	function nativeDescription(nativeError) {
-		const name = nativeError?.name ?? typeof nativeError;
-		const statusCode = nativeError?.statusCode ?? null;
+	function nativeDescription(nativeError: unknown): string {
+		const fields = (nativeError ?? {}) as {
+			name?: unknown;
+			statusCode?: unknown;
+		};
+		const name =
+			typeof fields.name === "string" ? fields.name : typeof nativeError;
+		const statusCode = fields.statusCode ?? null;
 		return statusCode === null ? name : `${name} ${statusCode}`;
 	}
 
 	/** Runs one decoded JSON-RPC request; resolves to `{result}` or `{error}`. */
-	async function handle(request) {
-		const method = request.method;
+	async function handle(request: {
+		method?: unknown;
+		params?: unknown;
+	}): Promise<ResponseBody> {
+		const method = String(request.method);
 		if (method === "hello") {
 			return {
 				result: {
@@ -834,9 +928,9 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 			};
 		}
 		// A decoding failure never reached the SDK, so it is never a product error.
-		let params;
+		let params: Params;
 		try {
-			params = decode(request.params ?? {});
+			params = decode(request.params ?? {}) as Params;
 		} catch (error) {
 			if (error instanceof Unsupported) {
 				return { error: { code: CODE_UNSUPPORTED, message: error.message } };
@@ -844,7 +938,7 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 			return {
 				error: {
 					code: CODE_INVALID_PARAMS,
-					message: `could not decode params: ${error.message}`,
+					message: `could not decode params: ${(error as Error).message}`,
 				},
 			};
 		}
@@ -876,68 +970,9 @@ export function createAdapter(cyborgdb, { variant = "json", env = {} } = {}) {
 	return { handle };
 }
 
-function adapterError(error) {
-	return {
-		error: {
-			code: CODE_ADAPTER,
-			message: `adapter error: ${error?.stack ?? error}`,
-		},
-	};
-}
-
-/** Serves requests from fd 3 until the driver closes it, one at a time. */
-async function main() {
-	const variant = process.env.CYBORGDB_TESTS_VARIANT || "json";
-	try {
-		fstatSync(3);
-		fstatSync(4);
-	} catch {
-		console.error(
-			"adapter: fd 3/4 not open; run under the cyborgdb-tests driver",
-		);
-		process.exit(1);
-	}
-	const cyborgdb = await import("cyborgdb");
-	let adapter;
-	try {
-		adapter = createAdapter(cyborgdb, { variant, env: process.env });
-	} catch (error) {
-		console.error(`adapter: ${error.message}`);
-		process.exit(1);
-	}
-	const lines = createInterface({
-		input: createReadStream(null, { fd: 3 }),
-		crlfDelay: Infinity,
-	});
-	for await (const rawLine of lines) {
-		const line = rawLine.trim();
-		if (!line) continue;
-		let response;
-		let request;
-		try {
-			request = JSON.parse(line);
-		} catch (error) {
-			response = {
-				jsonrpc: "2.0",
-				id: null,
-				error: { code: CODE_PARSE, message: error.message },
-			};
-		}
-		if (response === undefined) {
-			response = { jsonrpc: "2.0", id: request?.id ?? null };
-			try {
-				Object.assign(response, await adapter.handle(request));
-			} catch (error) {
-				Object.assign(response, adapterError(error)); // report it, keep serving
-			}
-		}
-		writeSync(4, `${JSON.stringify(response)}\n`);
-	}
-}
-
-if (
-	process.argv[1] &&
-	realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-	await main();
+/** The response for a bug in the adapter itself: -32603, never a kind. */
+export function adapterError(error: unknown): ResponseBody {
+	const detail =
+		error instanceof Error ? (error.stack ?? error.message) : error;
+	return { error: { code: CODE_ADAPTER, message: `adapter error: ${detail}` } };
 }
