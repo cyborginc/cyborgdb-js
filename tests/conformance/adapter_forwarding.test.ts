@@ -22,6 +22,7 @@ import {
 	CODE_OP_FAILED,
 	CODE_UNSUPPORTED,
 	createAdapter,
+	parseRequest,
 	type ResponseBody,
 	type RpcError,
 	type Sdk,
@@ -978,6 +979,29 @@ describe("errors", () => {
 });
 
 describe("typed values and the handshake", () => {
+	test("integers beyond 2^53 are kept as source text, other numbers parse as usual", () => {
+		const parsed = parseRequest(
+			'{"a":18446744073709551615,"b":-9007199254740993,"c":9007199254740991,"d":1e300,"e":1.5,"f":[4294967296]}',
+		) as Record<string, unknown>;
+		expect(parsed.a).toMatchObject({ source: "18446744073709551615" });
+		expect(parsed.b).toMatchObject({ source: "-9007199254740993" });
+		expect(parsed.c).toBe(9007199254740991);
+		expect(parsed.d).toBe(1e300);
+		expect(parsed.e).toBe(1.5);
+		expect(parsed.f).toStrictEqual([4294967296]);
+	});
+
+	test("an integer a JS number can't hold is unsupported, never rounded", async () => {
+		const h = await harness();
+		const { params } = parseRequest(
+			'{"params":{"client":"c","as":"w","name":"w","dimension":18446744073709551615}}',
+		) as { params: Params };
+		expect(await errorCode(h, "client.create_index", params)).toBe(
+			CODE_UNSUPPORTED,
+		);
+		expect(h.calls).toHaveLength(0);
+	});
+
 	test("unknown $ keys are data and $literal passes verbatim", async () => {
 		const h = await harness();
 		await ok(h, "index.query_metadata", {

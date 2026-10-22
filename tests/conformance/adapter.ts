@@ -23,6 +23,7 @@ import {
 	adapterError,
 	CODE_PARSE,
 	createAdapter,
+	parseRequest,
 	type Sdk,
 } from "./dispatch.ts";
 
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
 		if (!line) continue;
 		let request: { id?: unknown; method?: unknown; params?: unknown };
 		try {
-			request = JSON.parse(line);
+			request = parseRequest(line) as typeof request;
 		} catch (error) {
 			const response = {
 				jsonrpc: "2.0",

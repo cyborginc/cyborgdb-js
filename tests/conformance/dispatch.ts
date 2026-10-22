@@ -61,6 +61,38 @@ export class Unsupported extends Error {}
 /** The request itself is malformed; reported as -32602. */
 export class BadParams extends Error {}
 
+/**
+ * A JSON integer a JS number can't hold exactly (beyond 2^53), kept as its
+ * source text. JSON.parse would round it, so the SDK would get a different
+ * value than the spec sent; decode reports it as -32601 instead.
+ */
+export class UnsafeInteger {
+	source: string;
+
+	constructor(source: string) {
+		this.source = source;
+	}
+}
+
+/**
+ * JSON.parse with integers beyond 2^53 kept as UnsafeInteger. Uses the
+ * reviver's source text (Node >= 21).
+ */
+export function parseRequest(line: string): unknown {
+	return JSON.parse(line, (_key, value, context?: { source?: string }) => {
+		const source = context?.source;
+		if (
+			typeof value === "number" &&
+			!Number.isSafeInteger(value) &&
+			source !== undefined &&
+			/^-?\d+$/.test(source)
+		) {
+			return new UnsafeInteger(source);
+		}
+		return value;
+	});
+}
+
 /** An error thrown by a cyborgdb call. The only failure that gets a kind. */
 class SdkError extends Error {
 	nativeError: unknown;
@@ -119,6 +151,9 @@ export class Tensor {
  * known tag is typed; any other `$` key is data.
  */
 export function decode(wireValue: unknown): unknown {
+	if (wireValue instanceof UnsafeInteger) {
+		throw new Unsupported(`a JS number can't hold ${wireValue.source} exactly`);
+	}
 	if (Array.isArray(wireValue)) return wireValue.map(decode);
 	if (isPlainObject(wireValue)) {
 		const keys = Object.keys(wireValue);
