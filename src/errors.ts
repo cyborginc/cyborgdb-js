@@ -6,7 +6,7 @@
  * `Error`. Used by both the `CyborgDB` client and `EncryptedIndex` so the two
  * don't carry divergent copies of this logic.
  */
-import type { ErrorResponseModel, HTTPValidationError } from "./models";
+import type { ErrorResponseModel, FieldError } from "./models";
 
 // Opt-in verbose diagnostics. Off by default so the SDK doesn't spam the host
 // app's console on every failure — the thrown Error already carries the
@@ -78,6 +78,10 @@ export interface CyborgDBErrorContext {
 	retryAfter?: number | null;
 	/** Index this call targeted, when the call site knows it. */
 	indexName?: string | null;
+	/** What went wrong; see `CyborgDBError.kind`. */
+	kind?: string | null;
+	/** Per-field rejections; see `CyborgDBError.errors`. */
+	errors?: FieldError[] | null;
 	/** The originating error. */
 	cause?: unknown;
 }
@@ -87,11 +91,25 @@ export interface CyborgDBErrorContext {
  * failure; catch a subclass to handle one kind.
  */
 export class CyborgDBError extends Error {
+	protected static defaultKind: string | null = null;
+
 	readonly statusCode: number | null;
 	readonly requestId: string | null;
 	readonly detail: string | null;
 	readonly retryAfter: number | null;
 	readonly indexName: string | null;
+	/**
+	 * What went wrong, for branching where a status is shared (401 is
+	 * `wrong_key` or `unauthenticated`; 403 is `permission_denied` or
+	 * `quota_exceeded`). The service may add kinds; treat an unknown one like
+	 * `internal`. Null only for an error raised without a status or kind.
+	 */
+	readonly kind: string | null;
+	/**
+	 * The service's per-field rejections, one `{field, message, type}` each.
+	 * Empty when the request didn't fail field validation.
+	 */
+	readonly errors: FieldError[];
 	/**
 	 * Whether backing off and retrying can succeed. Fixed per error type —
 	 * retry loops branch on this rather than re-deriving a status table.
@@ -109,6 +127,9 @@ export class CyborgDBError extends Error {
 		this.detail = context.detail ?? null;
 		this.retryAfter = context.retryAfter ?? null;
 		this.indexName = context.indexName ?? null;
+		this.kind =
+			context.kind ?? (new.target as typeof CyborgDBError).defaultKind;
+		this.errors = context.errors ?? [];
 	}
 }
 
@@ -118,10 +139,17 @@ export class CyborgDBError extends Error {
  * pre-flight.
  */
 export class CyborgDBValidationError extends CyborgDBError {
+	protected static override defaultKind = "invalid_argument";
 	readonly retryable = false;
 }
 
-/** HTTP 401 and 403. Check the API key and its permissions. */
+/**
+ * HTTP 401 and 403. Check the API key, the index key and permissions.
+ *
+ * Inspect `kind` to tell them apart: `unauthenticated` (API key missing or
+ * rejected), `wrong_key` (the index key doesn't decrypt the index),
+ * `permission_denied` or `quota_exceeded`.
+ */
 export class CyborgDBAuthenticationError extends CyborgDBError {
 	readonly retryable = false;
 }
@@ -162,7 +190,28 @@ export class CyborgDBServiceError extends CyborgDBError {
  * caller action, and the difference is diagnostic — read `detail`.
  */
 export class CyborgDBTransportError extends CyborgDBError {
+	protected static override defaultKind = "transport";
 	readonly retryable = true;
+}
+
+// Status -> kind for services that predate kinds; the service's own defaults.
+const STATUS_KINDS: Record<number, string> = {
+	400: "invalid_argument",
+	401: "unauthenticated",
+	403: "permission_denied",
+	404: "not_found",
+	409: "already_exists",
+	422: "invalid_argument",
+	429: "rate_limited",
+	502: "unavailable",
+	503: "unavailable",
+	504: "unavailable",
+};
+
+function kindForStatus(status: number | null): string | null {
+	if (status === null) return null;
+	if (status in STATUS_KINDS) return STATUS_KINDS[status];
+	return status >= 400 && status < 500 ? "invalid_argument" : "internal";
 }
 
 /**
@@ -347,6 +396,8 @@ export function handleApiError(
 		detail,
 		retryAfter,
 		indexName: context.indexName ?? null,
+		kind: kindOf(errorBody) ?? kindForStatus(status),
+		errors: fieldErrorsOf(errorBody),
 		cause: error,
 	};
 
@@ -373,7 +424,7 @@ export function handleApiError(
 		"detail" in errorBody &&
 		Array.isArray((errorBody as { detail: unknown }).detail)
 	) {
-		const err = errorBody as HTTPValidationError;
+		const err = errorBody as { detail: unknown };
 		const message = `Validation failed: ${JSON.stringify(err.detail)}`;
 		throw (
 			errorForStatus(status ?? 422, message, {
@@ -405,12 +456,28 @@ export function handleApiError(
 
 /** Pull the service's own message out of a parsed error body. */
 function detailOf(errorBody: unknown): string | null {
+	if (typeof errorBody === "string") return errorBody !== "" ? errorBody : null;
 	if (typeof errorBody !== "object" || errorBody === null) return null;
 	if (!("detail" in errorBody)) return null;
 	const value = (errorBody as ErrorResponseModel).detail;
 	if (typeof value === "string") return value;
 	if (value === undefined || value === null) return null;
 	return JSON.stringify(value);
+}
+
+function kindOf(errorBody: unknown): string | null {
+	if (typeof errorBody !== "object" || errorBody === null) return null;
+	const value = (errorBody as ErrorResponseModel).kind;
+	return typeof value === "string" && value !== "" ? value : null;
+}
+
+function fieldErrorsOf(errorBody: unknown): FieldError[] | null {
+	if (typeof errorBody !== "object" || errorBody === null) return null;
+	const value = (errorBody as ErrorResponseModel).errors;
+	if (!Array.isArray(value)) return null;
+	return value.filter(
+		(item): item is FieldError => typeof item === "object" && item !== null,
+	);
 }
 
 // --- extractErrorDetail (used to detect "index does not exist" on delete) --

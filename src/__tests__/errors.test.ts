@@ -41,6 +41,7 @@ const TAXONOMY: Array<[number, typeof CyborgDBError, boolean]> = [
 /** A server that answers every request with one status and a FastAPI body. */
 async function serverReturning(
 	status: number,
+	body: unknown = { detail: "synthetic failure" },
 ): Promise<{ url: string; close: () => Promise<void> }> {
 	const server: Server = createServer((_req, res) => {
 		const headers: Record<string, string> = {
@@ -49,7 +50,7 @@ async function serverReturning(
 		};
 		if (status === 429) headers["Retry-After"] = "2.5";
 		res.writeHead(status, headers);
-		res.end(JSON.stringify({ detail: "synthetic failure" }));
+		res.end(typeof body === "string" ? body : JSON.stringify(body));
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 	const { port } = server.address() as AddressInfo;
@@ -59,8 +60,11 @@ async function serverReturning(
 	};
 }
 
-async function errorFromStatus(status: number): Promise<unknown> {
-	const { url, close } = await serverReturning(status);
+async function errorFromStatus(
+	status: number,
+	body?: unknown,
+): Promise<unknown> {
+	const { url, close } = await serverReturning(status, body);
 	try {
 		const client = new CyborgDB({ baseUrl: url, apiKey: "test-key" });
 		await client.listIndexes();
@@ -73,15 +77,14 @@ async function errorFromStatus(status: number): Promise<unknown> {
 }
 
 describe("status mapping", () => {
-	it.each(TAXONOMY)(
-		"maps HTTP %i to the class the taxonomy names",
-		async (status, expected, retryable) => {
-			const err = await errorFromStatus(status);
-			expect(err).toBeInstanceOf(expected);
-			expect((err as CyborgDBError).retryable).toBe(retryable);
-			expect((err as CyborgDBError).statusCode).toBe(status);
-		},
-	);
+	it.each(
+		TAXONOMY,
+	)("maps HTTP %i to the class the taxonomy names", async (status, expected, retryable) => {
+		const err = await errorFromStatus(status);
+		expect(err).toBeInstanceOf(expected);
+		expect((err as CyborgDBError).retryable).toBe(retryable);
+		expect((err as CyborgDBError).statusCode).toBe(status);
+	});
 });
 
 describe("typed errors", () => {
@@ -107,19 +110,18 @@ describe("typed errors", () => {
 		expect((err as CyborgDBError).cause).toBeDefined();
 	});
 
-	it.each([405, 413, 418])(
-		"throws the base CyborgDBError for unmapped HTTP %i",
-		async (status) => {
-			const err = await errorFromStatus(status);
-			expect(err).toBeInstanceOf(CyborgDBError);
-			expect(err?.constructor).toBe(CyborgDBError);
-			const typed = err as CyborgDBError;
-			expect(typed.statusCode).toBe(status);
-			expect(typed.detail).toBe("synthetic failure");
-			expect(typed.requestId).toBe("req-abc123");
-			expect(typed.retryable).toBe(false);
-		},
-	);
+	it.each([
+		405, 413, 418,
+	])("throws the base CyborgDBError for unmapped HTTP %i", async (status) => {
+		const err = await errorFromStatus(status);
+		expect(err).toBeInstanceOf(CyborgDBError);
+		expect(err?.constructor).toBe(CyborgDBError);
+		const typed = err as CyborgDBError;
+		expect(typed.statusCode).toBe(status);
+		expect(typed.detail).toBe("synthetic failure");
+		expect(typed.requestId).toBe("req-abc123");
+		expect(typed.retryable).toBe(false);
+	});
 
 	it("throws CyborgDBTransportError when nothing answers", async () => {
 		const { url, close } = await serverReturning(200);
@@ -198,6 +200,97 @@ describe("typed errors", () => {
 		expect(typed.statusCode).toBeNull();
 		expect(typed.retryable).toBe(true);
 		expect(typed.cause).toBe(fetchError);
+	});
+});
+
+describe("error kinds", () => {
+	it.each([
+		[401, "wrong_key", CyborgDBAuthenticationError],
+		[401, "unauthenticated", CyborgDBAuthenticationError],
+		[403, "quota_exceeded", CyborgDBAuthenticationError],
+		[403, "permission_denied", CyborgDBAuthenticationError],
+		[400, "failed_precondition", CyborgDBValidationError],
+		[500, "data_loss", CyborgDBServiceError],
+	] as Array<
+		[number, string, typeof CyborgDBError]
+	>)("carries the service's kind on HTTP %i (%s)", async (status, kind, expected) => {
+		const err = await errorFromStatus(status, {
+			detail: "synthetic failure",
+			kind,
+		});
+		expect(err).toBeInstanceOf(expected);
+		expect((err as CyborgDBError).kind).toBe(kind);
+	});
+
+	it("passes an unknown kind through", async () => {
+		const err = await errorFromStatus(400, {
+			detail: "synthetic failure",
+			kind: "some_new_kind",
+		});
+		expect(err).toBeInstanceOf(CyborgDBValidationError);
+		expect((err as CyborgDBError).kind).toBe("some_new_kind");
+	});
+
+	it.each([
+		[400, "invalid_argument"],
+		[401, "unauthenticated"],
+		[403, "permission_denied"],
+		[404, "not_found"],
+		[405, "invalid_argument"],
+		[409, "already_exists"],
+		[422, "invalid_argument"],
+		[429, "rate_limited"],
+		[500, "internal"],
+		[503, "unavailable"],
+	])("falls back to the status for HTTP %i (%s)", async (status, kind) => {
+		const err = await errorFromStatus(status);
+		expect((err as CyborgDBError).kind).toBe(kind);
+	});
+
+	it("derives the kind when the body is not JSON", async () => {
+		const err = await errorFromStatus(503, "Service Unavailable");
+		expect((err as CyborgDBError).kind).toBe("unavailable");
+		expect((err as CyborgDBError).detail).toBe("Service Unavailable");
+	});
+
+	it("carries the service's per-field rejections", async () => {
+		const fieldErrors = [
+			{
+				field: "body.items.0.vector",
+				message: "Field required",
+				type: "missing",
+			},
+		];
+		const err = await errorFromStatus(422, {
+			detail: "synthetic failure",
+			kind: "invalid_argument",
+			errors: fieldErrors,
+		});
+		expect((err as CyborgDBError).errors).toEqual(fieldErrors);
+	});
+
+	it("leaves errors empty when there are no field rejections", async () => {
+		const err = await errorFromStatus(404, {
+			detail: "synthetic failure",
+			kind: "not_found",
+		});
+		expect((err as CyborgDBError).errors).toEqual([]);
+	});
+
+	it("defaults client-side validation errors to invalid_argument", () => {
+		const err = new CyborgDBValidationError("bad");
+		expect(err.kind).toBe("invalid_argument");
+		expect(err.errors).toEqual([]);
+	});
+
+	it("defaults transport errors to transport", async () => {
+		const { url, close } = await serverReturning(200);
+		await close(); // nothing is listening now
+		const client = new CyborgDB({ baseUrl: url, apiKey: "test-key" });
+		const err = await client.listIndexes().catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(CyborgDBTransportError);
+		expect((err as CyborgDBError).kind).toBe("transport");
+		expect((err as CyborgDBError).errors).toEqual([]);
 	});
 });
 
