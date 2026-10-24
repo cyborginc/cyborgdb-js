@@ -245,7 +245,7 @@ describe("CyborgDB API Contract Tests", () => {
 	});
 
 	describe("05b - Client.listEmbeddingModels()", () => {
-		it("should return models with name, dimension and maxSeqLength", async () => {
+		it("should return models with name, revision, dimension, maxSeqLength and normalize", async () => {
 			const models = await client.listEmbeddingModels();
 
 			expect(Array.isArray(models)).toBe(true);
@@ -253,12 +253,20 @@ describe("CyborgDB API Contract Tests", () => {
 			models.forEach((model) => {
 				validateExactKeys(
 					model,
-					new Set(["name", "dimension", "maxSeqLength"]),
+					new Set([
+						"name",
+						"revision",
+						"dimension",
+						"maxSeqLength",
+						"normalize",
+					]),
 					"listEmbeddingModels() entry",
 				);
 				expect(typeof model.name).toBe("string");
+				expect(typeof model.revision).toBe("string");
 				expect(Number.isInteger(model.dimension)).toBe(true);
 				expect(Number.isInteger(model.maxSeqLength)).toBe(true);
+				expect(typeof model.normalize).toBe("boolean");
 			});
 			expect(models.map((m) => m.name).join(" ")).toMatch(/all-MiniLM-L6-v2/);
 		});

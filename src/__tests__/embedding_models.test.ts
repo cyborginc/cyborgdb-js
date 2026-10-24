@@ -26,10 +26,18 @@ beforeEach(() => {
 	models = [
 		{
 			name: "sentence-transformers/all-MiniLM-L6-v2",
+			revision: "c9745ed1d9f207416be6d2e6f8de32d1f16199bf",
 			dimension: 384,
 			max_seq_length: 256,
+			normalize: true,
 		},
-		{ name: "BAAI/bge-base-en-v1.5", dimension: 768, max_seq_length: 512 },
+		{
+			name: "BAAI/bge-base-en-v1.5",
+			revision: "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+			dimension: 768,
+			max_seq_length: 512,
+			normalize: false,
+		},
 	];
 });
 
@@ -40,10 +48,18 @@ describe("listEmbeddingModels()", () => {
 		expect(await client().listEmbeddingModels()).toEqual([
 			{
 				name: "sentence-transformers/all-MiniLM-L6-v2",
+				revision: "c9745ed1d9f207416be6d2e6f8de32d1f16199bf",
 				dimension: 384,
 				maxSeqLength: 256,
+				normalize: true,
 			},
-			{ name: "BAAI/bge-base-en-v1.5", dimension: 768, maxSeqLength: 512 },
+			{
+				name: "BAAI/bge-base-en-v1.5",
+				revision: "a5beb1e3e68b9ab74eb54cfd186867f64f240e1a",
+				dimension: 768,
+				maxSeqLength: 512,
+				normalize: false,
+			},
 		]);
 	});
 
