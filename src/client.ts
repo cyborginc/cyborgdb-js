@@ -134,20 +134,24 @@ export class CyborgDB {
 			console.warn("SSL verification disabled in Node.js environment");
 		}
 
-		// Pre-read the body of non-2xx responses and stash the parsed JSON on
-		// the Response.  The generated runtime throws a `ResponseError` whose
-		// `response.body` is a `ReadableStream`, so `handleApiError` can't
-		// recover the server's `detail` synchronously without this.
+		// Pre-read the body of non-2xx responses and stash it on the Response,
+		// parsed when it is JSON and as text otherwise.  The generated runtime
+		// throws a `ResponseError` whose `response.body` is a `ReadableStream`,
+		// so `handleApiError` can't recover the server's `detail` synchronously
+		// without this.
 		const inner = fetchApi ?? globalThis.fetch.bind(globalThis);
 		fetchApi = async (url: RequestInfo | URL, init?: RequestInit) => {
 			const res = await inner(url, init);
 			if (!res.ok) {
 				try {
-					(res as unknown as { parsedBody?: unknown }).parsedBody = await res
-						.clone()
-						.json();
+					const text = await res.clone().text();
+					let parsed: unknown = text !== "" ? text : undefined;
+					try {
+						parsed = JSON.parse(text);
+					} catch {}
+					(res as unknown as { parsedBody?: unknown }).parsedBody = parsed;
 				} catch {
-					// Non-JSON body — leave parsedBody undefined and let
+					// Unreadable body — leave parsedBody undefined and let
 					// handleApiError fall back to its generic message.
 				}
 			}
@@ -447,10 +451,12 @@ export class CyborgDB {
 		try {
 			const response = await this.api.listEmbeddingModelsV1EmbeddingModelsGet();
 			return (response.models ?? []).map(
-				({ name, dimension, maxSeqLength }) => ({
+				({ name, revision, dimension, maxSeqLength, normalize }) => ({
 					name,
+					revision,
 					dimension,
 					maxSeqLength,
+					normalize,
 				}),
 			);
 		} catch (error: unknown) {
