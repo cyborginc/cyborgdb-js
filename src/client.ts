@@ -451,10 +451,12 @@ export class CyborgDB {
 		try {
 			const response = await this.api.listEmbeddingModelsV1EmbeddingModelsGet();
 			return (response.models ?? []).map(
-				({ name, dimension, maxSeqLength }) => ({
+				({ name, revision, dimension, maxSeqLength, normalize }) => ({
 					name,
+					revision,
 					dimension,
 					maxSeqLength,
+					normalize,
 				}),
 			);
 		} catch (error: unknown) {

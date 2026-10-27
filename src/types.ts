@@ -234,8 +234,12 @@ export interface TrainingStatus {
  */
 export interface EmbeddingModel {
 	name: string;
+	/** Pinned upstream revision of the model's weights. */
+	revision: string;
 	dimension: number;
 	maxSeqLength: number;
+	/** Whether the model's vectors are unit length, so cosine and inner product rank alike. */
+	normalize: boolean;
 }
 
 /**
