@@ -25,10 +25,7 @@ export const CODE_PARSE = -32700;
 export const VARIANTS = ["json", "binary"];
 
 /** What the adapter needs from the `cyborgdb` module. */
-export type Sdk = Pick<
-	typeof Cyborgdb,
-	"Client" | "VERSION" | "CyborgDBTransportError" | "CyborgDBValidationError"
->;
+export type Sdk = Pick<typeof Cyborgdb, "Client" | "VERSION">;
 type Client = InstanceType<typeof Cyborgdb.Client>;
 type Index = Cyborgdb.EncryptedIndex;
 type Params = Record<string, unknown>;
@@ -169,9 +166,22 @@ export function decode(wireValue: unknown): unknown {
 	return wireValue;
 }
 
+/**
+ * Throws for an UnsafeInteger anywhere in a typed payload, which decodeTyped
+ * otherwise passes on (`$literal`) or turns into NaN (`$range`).
+ */
+function rejectUnsafe(value: unknown): void {
+	if (value instanceof UnsafeInteger) {
+		throw new Unsupported(`a JS number can't hold ${value.source} exactly`);
+	}
+	if (Array.isArray(value)) value.forEach(rejectUnsafe);
+	else if (isPlainObject(value)) Object.values(value).forEach(rejectUnsafe);
+}
+
 // Payload shapes come from the protocol schema; a malformed one throws while
 // decoding and is reported as -32602.
 function decodeTyped(tag: string, payload: any): unknown {
+	rejectUnsafe(payload);
 	switch (tag) {
 		case "$literal":
 			return payload;
@@ -498,23 +508,6 @@ function encodeItem(item: object): unknown {
 
 // ---------- errors ----------
 
-// HTTP status -> kind, from errors.yaml. 401 and 403 each name two kinds; the
-// SDK can't tell them apart, so each gets one fixed kind and the wrong guesses
-// are declared in expected-failures/cyborgdb-js.yaml.
-const STATUS_KINDS: Record<number, string> = {
-	400: "invalid_argument",
-	401: "unauthenticated",
-	403: "permission_denied",
-	404: "not_found",
-	409: "already_exists",
-	422: "invalid_argument",
-	429: "rate_limited",
-	500: "internal",
-	502: "unavailable",
-	503: "unavailable",
-	504: "unavailable",
-};
-
 // The service's KMS slot names, as the driver reads them (internal/run/secrets.go).
 const KMS_SLOT_VARIABLES = [
 	"CYBORGDB_TESTS_KMS_NAME_AWS_KMS",
@@ -528,7 +521,7 @@ const KMS_SLOT_VARIABLES = [
 /**
  * Builds the adapter around an SDK module.
  *
- * @param cyborgdb `Client`, `VERSION` and the error classes it maps.
+ * @param cyborgdb `Client` and `VERSION`.
  * @param variant "json" or "binary".
  * @param env Environment variables, for the KMS slots.
  * @returns `{handle}`: runs one decoded JSON-RPC request, resolving to the
@@ -955,24 +948,10 @@ export function createAdapter(
 	}
 
 	function kindOf(nativeError: unknown): string {
-		const fields = (nativeError ?? {}) as {
-			kind?: unknown;
-			statusCode?: unknown;
-		};
-		// Prefer the SDK's own kind once it exposes one (SDK.md area 14); until
-		// then, the error class and status code. Never the message.
-		if (typeof fields.kind === "string" && fields.kind) return fields.kind;
-		if (nativeError instanceof cyborgdb.CyborgDBTransportError) {
-			return "transport";
-		}
-		const statusCode = fields.statusCode ?? null;
-		if (
-			statusCode === null &&
-			nativeError instanceof cyborgdb.CyborgDBValidationError
-		) {
-			return "invalid_argument";
-		}
-		return STATUS_KINDS[statusCode as number] ?? "internal";
+		// The SDK sets a kind on every error it raises; anything else (a bug in
+		// the SDK, say) is internal. Never the message.
+		const kind = (nativeError as { kind?: unknown } | null)?.kind;
+		return typeof kind === "string" && kind ? kind : "internal";
 	}
 
 	function nativeDescription(nativeError: unknown): string {

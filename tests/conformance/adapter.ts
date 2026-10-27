@@ -38,8 +38,7 @@ async function main(): Promise<void> {
 		);
 		process.exit(1);
 	}
-	// The CommonJS build: what Node users get from require(), and the same
-	// build the forwarding test's error classes compile to.
+	// The CommonJS build: what Node users get from require().
 	const cyborgdb: Sdk = createRequire(import.meta.url)("cyborgdb");
 	let adapter: ReturnType<typeof createAdapter>;
 	try {

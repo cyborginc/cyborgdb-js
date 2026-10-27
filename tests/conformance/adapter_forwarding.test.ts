@@ -865,9 +865,13 @@ describe("results", () => {
 
 describe("errors", () => {
 	const E = cyborgdb;
+	// As the SDK's error factory builds them: status and kind together.
 	test.each([
 		[
-			new E.CyborgDBValidationError("m", { statusCode: 422 }),
+			new E.CyborgDBValidationError("m", {
+				statusCode: 422,
+				kind: "invalid_argument",
+			}),
 			"invalid_argument",
 			"CyborgDBValidationError 422",
 		],
@@ -877,37 +881,28 @@ describe("errors", () => {
 			"CyborgDBValidationError",
 		],
 		[
-			new E.CyborgDBAuthenticationError("m", { statusCode: 401 }),
-			"unauthenticated",
+			new E.CyborgDBAuthenticationError("m", {
+				statusCode: 401,
+				kind: "wrong_key",
+			}),
+			"wrong_key",
 			"CyborgDBAuthenticationError 401",
 		],
 		[
-			new E.CyborgDBAuthenticationError("m", { statusCode: 403 }),
+			new E.CyborgDBAuthenticationError("m", {
+				statusCode: 403,
+				kind: "permission_denied",
+			}),
 			"permission_denied",
 			"CyborgDBAuthenticationError 403",
 		],
 		[
-			new E.CyborgDBNotFoundError("m", { statusCode: 404 }),
+			new E.CyborgDBNotFoundError("m", { statusCode: 404, kind: "not_found" }),
 			"not_found",
 			"CyborgDBNotFoundError 404",
 		],
 		[
-			new E.CyborgDBConflictError("m", { statusCode: 409 }),
-			"already_exists",
-			"CyborgDBConflictError 409",
-		],
-		[
-			new E.CyborgDBRateLimitError("m", { statusCode: 429 }),
-			"rate_limited",
-			"CyborgDBRateLimitError 429",
-		],
-		[
-			new E.CyborgDBServiceError("m", { statusCode: 500 }),
-			"internal",
-			"CyborgDBServiceError 500",
-		],
-		[
-			new E.CyborgDBServiceError("m", { statusCode: 503 }),
+			new E.CyborgDBServiceError("m", { statusCode: 503, kind: "unavailable" }),
 			"unavailable",
 			"CyborgDBServiceError 503",
 		],
@@ -927,16 +922,6 @@ describe("errors", () => {
 			message: "m",
 			data: { kind, native },
 		});
-	});
-
-	test("the SDK's own kind wins over the status table", async () => {
-		const error = Object.assign(
-			new E.CyborgDBAuthenticationError("m", { statusCode: 401 }),
-			{ kind: "wrong_key" },
-		);
-		const h = await harness({ returns: { "index.listIds": error } });
-		const wire = errorOf(await h.call("index.list_ids", { index: "i" }));
-		expect(wire?.data?.kind).toBe("wrong_key");
 	});
 
 	test("a Client constructor error gets a kind", async () => {
@@ -1001,6 +986,24 @@ describe("typed values and the handshake", () => {
 		);
 		expect(h.calls).toHaveLength(0);
 	});
+
+	test.each([
+		["$literal", '{"$literal":{"n":18446744073709551615}}'],
+		["$range", '{"$range":[0,18446744073709551615]}'],
+		["$f32", '{"$f32":[18446744073709551615]}'],
+	])(
+		"an integer a JS number can't hold inside %s is unsupported",
+		async (_tag, value) => {
+			const h = await harness();
+			const { params } = parseRequest(
+				`{"params":{"index":"i","filters":{"k":${value}}}}`,
+			) as { params: Params };
+			expect(await errorCode(h, "index.query_metadata", params)).toBe(
+				CODE_UNSUPPORTED,
+			);
+			expect(h.calls).toHaveLength(0);
+		},
+	);
 
 	test("unknown $ keys are data and $literal passes verbatim", async () => {
 		const h = await harness();
