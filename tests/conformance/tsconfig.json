@@ -1,0 +1,18 @@
+{
+	// Type-checks the conformance adapter, which lives outside the root
+	// tsconfig's src/. Node runs these files directly, so nothing is emitted.
+	// Run: npx tsc -p tests/conformance
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"module": "preserve",
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"types": ["node", "jest"]
+	},
+	"include": ["*.ts"]
+}
