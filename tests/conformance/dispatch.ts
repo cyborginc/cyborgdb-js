@@ -15,7 +15,7 @@ import { closeSync, openSync, readSync } from "node:fs";
 import type * as Cyborgdb from "../../src/index";
 
 export const PROTOCOL = 1;
-export const IMPL = "cyborgdb-js";
+export const IMPL = "sdk-js";
 export const CODE_OP_FAILED = -32000;
 export const CODE_UNSUPPORTED = -32601;
 export const CODE_INVALID_PARAMS = -32602;

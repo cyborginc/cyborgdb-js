@@ -1035,7 +1035,7 @@ describe("typed values and the handshake", () => {
 			).result;
 		const json = await hello("json");
 		const binary = await hello("binary");
-		expect(json.impl).toBe("cyborgdb-js");
+		expect(json.impl).toBe("sdk-js");
 		expect(json.version).toBe("9.9.9");
 		expect(json.capabilities).toContain("ragged_batches");
 		expect(binary.capabilities).not.toContain("ragged_batches");
