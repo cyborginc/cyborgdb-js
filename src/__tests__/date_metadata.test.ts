@@ -14,7 +14,6 @@ import { coerceDatetimes } from "../datetimes";
 import { EncryptedIndex } from "../encryptedIndex";
 import { CyborgDBValidationError } from "../errors";
 import { Configuration } from "../runtime";
-import type { FilterExpression } from "../types";
 
 // The moments the conformance suite exercises: offset + sub-second precision.
 const WHEN = new Date("2024-05-04T03:02:01.123+02:00");
@@ -138,16 +137,13 @@ describe("Date coercion on the wire", () => {
 	});
 
 	it("query (json) sends filter Dates as epoch ms", async () => {
-		// The $or cast: FilterExpression's index signature types logical-operator
-		// arrays as JsonArray, which doesn't admit Date — the coercion still has
-		// to reach inside them at runtime.
 		await index.query({
 			queryVectors: [0.1, 0.2],
 			filters: {
 				created: { $gte: WHEN, $lt: LATER },
 				stamp: WHEN,
 				$or: [{ created: { $in: [WHEN, LATER] } }],
-			} as FilterExpression,
+			},
 		});
 
 		expect(lastBody().filters).toEqual({

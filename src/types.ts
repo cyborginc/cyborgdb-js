@@ -52,7 +52,13 @@ export type VectorMetadata = JsonObject;
  * - Logical operators: { $and: [{ price: { $gte: 10 } }, { stock: { $gt: 0 } }] }
  */
 export type FilterExpression = {
-	[key: string]: FilterValue | FilterOperator;
+	// FilterExpression[] admits the top-level logical operators ($and / $or /
+	// $nor hold subexpression arrays); FilterExpression admits $not.
+	[key: string]:
+		| FilterValue
+		| FilterOperator
+		| FilterExpression
+		| FilterExpression[];
 };
 
 /**
