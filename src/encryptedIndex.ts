@@ -1,5 +1,6 @@
 import type { DefaultApi } from "./apis/DefaultApi";
 import { toBase64, toBytes, toHex, viewBytes } from "./bytes";
+import { coerceDatetimes } from "./datetimes";
 import {
 	CyborgDBValidationError,
 	extractErrorDetail,
@@ -71,6 +72,15 @@ function checkInclude<F extends string>(
 	}
 	return include as F[];
 }
+
+// Filters go out with Date operands coerced to epoch ms (the contract's
+// datetime encoding), matching py's coerce_datetimes on the same paths.
+const coerceFilters = (
+	filters: FilterExpression | undefined,
+): FilterExpression | undefined =>
+	filters === undefined
+		? undefined
+		: (coerceDatetimes(filters) as FilterExpression);
 
 const checkQueryInclude = (
 	include: unknown,
@@ -622,7 +632,11 @@ export class EncryptedIndex {
 					id: item.id,
 					vector: item.vector,
 					contents: contentValue,
-					metadata: item.metadata || undefined,
+					// Date values become epoch ms (the contract's datetime encoding);
+					// left alone they would JSON-serialize as ISO strings.
+					metadata: item.metadata
+						? (coerceDatetimes(item.metadata) as VectorItem["metadata"])
+						: undefined,
 				};
 			});
 
@@ -790,7 +804,7 @@ export class EncryptedIndex {
 				nProbes: nProbes ?? undefined,
 				greedy: greedy ?? undefined,
 				rerankMult: rerankMult ?? undefined,
-				filters: filters ?? undefined,
+				filters: coerceFilters(filters),
 				include: includeFields,
 				queryVectors: vectors2D
 					? vectors2D.map((vector) => vector.map((v) => Number(v)))
@@ -943,7 +957,7 @@ export class EncryptedIndex {
 		try {
 			const queryMetadataRequest: QueryMetadataRequest = this.withKey({
 				indexName: this.indexName,
-				filters: filters ?? {},
+				filters: coerceFilters(filters) ?? {},
 				ascending: sortAscending,
 				...(topK !== undefined && { topK }),
 				...(orderByField !== undefined && { orderBy: orderByField }),
@@ -1121,7 +1135,9 @@ export class EncryptedIndex {
 				ids,
 				vectorsB64,
 				dimension,
-				metadata: metadata ?? undefined,
+				metadata: metadata
+					? (coerceDatetimes(metadata) as BinaryVectorBatch["metadata"])
+					: undefined,
 				// Cast contents to expected type - the API accepts string | null for each item
 				contents: contents as BinaryVectorBatch["contents"],
 			};
@@ -1230,7 +1246,7 @@ export class EncryptedIndex {
 				nProbes: nProbes ?? undefined,
 				greedy: greedy ?? undefined,
 				rerankMult: rerankMult ?? undefined,
-				filters: filters ?? undefined,
+				filters: coerceFilters(filters),
 				include: include ?? undefined,
 				// Hybrid text-leg knobs, forwarded on the binary path too.
 				text: text ?? undefined,

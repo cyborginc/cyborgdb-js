@@ -58,7 +58,7 @@ export type FilterExpression = {
 /**
  * Possible filter values
  */
-export type FilterValue = JsonPrimitive | JsonArray;
+export type FilterValue = JsonPrimitive | JsonArray | Date;
 
 /**
  * MongoDB-style filter operators
@@ -66,12 +66,12 @@ export type FilterValue = JsonPrimitive | JsonArray;
 export interface FilterOperator {
 	$eq?: FilterValue;
 	$ne?: FilterValue;
-	$gt?: number;
-	$gte?: number;
-	$lt?: number;
-	$lte?: number;
-	$in?: JsonArray;
-	$nin?: JsonArray;
+	$gt?: number | Date;
+	$gte?: number | Date;
+	$lt?: number | Date;
+	$lte?: number | Date;
+	$in?: FilterValue[];
+	$nin?: FilterValue[];
 	$and?: FilterExpression[];
 	$or?: FilterExpression[];
 	$nor?: FilterExpression[];
