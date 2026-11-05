@@ -53,12 +53,10 @@ export type VectorMetadata = JsonObject;
  */
 export type FilterExpression = {
 	// FilterExpression[] admits the top-level logical operators ($and / $or /
-	// $nor hold subexpression arrays); FilterExpression admits $not.
-	[key: string]:
-		| FilterValue
-		| FilterOperator
-		| FilterExpression
-		| FilterExpression[];
+	// $nor hold subexpression arrays). A singular FilterExpression branch is
+	// deliberately NOT included: it would match any object and bypass
+	// FilterOperator's operand checks (e.g. admit { $gt: "iso-string" }).
+	[key: string]: FilterValue | FilterOperator | FilterExpression[];
 };
 
 /**
