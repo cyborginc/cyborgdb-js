@@ -465,9 +465,9 @@ describe("queryMetadata on a default-posture index", () => {
 
 describe("datetime handling", () => {
 	// Native Date values passed as metadata. Core stores epoch millis and
-	// supports range filters; JSON.stringify turns a Date into an ISO 8601
-	// string, so equality matches but every range comparison fails.
-	// Mirrors py TestDatetimeHandling.
+	// supports range filters; the SDK coerces a Date to epoch ms in upsert
+	// metadata and filter operands (cyborgdb-core#2785), so both equality and
+	// range comparisons work. Mirrors py TestDatetimeHandling.
 	const BASE = new Date(Date.UTC(2026, 0, 1));
 	const plusDays = (n: number) =>
 		new Date(BASE.getTime() + n * 24 * 60 * 60 * 1000);
@@ -512,24 +512,16 @@ describe("datetime handling", () => {
 		}
 	});
 
-	// Unlike Python, TypeScript's FilterExpression does not admit a Date at
-	// all — these casts are what a caller would have to write to get a Date
-	// past the compiler. The cast is deliberate: it pins what the service does
-	// when the types are bypassed, which is what cyborgdb-core#2396 describes.
-	const dateFilter = (v: unknown) => v as FilterExpression;
-
 	it("matches equality on a datetime", async () => {
-		// Survives because it degenerates to string comparison.
 		const got = await index.queryMetadata({
-			filters: dateFilter({ created: BASE }),
+			filters: { created: BASE },
 		});
 		expect(new Set(idsOf(got))).toEqual(new Set(["t0"]));
 	});
 
-	it.failing("supports a range on a datetime", async () => {
-		// cyborgdb-core#2396
+	it("supports a range on a datetime", async () => {
 		const got = await index.queryMetadata({
-			filters: dateFilter({ created: { $gte: plusDays(5) } }),
+			filters: { created: { $gte: plusDays(5) } },
 		});
 		expect(new Set(idsOf(got))).toEqual(new Set(["t1", "t2"]));
 	});
