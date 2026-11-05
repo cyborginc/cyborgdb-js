@@ -8,6 +8,7 @@
  * queryMetadata filters.
  */
 
+import { runInNewContext } from "node:vm";
 import { beforeEach, describe, expect, it } from "@jest/globals";
 import { DefaultApi } from "../apis/DefaultApi";
 import { coerceDatetimes } from "../datetimes";
@@ -56,6 +57,18 @@ describe("coerceDatetimes", () => {
 		coerceDatetimes(input);
 		expect(input.created).toBeInstanceOf(Date);
 		expect(input.nested.at).toBeInstanceOf(Date);
+	});
+
+	it("recognizes Dates and plain objects from another realm", () => {
+		// instanceof and prototype identity both fail across realms; the checks
+		// must be realm-independent or foreign Dates silently serialize as ISO.
+		const foreign = runInNewContext(
+			`({ created: new Date(${WHEN_MS}), nested: { at: new Date(${WHEN_MS}) } })`,
+		);
+		expect(coerceDatetimes(foreign)).toEqual({
+			created: WHEN_MS,
+			nested: { at: WHEN_MS },
+		});
 	});
 
 	it("rejects an invalid Date", () => {

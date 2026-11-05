@@ -17,7 +17,7 @@ import { CyborgDBValidationError } from "./errors";
  * unchanged; non-plain objects are left alone.
  */
 export function coerceDatetimes(value: unknown): unknown {
-	if (value instanceof Date) {
+	if (isDate(value)) {
 		const ms = value.getTime();
 		if (Number.isNaN(ms)) {
 			throw new CyborgDBValidationError(
@@ -37,10 +37,22 @@ export function coerceDatetimes(value: unknown): unknown {
 	return value;
 }
 
+// Realm-independent Date check: `instanceof Date` is false for a Date from
+// another realm (iframe, vm context), which would silently fall through to
+// ISO-string serialization — the exact bug this module exists to fix.
+function isDate(value: unknown): value is Date {
+	return (
+		value instanceof Date ||
+		Object.prototype.toString.call(value) === "[object Date]"
+	);
+}
+
 // Only recurse into plain mappings (mirroring py, which recurses only
 // dict/list); exotic objects pass through and serialize as they always did.
+// Realm-independent: a plain object's prototype chain has length <= 1 in any
+// realm, so this can't compare against this realm's Object.prototype.
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (typeof value !== "object" || value === null) return false;
 	const proto = Object.getPrototypeOf(value);
-	return proto === Object.prototype || proto === null;
+	return proto === null || Object.getPrototypeOf(proto) === null;
 }
