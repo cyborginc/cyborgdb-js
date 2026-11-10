@@ -102,6 +102,66 @@ describe("replay on dropped connection", () => {
 			CyborgDBTransportError,
 		);
 	});
+
+	it("does not replay a non-idempotent operation", async () => {
+		const srv = await serve((_attempt, req) => {
+			req.socket.destroy();
+		});
+		try {
+			const client = new CyborgDB({ baseUrl: srv.url, apiKey: "test-key" });
+			await expect(
+				client.createIndex({
+					indexName: "idx",
+					indexKey: new Uint8Array(32),
+					dimension: 4,
+				}),
+			).rejects.toBeInstanceOf(CyborgDBTransportError);
+			expect(srv.attempts()).toBe(1);
+		} finally {
+			await srv.close();
+		}
+	});
+
+	it("replays a binary upsert whose connection dropped", async () => {
+		const describeBody = JSON.stringify({
+			index_name: "idx",
+			is_trained: false,
+			index_type: "ivfflat",
+			training_state: "untrained",
+			storage_precision: "float32",
+			dimension: 4,
+			metric: "euclidean",
+			n_lists: 1,
+		});
+		let upsertAttempts = 0;
+		const srv = await serve((_attempt, req, res) => {
+			if (req.url?.endsWith("/v1/indexes/describe")) {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(describeBody);
+				return;
+			}
+			upsertAttempts++;
+			if (upsertAttempts === 1) {
+				req.socket.destroy();
+				return;
+			}
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ status: "success", message: "ok" }));
+		});
+		try {
+			const client = new CyborgDB({ baseUrl: srv.url, apiKey: "test-key" });
+			const index = await client.loadIndex({
+				indexName: "idx",
+				indexKey: new Uint8Array(32),
+			});
+			await expect(
+				index.upsert({ ids: ["a", "b"], vectors: new Float32Array(8) }),
+			).resolves.toMatchObject({ status: "success" });
+			expect(upsertAttempts).toBe(2);
+		} finally {
+			await srv.close();
+		}
+	});
 });
 
 describe("isDroppedConnectionError", () => {

@@ -61,6 +61,46 @@ function assertValidBaseUrl(baseUrl: string): void {
 	}
 }
 
+/**
+ * POST endpoints safe to send twice (reads and upserts). Others —
+ * create/train/delete/users — could re-execute on replay.
+ */
+const REPLAYABLE_POST_PATHS = [
+	"/v1/vectors/upsert",
+	"/v1/vectors/upsert_binary",
+	"/v1/vectors/query",
+	"/v1/vectors/query_binary",
+	"/v1/vectors/query_metadata",
+	"/v1/vectors/get",
+	"/v1/vectors/list_ids",
+	"/v1/vectors/num_vectors",
+	"/v1/indexes/describe",
+];
+
+function isReplayableRequest(
+	input: RequestInfo | URL,
+	init?: RequestInit,
+): boolean {
+	const method = (
+		init?.method ?? (input instanceof Request ? input.method : "GET")
+	).toUpperCase();
+	if (method === "GET" || method === "HEAD") return true;
+	if (method !== "POST") return false;
+	const href =
+		typeof input === "string"
+			? input
+			: input instanceof URL
+				? input.href
+				: input.url;
+	let pathname: string;
+	try {
+		pathname = new URL(href).pathname;
+	} catch {
+		return false;
+	}
+	return REPLAYABLE_POST_PATHS.some((path) => pathname.endsWith(path));
+}
+
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 /**
@@ -139,7 +179,8 @@ export class CyborgDB {
 		}
 
 		// Replay a request once when a stale kept-alive connection dropped
-		// before any response arrived. Streaming bodies can't be replayed.
+		// before any response arrived. Only idempotent operations are replayed
+		// (see REPLAYABLE_POST_PATHS); streaming bodies can't be.
 		const transport = fetchApi ?? globalThis.fetch.bind(globalThis);
 		const replayOnDroppedConnection: typeof fetch = async (url, init) => {
 			try {
@@ -148,7 +189,11 @@ export class CyborgDB {
 				const bodyIsStream =
 					typeof ReadableStream !== "undefined" &&
 					init?.body instanceof ReadableStream;
-				if (bodyIsStream || !isDroppedConnectionError(error)) {
+				if (
+					bodyIsStream ||
+					!isReplayableRequest(url, init) ||
+					!isDroppedConnectionError(error)
+				) {
 					throw error;
 				}
 				return transport(url, init);
