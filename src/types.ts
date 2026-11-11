@@ -52,13 +52,17 @@ export type VectorMetadata = JsonObject;
  * - Logical operators: { $and: [{ price: { $gte: 10 } }, { stock: { $gt: 0 } }] }
  */
 export type FilterExpression = {
-	[key: string]: FilterValue | FilterOperator;
+	// FilterExpression[] admits the top-level logical operators ($and / $or /
+	// $nor hold subexpression arrays). A singular FilterExpression branch is
+	// deliberately NOT included: it would match any object and bypass
+	// FilterOperator's operand checks (e.g. admit { $gt: "iso-string" }).
+	[key: string]: FilterValue | FilterOperator | FilterExpression[];
 };
 
 /**
  * Possible filter values
  */
-export type FilterValue = JsonPrimitive | JsonArray;
+export type FilterValue = JsonPrimitive | JsonArray | Date;
 
 /**
  * MongoDB-style filter operators
@@ -66,12 +70,12 @@ export type FilterValue = JsonPrimitive | JsonArray;
 export interface FilterOperator {
 	$eq?: FilterValue;
 	$ne?: FilterValue;
-	$gt?: number;
-	$gte?: number;
-	$lt?: number;
-	$lte?: number;
-	$in?: JsonArray;
-	$nin?: JsonArray;
+	$gt?: number | Date;
+	$gte?: number | Date;
+	$lt?: number | Date;
+	$lte?: number | Date;
+	$in?: FilterValue[];
+	$nin?: FilterValue[];
 	$and?: FilterExpression[];
 	$or?: FilterExpression[];
 	$nor?: FilterExpression[];
