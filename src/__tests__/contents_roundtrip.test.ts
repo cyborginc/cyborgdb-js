@@ -42,8 +42,9 @@ describe("EncryptedIndex.get() contents round-trip", () => {
 		);
 	});
 
-	it("round-trips binary contents losslessly as a base64 string", async () => {
-		// upsert() base64-encodes a Buffer; the service stores/returns that string.
+	it("returns contents stored as base64 by older SDKs verbatim", async () => {
+		// SDK versions before contents became UTF-8 text base64-encoded bytes; the
+		// service stores that string, and get() must not try to decode it.
 		const original = Buffer.from([0x00, 0xff, 0x10, 0x42, 0x7f, 0x80, 0xc3]);
 		const wire = original.toString("base64");
 		const index = indexReturningContents(wire);

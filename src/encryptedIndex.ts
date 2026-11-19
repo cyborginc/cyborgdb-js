@@ -1,5 +1,12 @@
 import type { DefaultApi } from "./apis/DefaultApi";
-import { toBase64, toBytes, toHex, viewBytes } from "./bytes";
+import {
+	decodeUtf8Strict,
+	hasLoneSurrogate,
+	toBase64,
+	toBytes,
+	toHex,
+	viewBytes,
+} from "./bytes";
 import { coerceDatetimes } from "./datetimes";
 import {
 	CyborgDBValidationError,
@@ -114,6 +121,28 @@ const toBM25 = (
 				b: config.b,
 				analyzerVersion: config.analyzerVersion ?? null,
 			};
+
+/**
+ * Contents are UTF-8 text over the service, so bytes are sent as their text
+ * (base64 would be stored and returned as-is) and anything without a UTF-8
+ * form is rejected before the request is made.
+ */
+function contentsToText(contents: unknown, index: number, id: string): string {
+	try {
+		if (typeof contents === "string") {
+			if (hasLoneSurrogate(contents)) {
+				throw new TypeError("contents must be valid UTF-8");
+			}
+			return contents;
+		}
+		return decodeUtf8Strict(toBytes(contents));
+	} catch (error) {
+		throw new CyborgDBValidationError(
+			`Invalid contents at index ${index} (id: "${id}"): ${error instanceof Error ? error.message : "Unknown error"}`,
+			{ cause: error },
+		);
+	}
+}
 
 export class EncryptedIndex {
 	private indexName: string = "";
@@ -611,27 +640,12 @@ export class EncryptedIndex {
 
 			// Convert items to the format expected by the API
 			const processedItems: VectorItem[] = finalItems.map((item, index) => {
-				let contentValue: string | undefined;
-
-				if (item.contents) {
-					try {
-						if (typeof item.contents === "string") {
-							contentValue = item.contents;
-						} else {
-							contentValue = toBase64(toBytes(item.contents));
-						}
-					} catch (error) {
-						throw new CyborgDBValidationError(
-							`Failed to process contents for item at index ${index} (id: "${item.id}"): ${error instanceof Error ? error.message : "Unknown error"}`,
-							{ cause: error },
-						);
-					}
-				}
-
 				return {
 					id: item.id,
 					vector: item.vector,
-					contents: contentValue,
+					contents: item.contents
+						? contentsToText(item.contents, index, item.id)
+						: undefined,
 					// Date values become epoch ms (the contract's datetime encoding);
 					// left alone they would JSON-serialize as ISO strings.
 					metadata: item.metadata
@@ -1082,6 +1096,9 @@ export class EncryptedIndex {
 					`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`,
 				);
 			}
+			const contentsText = contents?.map((value, i) =>
+				value == null ? value : contentsToText(value, i, ids[i]),
+			);
 
 			// Convert vectors to Float32Array if needed and get dimension
 			let float32Vectors: Float32Array;
@@ -1139,7 +1156,7 @@ export class EncryptedIndex {
 					? (coerceDatetimes(metadata) as BinaryVectorBatch["metadata"])
 					: undefined,
 				// Cast contents to expected type - the API accepts string | null for each item
-				contents: contents as BinaryVectorBatch["contents"],
+				contents: contentsText as BinaryVectorBatch["contents"],
 			};
 
 			const binaryUpsertRequest: BinaryUpsertRequest = this.withKey({

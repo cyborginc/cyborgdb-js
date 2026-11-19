@@ -157,10 +157,11 @@ export interface HealthResponse {
 export interface GetResultItem
 	extends Omit<GetResultItemModel, "metadata" | "contents"> {
 	/**
-	 * The stored content, returned verbatim as a string (if included). Text
-	 * contents round-trip as the original UTF-8 string. Binary contents that
-	 * were upserted as a Buffer round-trip as a base64 string — decode them with
-	 * `Buffer.from(contents, "base64")`.
+	 * The stored content, returned verbatim as a string (if included). Contents
+	 * are UTF-8 text: bytes upserted as a Uint8Array come back as their UTF-8
+	 * text, and bytes that are not valid UTF-8 are rejected at upsert. Contents
+	 * upserted by SDK versions that base64-encoded bytes come back as that
+	 * base64 text.
 	 */
 	contents?: string;
 	/**

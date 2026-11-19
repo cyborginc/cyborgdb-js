@@ -8,7 +8,9 @@
 import { describe, expect, it } from "@jest/globals";
 import {
 	decodeUtf8,
+	decodeUtf8Strict,
 	fromBase64,
+	hasLoneSurrogate,
 	randomBytes,
 	sha256Hex,
 	toBase64,
@@ -168,5 +170,38 @@ describe("sha256Hex", () => {
 		const window = backing.subarray(10, 20);
 		const expected = createHash("sha256").update(window).digest("hex");
 		await expect(sha256Hex(window)).resolves.toBe(expected);
+	});
+});
+
+describe("decodeUtf8Strict", () => {
+	it("decodes valid UTF-8 and keeps a leading BOM", () => {
+		const text = "\ufeffcafé 😀";
+		expect(decodeUtf8Strict(new TextEncoder().encode(text))).toBe(text);
+	});
+
+	it.each([
+		["a stray continuation byte", [0x80]],
+		["an invalid lead byte", [0x61, 0xff]],
+		["a truncated sequence", [0xe2, 0x82]],
+		["an encoded surrogate", [0xed, 0xa0, 0x80]],
+	])("rejects %s", (_name, bytes) => {
+		expect(() => decodeUtf8Strict(new Uint8Array(bytes))).toThrow(
+			"contents must be valid UTF-8",
+		);
+	});
+});
+
+describe("hasLoneSurrogate", () => {
+	it.each([
+		["", false],
+		["plain", false],
+		["😀", false],
+		["\ud800", true],
+		["\udfff", true],
+		["a\ud800b", true],
+		["\ud800\ud800", true],
+		["\ude00\ud83d", true],
+	])("%j -> %s", (s, want) => {
+		expect(hasLoneSurrogate(s)).toBe(want);
 	});
 });
