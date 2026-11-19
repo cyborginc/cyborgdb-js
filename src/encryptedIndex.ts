@@ -1,5 +1,12 @@
 import type { DefaultApi } from "./apis/DefaultApi";
-import { toBase64, toBytes, toHex, viewBytes } from "./bytes";
+import {
+	decodeUtf8Strict,
+	hasLoneSurrogate,
+	toBase64,
+	toBytes,
+	toHex,
+	viewBytes,
+} from "./bytes";
 import { coerceDatetimes } from "./datetimes";
 import {
 	CyborgDBValidationError,
@@ -615,10 +622,15 @@ export class EncryptedIndex {
 
 				if (item.contents) {
 					try {
+						// Contents are UTF-8 text over the service, so bytes go as
+						// their text; base64 would be stored and returned as-is.
 						if (typeof item.contents === "string") {
+							if (hasLoneSurrogate(item.contents)) {
+								throw new TypeError("contents must be valid UTF-8");
+							}
 							contentValue = item.contents;
 						} else {
-							contentValue = toBase64(toBytes(item.contents));
+							contentValue = decodeUtf8Strict(toBytes(item.contents));
 						}
 					} catch (error) {
 						throw new CyborgDBValidationError(
@@ -1082,6 +1094,13 @@ export class EncryptedIndex {
 					`Array length mismatch: ${ids.length} IDs provided but ${contents.length} contents entries provided`,
 				);
 			}
+			contents?.forEach((value, i) => {
+				if (typeof value === "string" && hasLoneSurrogate(value)) {
+					throw new CyborgDBValidationError(
+						`Invalid contents at index ${i} (id: "${ids[i]}"): contents must be valid UTF-8`,
+					);
+				}
+			});
 
 			// Convert vectors to Float32Array if needed and get dimension
 			let float32Vectors: Float32Array;

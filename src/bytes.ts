@@ -120,6 +120,43 @@ export function decodeUtf8(bytes: Uint8Array): string {
 }
 
 /**
+ * Decode bytes as strict UTF-8, keeping a leading BOM as U+FEFF.
+ *
+ * @throws TypeError if `bytes` is not valid UTF-8.
+ */
+export function decodeUtf8Strict(bytes: Uint8Array): string {
+	try {
+		return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+			bytes,
+		);
+	} catch (error) {
+		throw new TypeError("contents must be valid UTF-8", { cause: error });
+	}
+}
+
+/**
+ * Whether `s` contains an unpaired UTF-16 surrogate, which has no UTF-8 form.
+ * `String.prototype.isWellFormed` would do, but needs Node 20.
+ */
+export function hasLoneSurrogate(s: string): boolean {
+	for (let i = 0; i < s.length; i++) {
+		const c = s.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff) {
+			const next = s.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				i++;
+				continue;
+			}
+			return true;
+		}
+		if (c >= 0xdc00 && c <= 0xdfff) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Hex-encoded SHA-256 of `data`, via Web Crypto.
  *
  * Async because `crypto.subtle.digest` is; Node's synchronous `createHash`
