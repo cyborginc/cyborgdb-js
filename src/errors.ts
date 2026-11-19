@@ -262,6 +262,31 @@ function unwrapFetchError(error: unknown): unknown {
 		: error;
 }
 
+/** Codes raised when the peer closed a connection the client was still using. */
+const DROPPED_CONNECTION_CODES = new Set([
+	"EPIPE",
+	"ECONNRESET",
+	"UND_ERR_SOCKET",
+]);
+
+/**
+ * True when a fetch rejection means the connection closed before any response
+ * arrived, so the request can safely be replayed. The code may sit anywhere
+ * in the `cause` chain; the depth cap guards against cycles.
+ */
+export function isDroppedConnectionError(error: unknown): boolean {
+	let current: unknown = error;
+	for (let depth = 0; depth < 8; depth++) {
+		if (typeof current !== "object" || current === null) return false;
+		const code = (current as { code?: unknown }).code;
+		if (typeof code === "string" && DROPPED_CONNECTION_CODES.has(code)) {
+			return true;
+		}
+		current = (current as { cause?: unknown }).cause;
+	}
+	return false;
+}
+
 /**
  * Human-readable reason for a transport failure. A host that resolves to
  * several addresses (`localhost` -> `::1` and `127.0.0.1`) fails with an
