@@ -51,7 +51,7 @@ describe("upsert sends contents as UTF-8 text", () => {
 
 	it("keeps multi-byte text and a leading BOM", async () => {
 		const { index, calls } = recordingIndex();
-		const text = "﻿café 日本 😀";
+		const text = "\ufeffcafé 日本 😀";
 		await index.upsert({
 			items: [
 				{ id: "a", vector: [1, 0], contents: new TextEncoder().encode(text) },
