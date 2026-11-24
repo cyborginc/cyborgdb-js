@@ -85,7 +85,7 @@
 		}
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.14",
+		"@biomejs/biome": "2.6.8",
 		"@langchain/core": "^1.1.19",
 		"@types/jest": "^30.0.0",
 		"@types/node": "^26.0.1",
