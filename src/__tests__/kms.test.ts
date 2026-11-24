@@ -306,7 +306,7 @@ describeIf(
 					dimension: DIMENSION,
 					metric: "euclidean",
 				}),
-			).rejects.toThrow(/index_key must not be supplied alongside/);
+			).rejects.toThrow(/index_key must not be supplied alongside|Supply exactly one of index_key or kms_name/);
 		});
 	},
 );
@@ -337,7 +337,7 @@ describeIf(
 			expect(res.status).toBe(400);
 			const body = (await res.json()) as { detail?: string };
 			expect(typeof body.detail).toBe("string");
-			expect(body.detail).toMatch(/index_key must not be supplied alongside/);
+			expect(body.detail).toMatch(/index_key must not be supplied alongside|Supply exactly one of index_key or kms_name/);
 		});
 	},
 );
