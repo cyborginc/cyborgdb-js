@@ -67,6 +67,28 @@ describe("upsert sends contents as UTF-8 text", () => {
 		});
 		expect(sentContents(calls.json[0])).toBe("hello 😀");
 	});
+
+	it.each([
+		["an empty string", ""],
+		["empty bytes", new Uint8Array(0)],
+	])("sends %s as an empty string", async (_name, contents) => {
+		const { index, calls } = recordingIndex();
+		await index.upsert({ items: [{ id: "a", vector: [1, 0], contents }] });
+		expect(sentContents(calls.json[0])).toBe("");
+	});
+
+	it("sends an empty string as an empty string on the binary path", async () => {
+		const { index, calls } = recordingIndex();
+		await index.upsert({
+			ids: ["a"],
+			vectors: new Float32Array([1, 0]),
+			contents: [""],
+		});
+		const sent = calls.binary[0] as {
+			binaryUpsertRequest: { batch: { contents?: unknown[] } };
+		};
+		expect(sent.binaryUpsertRequest.batch.contents).toEqual([""]);
+	});
 });
 
 describe("upsert rejects contents that are not valid UTF-8", () => {

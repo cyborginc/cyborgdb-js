@@ -643,9 +643,10 @@ export class EncryptedIndex {
 				return {
 					id: item.id,
 					vector: item.vector,
-					contents: item.contents
-						? contentsToText(item.contents, index, item.id)
-						: undefined,
+					contents:
+						item.contents != null
+							? contentsToText(item.contents, index, item.id)
+							: undefined,
 					// Date values become epoch ms (the contract's datetime encoding);
 					// left alone they would JSON-serialize as ISO strings.
 					metadata: item.metadata
