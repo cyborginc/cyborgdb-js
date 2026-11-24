@@ -1,7 +1,11 @@
 import { DefaultApi } from "./apis/DefaultApi";
 import { randomBytes, toHex } from "./bytes";
 import { EncryptedIndex } from "./encryptedIndex";
-import { CyborgDBValidationError, handleApiError } from "./errors";
+import {
+	CyborgDBValidationError,
+	handleApiError,
+	isDroppedConnectionError,
+} from "./errors";
 import { createInsecureFetch } from "./insecureFetch";
 import type {
 	CreateIndexRequest,
@@ -55,6 +59,46 @@ function assertValidBaseUrl(baseUrl: string): void {
 			`Invalid baseUrl: ${JSON.stringify(baseUrl)} must use the http or https scheme`,
 		);
 	}
+}
+
+/**
+ * POST endpoints safe to send twice (reads and upserts). Others —
+ * create/train/delete/users — could re-execute on replay.
+ */
+const REPLAYABLE_POST_PATHS = [
+	"/v1/vectors/upsert",
+	"/v1/vectors/upsert_binary",
+	"/v1/vectors/query",
+	"/v1/vectors/query_binary",
+	"/v1/vectors/query_metadata",
+	"/v1/vectors/get",
+	"/v1/vectors/list_ids",
+	"/v1/vectors/num_vectors",
+	"/v1/indexes/describe",
+];
+
+function isReplayableRequest(
+	input: RequestInfo | URL,
+	init?: RequestInit,
+): boolean {
+	const method = (
+		init?.method ?? (input instanceof Request ? input.method : "GET")
+	).toUpperCase();
+	if (method === "GET" || method === "HEAD") return true;
+	if (method !== "POST") return false;
+	const href =
+		typeof input === "string"
+			? input
+			: input instanceof URL
+				? input.href
+				: input.url;
+	let pathname: string;
+	try {
+		pathname = new URL(href).pathname;
+	} catch {
+		return false;
+	}
+	return REPLAYABLE_POST_PATHS.some((path) => pathname.endsWith(path));
 }
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -134,12 +178,34 @@ export class CyborgDB {
 			console.warn("SSL verification disabled in Node.js environment");
 		}
 
+		// Replay a request once when a stale kept-alive connection dropped
+		// before any response arrived. Only idempotent operations are replayed
+		// (see REPLAYABLE_POST_PATHS); streaming bodies can't be.
+		const transport = fetchApi ?? globalThis.fetch.bind(globalThis);
+		const replayOnDroppedConnection: typeof fetch = async (url, init) => {
+			try {
+				return await transport(url, init);
+			} catch (error) {
+				const bodyIsStream =
+					typeof ReadableStream !== "undefined" &&
+					init?.body instanceof ReadableStream;
+				if (
+					bodyIsStream ||
+					!isReplayableRequest(url, init) ||
+					!isDroppedConnectionError(error)
+				) {
+					throw error;
+				}
+				return transport(url, init);
+			}
+		};
+
 		// Pre-read the body of non-2xx responses and stash it on the Response,
 		// parsed when it is JSON and as text otherwise.  The generated runtime
 		// throws a `ResponseError` whose `response.body` is a `ReadableStream`,
 		// so `handleApiError` can't recover the server's `detail` synchronously
 		// without this.
-		const inner = fetchApi ?? globalThis.fetch.bind(globalThis);
+		const inner = replayOnDroppedConnection;
 		fetchApi = async (url: RequestInfo | URL, init?: RequestInit) => {
 			const res = await inner(url, init);
 			if (!res.ok) {
