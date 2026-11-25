@@ -238,7 +238,7 @@ describe("Edge runtime compatibility", () => {
 		).toEqual(Float32Array.from([1, 2, 3, 4]));
 	});
 
-	it("base64-encodes binary `contents` without Buffer", async () => {
+	it("sends binary `contents` as UTF-8 text without Buffer", async () => {
 		const { captured } = await runInEdge(`
 			const client = new cyborgdb.Client({
 				baseUrl: "https://edge.example.com",
@@ -251,7 +251,7 @@ describe("Edge runtime compatibility", () => {
 			});
 			await index.upsert({
 				items: [
-					{ id: "bin", vector: [0.1, 0.2], contents: new Uint8Array([0, 1, 254, 255]) },
+					{ id: "bin", vector: [0.1, 0.2], contents: new Uint8Array([0x63, 0x61, 0x66, 0xc3, 0xa9]) },
 					{ id: "txt", vector: [0.3, 0.4], contents: "plain text" },
 				],
 			});
@@ -259,10 +259,7 @@ describe("Edge runtime compatibility", () => {
 
 		const upsert = captured.find((r) => r.url.includes("/upsert"));
 		const items = (upsert as any).body.items;
-		expect(items[0].contents).toBe(
-			Buffer.from([0, 1, 254, 255]).toString("base64"),
-		);
-		// Strings still pass through verbatim rather than being base64'd.
+		expect(items[0].contents).toBe("café");
 		expect(items[1].contents).toBe("plain text");
 	});
 

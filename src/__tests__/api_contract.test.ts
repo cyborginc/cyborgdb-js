@@ -967,14 +967,11 @@ describe("CyborgDB API Contract Tests", () => {
 		let binaryTestData: Uint8Array[];
 
 		beforeAll(() => {
-			// Generate random binary data (simulating non-text data like images or binary blobs)
-			binaryTestData = binaryTestIds.map((_, i) => {
-				const data = new Uint8Array(256);
-				for (let j = 0; j < 256; j++) {
-					data[j] = (i * 37 + j * 13) % 256; // Deterministic pattern for verification
-				}
-				return data;
-			});
+			// Contents are UTF-8 text over the service, so binary contents must be
+			// valid UTF-8 bytes; multi-byte characters make the decoding observable.
+			binaryTestData = binaryTestIds.map((id) =>
+				new TextEncoder().encode(`${id}: café 日本 😀`),
+			);
 		});
 
 		it("should upsert items with binary contents", async () => {
@@ -1004,9 +1001,10 @@ describe("CyborgDB API Contract Tests", () => {
 				expect(result.id).toBe(binaryTestIds[idx]);
 				expect(result.metadata).toEqual({ type: "binary", index: idx });
 
-				// Contents should be present
-				expect(result.contents).toBeDefined();
-				expect(result.contents).not.toBeNull();
+				// Bytes come back as their UTF-8 text, not base64.
+				expect(result.contents).toBe(
+					new TextDecoder().decode(binaryTestData[idx]),
+				);
 			});
 		});
 
